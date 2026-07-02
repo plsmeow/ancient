@@ -32,20 +32,22 @@ jobs:
     - name: Build with Gradle
       run: ./gradlew build
 
-    - name: Get Commit Message and Generate Tag
+    - name: Get Commit Message
       id: info
       run: |
         COMMIT_MSG=$(git log -1 --pretty=%s)
         echo "commit_message=$COMMIT_MSG" >> $GITHUB_OUTPUT
-        echo "release_tag=v1.21.4-build-$(date +'%Y%m%d-%H%M%S')" >> $GITHUB_OUTPUT
+
+    - name: Remove sources jar
+      run: rm -f build/libs/*-sources.jar
 
     - name: Create Release and Upload Artifacts
       uses: softprops/action-gh-release@v2
       with:
-        tag_name: ${{ steps.info.outputs.release_tag }}
+        tag_name: ${{ steps.info.outputs.commit_message }}
         name: ${{ steps.info.outputs.commit_message }}
         draft: false
-        prerelease: true
+        prerelease: false
         files: |
           build/libs/*.jar
       env:
