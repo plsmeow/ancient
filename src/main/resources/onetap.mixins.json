@@ -1,0 +1,47 @@
+{
+  "required": true,
+  "package": "tech.onetap.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "CobWebMixin",
+    "EnderPearlEntityMixin",
+    "EntityMixin",
+    "IFireworkRocketEntityAccessor",
+    "MixinClientConnection",
+    "ScoreboardMixin",
+    "TeamMixin",
+    "TextVisitFactoryMixin"
+  ],
+  "client": [
+    "AbstractClientPlayerEntityMixin",
+    "BlockMixin",
+    "CameraMixin",
+    "ChatHudMixin",
+    "ChatInputSuggestorMixin",
+    "ChatScreenMixin",
+    "ClientPlayerEntityMixin",
+    "ClientPlayerInteractionManagerMixin",
+    "ClientPlayNetworkHandlerMixin",
+    "EntityRendererMixin",
+    "FireworkRocketEntityMixin",
+    "FogMixin",
+    "GameRendererMixin",
+    "HandledScreenMixin",
+    "HeldItemRendererMixin",
+    "IMinecraftClientAccessor",
+    "InGameHudMixin",
+    "InGameOverlayRendererMixin",
+    "KeyboardInputMixin",
+    "KeyboardMixin",
+    "LivingEntityMixin",
+    "MinecraftClientMixin",
+    "MouseMixin",
+    "PlayerEntityMixin",
+    "RenderTickCounterAccessor",
+    "ScreenMixin",
+    "WorldMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

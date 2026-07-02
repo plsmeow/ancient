@@ -1,0 +1,78 @@
+{
+  "module_enable": {
+    "subtitle": "Module enabled",
+    "category": "master",
+    "sounds": [
+      "mre:module_enable"
+    ]
+  },
+  "module_disable": {
+    "subtitle": "Module disabled",
+    "category": "master",
+    "sounds": [
+      "mre:module_disable"
+    ]
+  },
+  "module_enable1": {
+    "subtitle": "Module enabled",
+    "category": "master",
+    "sounds": [
+      "mre:module_enable1"
+    ]
+  },
+  "module_disable1": {
+    "subtitle": "Module disabled",
+    "category": "master",
+    "sounds": [
+      "mre:module_disable1"
+    ]
+  },
+  "module_enable2": {
+    "subtitle": "Module enabled",
+    "category": "master",
+    "sounds": [
+      "mre:module_enable2"
+    ]
+  },
+  "module_disable2": {
+    "subtitle": "Module disabled",
+    "category": "master",
+    "sounds": [
+      "mre:module_disable2"
+    ]
+  },
+  "module_enable3": {
+    "subtitle": "Module enabled",
+    "category": "master",
+    "sounds": [
+      "mre:module_enable3"
+    ]
+  },
+  "module_disable3": {
+    "subtitle": "Module disabled",
+    "category": "master",
+    "sounds": [
+      "mre:module_disable3"
+    ]
+  },
+  "spek": {
+    "subtitle": "Spek detected",
+    "category": "master",
+    "sounds": [
+      {
+        "name": "mre:spek",
+        "stream": false
+      }
+    ]
+  },
+  "kill_sound": {
+    "subtitle": "Kill sound",
+    "category": "master",
+    "sounds": [
+      {
+        "name": "mre:kill_sound",
+        "stream": false
+      }
+    ]
+  }
+} 
