@@ -30,7 +30,7 @@ public class GrimFunRotation extends RotationMode {
         if (cooldownReady) {
             pitch = aim.getPitch();
         } else {
-            pitch = pitchDown ? -90.0f : 90.0f;
+            pitch = pitchDown ? -80.0f : 90.0f;
             pitchDown = !pitchDown;
         }
 
