@@ -36,7 +36,12 @@ jobs:
       id: info
       run: |
         COMMIT_MSG=$(git log -1 --pretty=%s)
+        COMMIT_SHA=$(git rev-parse --short HEAD)
         echo "commit_message=$COMMIT_MSG" >> $GITHUB_OUTPUT
+        echo "commit_sha=$COMMIT_SHA" >> $GITHUB_OUTPUT
+        VERSION=$(./gradlew properties -q | awk '/^version:/ { print $2 }')
+        TAG="v${VERSION}-${GITHUB_RUN_NUMBER}"
+        echo "tag_name=$TAG" >> $GITHUB_OUTPUT
 
     - name: Remove sources jar
       run: rm -f build/libs/*-sources.jar
@@ -44,8 +49,8 @@ jobs:
     - name: Create Release and Upload Artifacts
       uses: softprops/action-gh-release@v2
       with:
-        tag_name: ${{ steps.info.outputs.commit_message }}
-        name: ${{ steps.info.outputs.commit_message }}
+        tag_name: ${{ steps.info.outputs.tag_name }}
+        name: release-${{ steps.info.outputs.commit_sha }}
         draft: false
         prerelease: false
         files: |
