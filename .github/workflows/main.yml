@@ -43,8 +43,8 @@ jobs:
         TAG="v${VERSION}-${GITHUB_RUN_NUMBER}"
         echo "tag_name=$TAG" >> $GITHUB_OUTPUT
 
-    - name: Remove sources jar
-      run: rm -f build/libs/*-sources.jar
+    - name: Remove sources jars
+      run: rm -f build/libs/*-sources.jar ancient-loader/build/libs/*-sources.jar
 
     - name: Create Release and Upload Artifacts
       uses: softprops/action-gh-release@v2
@@ -55,5 +55,6 @@ jobs:
         prerelease: false
         files: |
           build/libs/*.jar
+          ancient-loader/build/libs/*.jar
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
