@@ -4,11 +4,13 @@ import com.google.common.eventbus.Subscribe;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.network.packet.s2c.play.EntityStatusS2CPacket;
+import tech.onetap.Onetap;
 import tech.onetap.event.list.EventAttack;
 import tech.onetap.event.list.EventPacket;
 import tech.onetap.module.Module;
 import tech.onetap.module.ModuleCategory;
 import tech.onetap.module.ModuleInformation;
+import tech.onetap.module.list.combat.KillAura;
 
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
@@ -30,9 +32,15 @@ public class KillSay extends Module {
     @Subscribe
     private void onAttack(EventAttack event) {
         if (mc.player == null || !(event.getEntity() instanceof PlayerEntity player) || player == mc.player) return;
+        if (!isKillAuraTarget(player)) return;
 
         lastTargetUuid = player.getUuid();
         lastTargetName = player.getName().getString();
+    }
+
+    private boolean isKillAuraTarget(PlayerEntity player) {
+        KillAura aura = Onetap.getInstance().getModuleStorage().get(KillAura.class);
+        return aura != null && aura.isEnabled() && aura.getTarget() != null && aura.getTarget().getUuid().equals(player.getUuid());
     }
 
     @Subscribe

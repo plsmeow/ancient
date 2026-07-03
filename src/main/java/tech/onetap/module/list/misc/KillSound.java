@@ -7,11 +7,13 @@ import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.network.packet.s2c.play.EntityStatusS2CPacket;
 import net.minecraft.sound.SoundEvent;
 import net.minecraft.util.Identifier;
+import tech.onetap.Onetap;
 import tech.onetap.event.list.EventAttack;
 import tech.onetap.event.list.EventPacket;
 import tech.onetap.module.Module;
 import tech.onetap.module.ModuleCategory;
 import tech.onetap.module.ModuleInformation;
+import tech.onetap.module.list.combat.KillAura;
 import tech.onetap.module.settings.SliderSetting;
 
 import java.util.UUID;
@@ -29,8 +31,14 @@ public class KillSound extends Module {
     @Subscribe
     private void onAttack(EventAttack event) {
         if (mc.player == null || !(event.getEntity() instanceof PlayerEntity player) || player == mc.player) return;
+        if (!isKillAuraTarget(player)) return;
 
         lastTargetUuid = player.getUuid();
+    }
+
+    private boolean isKillAuraTarget(PlayerEntity player) {
+        KillAura aura = Onetap.getInstance().getModuleStorage().get(KillAura.class);
+        return aura != null && aura.isEnabled() && aura.getTarget() != null && aura.getTarget().getUuid().equals(player.getUuid());
     }
 
     @Subscribe
