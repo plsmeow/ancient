@@ -1,0 +1,21 @@
+{
+	"schemaVersion": 1,
+	"id": "ancient-loader",
+	"version": "${version}",
+	"name": "Ancient Loader",
+	"description": "Loads onetap-1.0.0.jar from the latest plsmeow/ancient GitHub release without placing it in the mods directory.",
+	"authors": [
+		"plsmeow"
+	],
+	"license": "All-Rights-Reserved",
+	"environment": "*",
+	"entrypoints": {
+		"preLaunch": [
+			"tech.onetap.ancientloader.AncientLoader"
+		]
+	},
+	"depends": {
+		"fabricloader": ">=0.15.1",
+		"minecraft": "~1.21.4"
+	}
+}
