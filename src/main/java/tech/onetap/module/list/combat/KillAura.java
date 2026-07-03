@@ -100,6 +100,7 @@ public class KillAura extends Module {
     public final SliderSetting elytraDistance = new SliderSetting("Дистанция (Элитры)", 300, 3, 500, 10);
     private final SliderSetting preRotation = new SliderSetting("Пре дистанция", ValueUnit.countable("блок", "блока", "блоков"), 1.5f, 0, 3, 0.1f);
     private final BooleanSetting stopWhileEating = new BooleanSetting("Не бить при еде", false);
+    public final BooleanSetting breakSwing = new BooleanSetting("Ломать swing", false);
     public final BooleanSetting breakShield = new BooleanSetting("Ломать щит", true);
     public final BooleanSetting forceBreakShield = new BooleanSetting("Ломать щит без задержки", true)
             .setVisible(breakShield::getValue);
@@ -315,7 +316,7 @@ public class KillAura extends Module {
                 }
 
                 mc.interactionManager.attackEntity(mc.player, target);
-                mc.player.swingHand(Hand.MAIN_HAND);
+                mc.player.swingHand(breakSwing.getValue() ? Hand.OFF_HAND : Hand.MAIN_HAND);
 
                 if (previousSlot != -1) {
                     swapBack(previousSlot);
