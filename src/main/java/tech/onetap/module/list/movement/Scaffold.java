@@ -30,7 +30,7 @@ public class Scaffold extends Module {
 
     @Subscribe
     private void onTick(final EventTick event) {
-        RotationComponent.getInstance().forceFreeMovement(rotationMode.is("Grim"));
+        RotationComponent.getInstance().forceFreeMovement(true);
 
         if (mc.player == null || mc.world == null || mc.interactionManager == null || mc.getNetworkHandler() == null) {
             return;
@@ -88,23 +88,35 @@ public class Scaffold extends Module {
         }
 
         BlockHitResult hitResult = createHitResult(currentBlock);
+        float[] rotations = calculateAngle(hitResult.getPos());
 
-        if (rotationMode.is("Grim")) {
-            float[] rotations = calculateAngle(hitResult.getPos());
-            float finalYaw = rotations[0];
-            float finalPitch = rotations[1];
+        // --- ВЫБОР РЕЖИМА РОТАЦИИ ---
+        float finalYaw = rotations[0];
+        float finalPitch = rotations[1];
 
+        if (rotationMode.is("Vanilla")) {
+            // Режим Vanilla: Простой поворот на геометрический центр целевой грани блока
+            Vec3d blockCenter = Vec3d.ofCenter(currentBlock.position());
+            float[] vanillaRots = calculateAngle(blockCenter);
+            finalYaw = vanillaRots[0];
+            finalPitch = vanillaRots[1];
+        } else if (rotationMode.is("Grim")) {
+            // Режим Grim: Фиксируем углы под сетку чувствительности мыши (GCD), чтобы защитить от детектов углов
             float gcd = GCDFixer.getGCDValue();
             if (gcd > 0.0f) {
                 finalYaw = mc.player.getYaw() + (float) Math.round((finalYaw - mc.player.getYaw()) / gcd) * gcd;
                 finalPitch = mc.player.getPitch() + (float) Math.round((finalPitch - mc.player.getPitch()) / gcd) * gcd;
             }
-
-            finalPitch = MathHelper.clamp(finalPitch, -89.9f, 89.9f);
-
-            Rotation targetRotation = new Rotation(finalYaw, finalPitch);
-            RotationComponent.update(targetRotation, 360, 360, 360, 360, 0, 1, clientLook.getValue());
         }
+
+        // Задаем лимиты для Pitch во избежание флагов
+        finalPitch = MathHelper.clamp(finalPitch, -89.9f, 89.9f);
+
+        // --- КЛИЕНТСКАЯ ОБРАБОТКА (ЧЕРЕЗ КОМПОНЕНТ КЛИЕНТА) ---
+        Rotation targetRotation = new Rotation(finalYaw, finalPitch);
+        // Скаффолд всегда использует свободную коррекцию движения, независимо от режима MoveFix.
+        RotationComponent.getInstance().forceFreeMovement(true);
+        RotationComponent.update(targetRotation, 360, 360, 360, 360, 0, 1, clientLook.getValue());
 
         // Ставим блок легитно через клиентский менеджер
         mc.interactionManager.interactBlock(mc.player, hand, hitResult);
