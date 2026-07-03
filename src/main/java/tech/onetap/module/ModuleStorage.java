@@ -50,7 +50,7 @@ public class ModuleStorage implements IMinecraft {
                 new GuiMove(), new Tracers(), new ElytraMotion(), new Velocity(), new ElytraFlight(), new ElytraJump(),
                 new ViewModel(), new KillEffect(), new AutoArmor(), new LonyHelper(), new FtHelper(), new Speed(), new GrimGlide(),
                 new GrimStrafe(), new HWHelper(),
-                new AutoTool(), new TapeMouse(), new Ambience(), new BlockOverlay(), new FreeLook(),
+                new AutoTool(), new AirPlace(), new TapeMouse(), new Ambience(), new BlockOverlay(), new FreeLook(),
                 new Trails(), new FastExp(), new NameProtect(), new CrystalSpammer(), new ChinaHat(),
                 new AirStuck(), new AutoSwap(), new NoSlow(), new NoWeb(), new DiscordRPC(), new FakePlayer(), new Interface(), new AutoEat(),new AutoLeave(), new MoveFix(), new Hide(), new SpecCordExploit(),
                 new BlockEsp(), new ScoreboardHealth(), new BoatNoClip()
