@@ -3,7 +3,7 @@
 	"id": "ancient-loader",
 	"version": "${version}",
 	"name": "Ancient Loader",
-	"description": "Loads onetap-1.0.0.jar from the latest plsmeow/ancient GitHub release without placing it in the mods directory.",
+	"description": "Downloads and updates onetap-1.0.0.jar from the latest plsmeow/ancient GitHub release into the mods directory.",
 	"authors": [
 		"plsmeow"
 	],

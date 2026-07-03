@@ -93,7 +93,7 @@ public class KillAura extends Module {
             new BooleanSetting("Животные", true)
     );
 
-    public final SliderSetting snapHoldTicks = new SliderSetting("Snap тики", ValueUnit.countable("тик", "тика", "тиков"), 2, 1, 10, 1)
+    public final SliderSetting snapHoldTicks = new SliderSetting("Snap tick", ValueUnit.countable("тик", "тика", "тиков"), 2, 1, 10, 1)
             .setVisible(() -> rotation.is("Snap"));
 
     public final SliderSetting distance = new SliderSetting("Дистанция", ValueUnit.countable("блок", "блока", "блоков"), 3, 2, 6, 0.1f);
