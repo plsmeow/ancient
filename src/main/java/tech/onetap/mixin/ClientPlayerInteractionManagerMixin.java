@@ -39,14 +39,7 @@ public class ClientPlayerInteractionManagerMixin {
     }
 
 
-    @Inject(
-            method = "attackBlock",
-            at = @At(
-                    value = "INVOKE",
-                    target = "Lnet/minecraft/client/world/ClientWorld;getBlockState(Lnet/minecraft/util/math/BlockPos;)Lnet/minecraft/block/BlockState;",
-                    ordinal = 1
-            )
-    )
+    @Inject(method = "attackBlock", at = @At("HEAD"))
     private void autoToolBeforeStartBreaking(BlockPos pos, Direction direction, CallbackInfoReturnable<Boolean> cir) {
         var event = new EventAttackBlock(pos, direction);
         event.post();

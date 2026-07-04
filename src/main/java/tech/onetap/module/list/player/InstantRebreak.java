@@ -33,16 +33,12 @@ public class InstantRebreak extends Module {
 
     private final SliderSetting tickDelay = new SliderSetting("Задержка", ValueUnit.countable("тик", "тика", "тиков"), 0, 0, 20, 1);
     private final BooleanSetting rotate = new BooleanSetting("Ротация", true);
-    private final BooleanSetting air = new BooleanSetting("Air", false);
     private final BooleanSetting render = new BooleanSetting("Рендер", true);
     private final ModeSetting shapeMode = new ModeSetting("Режим рендера", "Both", "Both", "Lines", "Sides");
 
     public BlockPos blockPos = null;
     private int ticks;
     private Direction direction;
-    // Позиция «прогрета»: блок здесь уже был сломан обычным образом хотя бы раз,
-    // после чего разрешён моментальный ре-брейк. Сбрасывается при смене цели.
-    private boolean primed;
 
     private boolean renderListenerRegistered = false;
     private final WorldRenderEvents.Last renderListener = context -> {
@@ -60,8 +56,6 @@ public class InstantRebreak extends Module {
         ticks = 0;
         blockPos = null;
         direction = Direction.UP;
-        primed = false;
-
         if (!renderListenerRegistered) {
             WorldRenderEvents.LAST.register(renderListener);
             renderListenerRegistered = true;
@@ -77,14 +71,10 @@ public class InstantRebreak extends Module {
 
     @Subscribe
     private void onAttackBlock(final EventAttackBlock event) {
-        // Получаем блок из твоего миксина
         if (event.getBlockPos() != null) {
-            // Новая цель — нужно заново дождаться обычного слома перед моменталкой.
-            if (!event.getBlockPos().equals(this.blockPos)) {
-                this.primed = false;
-            }
             this.blockPos = event.getBlockPos();
             this.direction = event.getDirection();
+            this.ticks = 0;
         }
     }
 
@@ -92,17 +82,6 @@ public class InstantRebreak extends Module {
     private void onUpdate(final EventTick ignored) {
         if (mc.player == null || mc.world == null || blockPos == null) return;
 
-        // Фаза 1: «прогрев». Ждём, пока блок реально сломается обычным образом (станет воздухом),
-        // не мешая ванильному майнингу. Это и есть авто-замена трюка «сначала макс. задержка, потом 0».
-        if (!primed) {
-            if (mc.world.getBlockState(blockPos).isAir()) {
-                primed = true;
-                ticks = 0;
-            }
-            return;
-        }
-
-        // Фаза 2: позиция прогрета — моментальный ре-брейк при появлении блока.
         if (ticks >= tickDelay.getValue()) {
             ticks = 0;
 
@@ -136,23 +115,22 @@ public class InstantRebreak extends Module {
     }
 
     public void sendPacket() {
-        if (mc.getNetworkHandler() == null || blockPos == null) return;
+        if (mc.interactionManager == null || mc.world == null || blockPos == null) return;
 
-        mc.getNetworkHandler().sendPacket(new PlayerActionC2SPacket(
+        Direction side = direction == null ? Direction.UP : direction;
+        mc.interactionManager.sendSequencedPacket(mc.world, sequence -> new PlayerActionC2SPacket(
                 PlayerActionC2SPacket.Action.STOP_DESTROY_BLOCK,
                 blockPos,
-                direction == null ? Direction.UP : direction
+                side,
+                sequence
         ));
     }
 
     public boolean shouldMine() {
         if (blockPos == null || mc.world == null) return false;
 
-        if (air.getValue()) {
-            return true;
-        }
-
-        return !mc.world.getBlockState(blockPos).isAir();
+        var state = mc.world.getBlockState(blockPos);
+        return !state.isAir() && state.getHardness(mc.world, blockPos) >= 0;
     }
 
     private void renderBlockOverlay(MatrixStack matrices, Camera camera) {
