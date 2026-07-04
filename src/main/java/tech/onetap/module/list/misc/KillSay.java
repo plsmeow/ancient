@@ -5,8 +5,8 @@ import net.minecraft.entity.Entity;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.network.packet.s2c.play.EntityStatusS2CPacket;
 import tech.onetap.Onetap;
-import tech.onetap.event.list.EventAttack;
 import tech.onetap.event.list.EventPacket;
+import tech.onetap.event.list.EventTick;
 import tech.onetap.module.Module;
 import tech.onetap.module.ModuleCategory;
 import tech.onetap.module.ModuleInformation;
@@ -26,35 +26,37 @@ public class KillSay extends Module {
             "!{player} прощай мир... / ancient"
     };
 
-    private UUID lastTargetUuid = null;
-    private String lastTargetName = null;
+    private UUID targetUuid = null;
+    private String targetName = null;
 
     @Subscribe
-    private void onAttack(EventAttack event) {
-        if (mc.player == null || !(event.getEntity() instanceof PlayerEntity player) || player == mc.player) return;
-        if (!isKillAuraTarget(player)) return;
-
-        lastTargetUuid = player.getUuid();
-        lastTargetName = player.getName().getString();
-    }
-
-    private boolean isKillAuraTarget(PlayerEntity player) {
+    private void onTick(EventTick ignored) {
         KillAura aura = Onetap.getInstance().getModuleStorage().get(KillAura.class);
-        return aura != null && aura.isEnabled() && aura.getTarget() != null && aura.getTarget().getUuid().equals(player.getUuid());
+        if (aura == null || !aura.isEnabled() || aura.getTarget() == null) {
+            targetUuid = null;
+            targetName = null;
+            return;
+        }
+
+        if (aura.getTarget().getUuid().equals(targetUuid)) return;
+
+        targetUuid = aura.getTarget().getUuid();
+        targetName = aura.getTarget().getName().getString();
     }
 
     @Subscribe
     private void onPacket(EventPacket event) {
         if (mc.player == null || mc.world == null || event.getType() != EventPacket.Type.RECEIVE) return;
         if (!(event.getPacket() instanceof EntityStatusS2CPacket packet) || packet.getStatus() != 3) return;
+        if (targetUuid == null) return;
 
         Entity entity = packet.getEntity(mc.world);
-        if (!(entity instanceof PlayerEntity player) || player == mc.player || lastTargetUuid == null) return;
-        if (!player.getUuid().equals(lastTargetUuid)) return;
+        if (!(entity instanceof PlayerEntity player) || player == mc.player) return;
+        if (!player.getUuid().equals(targetUuid)) return;
 
-        sendKillMessage(lastTargetName != null ? lastTargetName : player.getName().getString());
-        lastTargetUuid = null;
-        lastTargetName = null;
+        sendKillMessage(targetName != null ? targetName : player.getName().getString());
+        targetUuid = null;
+        targetName = null;
     }
 
     private void sendKillMessage(String playerName) {
@@ -67,14 +69,14 @@ public class KillSay extends Module {
     @Override
     public void onEnable() {
         super.onEnable();
-        lastTargetUuid = null;
-        lastTargetName = null;
+        targetUuid = null;
+        targetName = null;
     }
 
     @Override
     public void onDisable() {
         super.onDisable();
-        lastTargetUuid = null;
-        lastTargetName = null;
+        targetUuid = null;
+        targetName = null;
     }
 }
