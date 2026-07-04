@@ -36,8 +36,8 @@ public class ModuleStorage implements IMinecraft {
 
     public void injectRegisterModules() {
         modules.addAll(List.of(
-                new FullBright(), new ClickGui(), new Optimization(), new Sprint(), new Troll(),
-                 new TriggerBot(), new Criticals(),
+new FullBright(), new ClickGui(), new Optimization(), new Sprint(), new Troll(),
+                  new TriggerBot(), new Criticals(), new MaceKill(),
                 new NoRender(), new KillAura(), new AutoFlyMace(),
                 new Tags(), new TargetESP(), new NoPush(), new SoulESP(), new DragonFly(),
                 new NoJumpDelay(), new TeleportBack(), new ElytraHelper(), new Flight(),
