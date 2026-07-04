@@ -479,9 +479,10 @@ public class KillAura extends Module {
         if (mc.player.isGliding() && !autoMaceElytra.getValue()) return -1;
 
         // Проверяем, включен ли NoGround через хранилище модулей
-        boolean isNoGroundActive = Onetap.getInstance().getModuleStorage().get(NoGround.class).isEnabled();
+        boolean isNoGroundActive = Onetap.getInstance().getModuleStorage().get(NoGround.class).isEnabled()
+                || Onetap.getInstance().getModuleStorage().get(MaceKill.class).isEnabled();
 
-        // Если NoGround выключен, оставляем стандартную проверку на дистанцию падения
+        // Если NoGround/MaceKill выключены, оставляем стандартную проверку на дистанцию падения
         if (!isNoGroundActive && mc.player.fallDistance < 1.8f) return -1;
 
         int maceSlot = findBestMaceSlot();
