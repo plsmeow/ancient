@@ -15,10 +15,12 @@ import tech.onetap.module.settings.SliderSetting;
 public class MaceKill extends Module {
     private final SliderSetting fallHeight = new SliderSetting("Высота падения", 22, 1, 170, 1);
 
+    private boolean shouldWarp;
+
     @Subscribe
     private void onPacket(EventPacket event) {
         if (mc.player == null || mc.getNetworkHandler() == null) return;
-        if (!mc.player.getMainHandStack().isOf(Items.MACE)) return;
+        if (!isEnabled()) return;
 
         if (event.getPacket() instanceof PlayerMoveC2SPacket packet) {
             if (!packet.isOnGround()) return;
@@ -51,9 +53,16 @@ public class MaceKill extends Module {
     @Subscribe
     private void onAttack(EventAttack event) {
         if (mc.player == null || mc.world == null) return;
-        if (!mc.player.getMainHandStack().isOf(Items.MACE)) return;
+
+        boolean hasMace = mc.player.getMainHandStack().isOf(Items.MACE)
+                || mc.player.getOffHandStack().isOf(Items.MACE);
+
+        if (!hasMace) return;
 
         int height = determineHeight();
+        if (height <= 0) return;
+
+        shouldWarp = true;
 
         if (height > 10) {
             for (int i = 0; i < Math.ceil(Math.abs(height / 10.0)); i++) {
@@ -61,12 +70,16 @@ public class MaceKill extends Module {
             }
         } else {
             for (int i = 0; i < 2; i++) {
-                warp(mc.player.getX(), mc.player.getY(), mc.player.getZ(), mc.player.isOnGround());
+                warp(mc.player.getX(), mc.player.getY(), mc.player.getZ(), false);
             }
         }
 
         warp(mc.player.getX(), mc.player.getY() + height, mc.player.getZ(), false);
         warp(mc.player.getX(), mc.player.getY(), mc.player.getZ(), false);
+    }
+
+    public boolean shouldWarp() {
+        return shouldWarp;
     }
 
     private int determineHeight() {
@@ -84,5 +97,17 @@ public class MaceKill extends Module {
         mc.player.networkHandler.sendPacket(new PlayerMoveC2SPacket.PositionAndOnGround(
                 x, y, z, onGround, mc.player.horizontalCollision
         ));
+    }
+
+    @Override
+    public void onEnable() {
+        super.onEnable();
+        shouldWarp = false;
+    }
+
+    @Override
+    public void onDisable() {
+        super.onDisable();
+        shouldWarp = false;
     }
 }

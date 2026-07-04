@@ -41,6 +41,8 @@ import tech.onetap.module.ModuleCategory;
 import tech.onetap.module.ModuleInformation;
 import tech.onetap.module.list.combat.KillAura;
 import tech.onetap.module.list.combat.AutoFlyMace;
+import tech.onetap.module.list.combat.BoatAura;
+import tech.onetap.module.list.combat.TpAura;
 import tech.onetap.module.list.misc.ScoreboardHealth;
 
 import tech.onetap.module.settings.*;
@@ -1700,20 +1702,7 @@ public class Interface extends Module {
 
 
     private void renderTargetHUDCelestial(DrawContext context) {
-        KillAura killAura = Instance.get(KillAura.class);
-        boolean chatOpen = mc.currentScreen instanceof ChatScreen;
-        LivingEntity target = null;
-
-        AutoFlyMace autoFlyMaceHud = Instance.get(AutoFlyMace.class);
-        if (killAura.isEnabled() && killAura.getTarget() != null && killAura.getTarget().isAlive()) {
-            target = killAura.getTarget();
-        } else if (autoFlyMaceHud != null && autoFlyMaceHud.isEnabled() && autoFlyMaceHud.getTarget() != null && autoFlyMaceHud.getTarget().isAlive()) {
-            target = autoFlyMaceHud.getTarget();
-        } else if (mc.targetedEntity instanceof LivingEntity living && living.isAlive()) {
-            target = living;
-        } else if (chatOpen) {
-            target = mc.player;
-        }
+        LivingEntity target = getTargetHudTarget();
 
         if (target != null) {
             lastTarget = target;
@@ -1858,19 +1847,7 @@ public class Interface extends Module {
     }
 
     private void renderTargetHUDOld(DrawContext context) {
-        KillAura killAura = Instance.get(KillAura.class);
-        LivingEntity target = null;
-
-        AutoFlyMace autoFlyMaceHud = Instance.get(AutoFlyMace.class);
-        if (killAura.isEnabled() && killAura.getTarget() != null && killAura.getTarget().isAlive()) {
-            target = killAura.getTarget();
-        } else if (autoFlyMaceHud != null && autoFlyMaceHud.isEnabled() && autoFlyMaceHud.getTarget() != null && autoFlyMaceHud.getTarget().isAlive()) {
-            target = autoFlyMaceHud.getTarget();
-        } else if (mc.targetedEntity instanceof LivingEntity living && living.isAlive()) {
-            target = living;
-        } else if (mc.currentScreen instanceof ChatScreen) {
-            target = mc.player;
-        }
+        LivingEntity target = getTargetHudTarget();
 
         if (target == null) return;
 
@@ -1917,20 +1894,7 @@ public class Interface extends Module {
     }
 
     private void renderTargetHUDMini(DrawContext context) {
-        KillAura killAura = Instance.get(KillAura.class);
-        boolean chatOpen = mc.currentScreen instanceof ChatScreen;
-        LivingEntity target = null;
-
-        AutoFlyMace autoFlyMaceHud = Instance.get(AutoFlyMace.class);
-        if (killAura.isEnabled() && killAura.getTarget() != null && killAura.getTarget().isAlive()) {
-            target = killAura.getTarget();
-        } else if (autoFlyMaceHud != null && autoFlyMaceHud.isEnabled() && autoFlyMaceHud.getTarget() != null && autoFlyMaceHud.getTarget().isAlive()) {
-            target = autoFlyMaceHud.getTarget();
-        } else if (mc.targetedEntity instanceof LivingEntity living && living.isAlive()) {
-            target = living;
-        } else if (chatOpen) {
-            target = mc.player;
-        }
+        LivingEntity target = getTargetHudTarget();
 
         if (target != null) {
             lastTarget = target;
@@ -2054,21 +2018,7 @@ public class Interface extends Module {
     }
 
     private void renderTargetHUDClassic(DrawContext context) {
-        KillAura killAura = Instance.get(KillAura.class);
-        boolean chatOpen = mc.currentScreen instanceof ChatScreen;
-        LivingEntity target = null;
-        AutoFlyMace autoFlyMaceHud = Instance.get(AutoFlyMace.class);
-        if (killAura.isEnabled() && killAura.getTarget() != null && killAura.getTarget().isAlive()) {
-            target = killAura.getTarget();
-        } else if (autoFlyMaceHud != null && autoFlyMaceHud.isEnabled() && autoFlyMaceHud.getTarget() != null && autoFlyMaceHud.getTarget().isAlive()) {
-            target = autoFlyMaceHud.getTarget();
-        }
-        else if (mc.targetedEntity instanceof LivingEntity living && living.isAlive()) {
-            target = living;
-        }
-        else if (chatOpen) {
-            target = mc.player;
-        }
+        LivingEntity target = getTargetHudTarget();
         if (target != null) {
             lastTarget = target;
             animation.run(1);
@@ -2290,21 +2240,40 @@ public class Interface extends Module {
     private float lastHpRaw = -1f;
     private final List<DamageParticle> damageParticles = new ArrayList<>();
 
-    private void renderTargetHUDMoonward(DrawContext context) {
+    private LivingEntity getTargetHudTarget() {
         KillAura killAura = Instance.get(KillAura.class);
-        boolean chatOpen = mc.currentScreen instanceof ChatScreen;
-        LivingEntity target = null;
+        if (killAura != null && killAura.isEnabled() && killAura.getTarget() != null && killAura.getTarget().isAlive()) {
+            return killAura.getTarget();
+        }
 
         AutoFlyMace autoFlyMaceHud = Instance.get(AutoFlyMace.class);
-        if (killAura.isEnabled() && killAura.getTarget() != null && killAura.getTarget().isAlive()) {
-            target = killAura.getTarget();
-        } else if (autoFlyMaceHud != null && autoFlyMaceHud.isEnabled() && autoFlyMaceHud.getTarget() != null && autoFlyMaceHud.getTarget().isAlive()) {
-            target = autoFlyMaceHud.getTarget();
-        } else if (mc.targetedEntity instanceof LivingEntity living && living.isAlive()) {
-            target = living;
-        } else if (chatOpen) {
-            target = mc.player;
+        if (autoFlyMaceHud != null && autoFlyMaceHud.isEnabled() && autoFlyMaceHud.getTarget() != null && autoFlyMaceHud.getTarget().isAlive()) {
+            return autoFlyMaceHud.getTarget();
         }
+
+        BoatAura boatAura = Instance.get(BoatAura.class);
+        if (boatAura != null && boatAura.isEnabled() && boatAura.getTarget() != null && boatAura.getTarget().isAlive()) {
+            return boatAura.getTarget();
+        }
+
+        TpAura tpAura = Instance.get(TpAura.class);
+        if (tpAura != null && tpAura.isEnabled() && tpAura.getTarget() != null && tpAura.getTarget().isAlive()) {
+            return tpAura.getTarget();
+        }
+
+        if (mc.targetedEntity instanceof LivingEntity living && living.isAlive()) {
+            return living;
+        }
+
+        if (mc.currentScreen instanceof ChatScreen) {
+            return mc.player;
+        }
+
+        return null;
+    }
+
+    private void renderTargetHUDMoonward(DrawContext context) {
+        LivingEntity target = getTargetHudTarget();
 
         if (target != null) {
             lastTarget = target;

@@ -23,7 +23,10 @@ import tech.onetap.Onetap;
 import tech.onetap.module.Module;
 import tech.onetap.module.ModuleCategory;
 import tech.onetap.module.ModuleInformation;
+import tech.onetap.module.list.combat.AutoFlyMace;
+import tech.onetap.module.list.combat.BoatAura;
 import tech.onetap.module.list.combat.KillAura;
+import tech.onetap.module.list.combat.TpAura;
 import tech.onetap.module.settings.BooleanSetting;
 import tech.onetap.module.settings.ModeSetting;
 import tech.onetap.module.settings.SliderSetting;
@@ -79,7 +82,7 @@ public class TargetESP extends Module {
     private void onRenderWorldLast(MatrixStack matrices, Camera camera, float tickDelta) {
         if (!isEnabled()) return;
 
-        Entity target = Onetap.getInstance().getModuleStorage().get(KillAura.class).getTarget();
+        Entity target = getTarget();
 
         if (target != null && target != mc.player && !(target instanceof ArmorStandEntity)) {
             if (lastTarget != target) {
@@ -105,6 +108,30 @@ public class TargetESP extends Module {
             case "Кристаллы" -> drawCrystals(matrices, camera, tickDelta);
             case "Box" -> drawBoxMode(matrices, camera, tickDelta);
         }
+    }
+
+    private Entity getTarget() {
+        KillAura killAura = Onetap.getInstance().getModuleStorage().get(KillAura.class);
+        if (killAura != null && killAura.isEnabled() && killAura.getTarget() != null && killAura.getTarget().isAlive()) {
+            return killAura.getTarget();
+        }
+
+        AutoFlyMace autoFlyMace = Onetap.getInstance().getModuleStorage().get(AutoFlyMace.class);
+        if (autoFlyMace != null && autoFlyMace.isEnabled() && autoFlyMace.getTarget() != null && autoFlyMace.getTarget().isAlive()) {
+            return autoFlyMace.getTarget();
+        }
+
+        BoatAura boatAura = Onetap.getInstance().getModuleStorage().get(BoatAura.class);
+        if (boatAura != null && boatAura.isEnabled() && boatAura.getTarget() != null && boatAura.getTarget().isAlive()) {
+            return boatAura.getTarget();
+        }
+
+        TpAura tpAura = Onetap.getInstance().getModuleStorage().get(TpAura.class);
+        if (tpAura != null && tpAura.isEnabled() && tpAura.getTarget() != null && tpAura.getTarget().isAlive()) {
+            return tpAura.getTarget();
+        }
+
+        return null;
     }
 
     private float getAuraHurtFactor(Entity entity) {

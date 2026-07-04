@@ -315,8 +315,19 @@ public class KillAura extends Module {
                     previousSlot = swapToMace();
                 }
 
+                BoatAura boatAura = Instance.get(BoatAura.class);
+                TpAura tpAura = Instance.get(TpAura.class);
+                boolean boatAuraMoved = boatAura != null && boatAura.beforeAttack(target);
+                boolean tpAuraMoved = !boatAuraMoved && tpAura != null && tpAura.beforeAttack(target);
+
                 mc.interactionManager.attackEntity(mc.player, target);
                 mc.player.swingHand(breakSwing.getValue() ? Hand.OFF_HAND : Hand.MAIN_HAND);
+
+                if (boatAuraMoved) {
+                    boatAura.afterAttack();
+                } else if (tpAuraMoved) {
+                    tpAura.afterAttack();
+                }
 
                 if (previousSlot != -1) {
                     swapBack(previousSlot);
@@ -363,7 +374,7 @@ public class KillAura extends Module {
             if (Onetap.getInstance().getModuleStorage().get(AntiBot.class).isBot(p)) return false;
             if (!FriendRepository.shouldAttack(p)) return false;
         }
-        if (player.getEyePos().distanceTo(BestPoint.getNearestPoint(entity)) > (player.isGliding() ? elytraDistance.getValue() : distance.getValue() + preRotation.getValue()))
+        if (player.getEyePos().distanceTo(BestPoint.getNearestPoint(entity)) > getTargetSearchDistance(player))
             return false;
         return true;
     }
@@ -399,7 +410,7 @@ public class KillAura extends Module {
                     return false;
                 }
             }
-        } else {
+        } else if (!canReachWithPositionAura(target)) {
             if (!RaytraceUtil.rayTrace(player.getRotationVector(), distance.getValue(), target.getBoundingBox()) && raycastCheck.getValue())
                 return false;
 
@@ -424,11 +435,39 @@ public class KillAura extends Module {
     }
 
     private boolean isInAttackDistance(PlayerEntity player, LivingEntity entity) {
+        if (canReachWithPositionAura(entity)) return true;
+
         Vec3d nearestPoint = BestPoint.getNearestPoint(entity);
         if (nearestPoint == null) return false;
 
         double attackDistance = player.isGliding() ? elytraDistance.getValue() : distance.getValue();
         return player.getEyePos().distanceTo(nearestPoint) <= attackDistance;
+    }
+
+    private double getTargetSearchDistance(PlayerEntity player) {
+        double searchDistance = player.isGliding() ? elytraDistance.getValue() : distance.getValue() + preRotation.getValue();
+
+        BoatAura boatAura = Instance.get(BoatAura.class);
+        if (boatAura != null && boatAura.isEnabled() && mc.player != null && mc.player.hasVehicle()) {
+            searchDistance = Math.max(searchDistance, boatAura.getMaxDistance());
+        }
+
+        TpAura tpAura = Instance.get(TpAura.class);
+        if (tpAura != null && tpAura.isEnabled() && mc.player != null && !mc.player.hasVehicle()) {
+            searchDistance = Math.max(searchDistance, tpAura.getMaxDistance());
+        }
+
+        return searchDistance;
+    }
+
+    private boolean canReachWithPositionAura(LivingEntity entity) {
+        BoatAura boatAura = Instance.get(BoatAura.class);
+        if (boatAura != null && boatAura.isEnabled() && boatAura.getRenderPosition(entity) != null) {
+            return true;
+        }
+
+        TpAura tpAura = Instance.get(TpAura.class);
+        return tpAura != null && tpAura.isEnabled() && tpAura.getRenderPosition(entity) != null;
     }
 
     private boolean isTargetBlocking() {
@@ -733,6 +772,75 @@ public class KillAura extends Module {
         RenderSystem.disableBlend();
 
         matrices.pop();
+    }
+
+    private void renderPositionAuraPoint(MatrixStack matrices, Camera camera) {
+        if (target == null) return;
+
+        Vec3d position = null;
+        BoatAura boatAura = Instance.get(BoatAura.class);
+        if (boatAura != null && boatAura.isEnabled()) {
+            position = boatAura.getRenderPosition(target);
+        }
+
+        if (position == null) {
+            TpAura tpAura = Instance.get(TpAura.class);
+            if (tpAura != null && tpAura.isEnabled()) {
+                position = tpAura.getRenderPosition(target);
+            }
+        }
+
+        if (position == null) return;
+
+        Vec3d camPos = camera.getPos();
+        double minX = position.x - 0.35 - camPos.x;
+        double minY = position.y - camPos.y;
+        double minZ = position.z - 0.35 - camPos.z;
+        double maxX = position.x + 0.35 - camPos.x;
+        double maxY = position.y + 0.7 - camPos.y;
+        double maxZ = position.z + 0.35 - camPos.z;
+
+        int color = ColorProvider.getThemeColor();
+        float r = ((color >> 16) & 0xFF) / 255f;
+        float g = ((color >> 8) & 0xFF) / 255f;
+        float b = (color & 0xFF) / 255f;
+
+        RenderSystem.enableBlend();
+        RenderSystem.defaultBlendFunc();
+        RenderSystem.disableDepthTest();
+        RenderSystem.setShader(ShaderProgramKeys.POSITION_COLOR);
+        RenderSystem.lineWidth(2.0f);
+
+        Matrix4f matrix = matrices.peek().getPositionMatrix();
+        Tessellator tessellator = Tessellator.getInstance();
+        BufferBuilder buffer = tessellator.begin(VertexFormat.DrawMode.DEBUG_LINES, VertexFormats.POSITION_COLOR);
+
+        drawLineBox(buffer, matrix, minX, minY, minZ, maxX, maxY, maxZ, r, g, b, 1.0f);
+
+        BufferRenderer.drawWithGlobalProgram(buffer.end());
+        RenderSystem.enableDepthTest();
+        RenderSystem.disableBlend();
+        RenderSystem.lineWidth(1.0f);
+    }
+
+    private void drawLineBox(BufferBuilder buffer, Matrix4f matrix, double minX, double minY, double minZ, double maxX, double maxY, double maxZ, float r, float g, float b, float a) {
+        line(buffer, matrix, minX, minY, minZ, maxX, minY, minZ, r, g, b, a);
+        line(buffer, matrix, maxX, minY, minZ, maxX, minY, maxZ, r, g, b, a);
+        line(buffer, matrix, maxX, minY, maxZ, minX, minY, maxZ, r, g, b, a);
+        line(buffer, matrix, minX, minY, maxZ, minX, minY, minZ, r, g, b, a);
+        line(buffer, matrix, minX, maxY, minZ, maxX, maxY, minZ, r, g, b, a);
+        line(buffer, matrix, maxX, maxY, minZ, maxX, maxY, maxZ, r, g, b, a);
+        line(buffer, matrix, maxX, maxY, maxZ, minX, maxY, maxZ, r, g, b, a);
+        line(buffer, matrix, minX, maxY, maxZ, minX, maxY, minZ, r, g, b, a);
+        line(buffer, matrix, minX, minY, minZ, minX, maxY, minZ, r, g, b, a);
+        line(buffer, matrix, maxX, minY, minZ, maxX, maxY, minZ, r, g, b, a);
+        line(buffer, matrix, maxX, minY, maxZ, maxX, maxY, maxZ, r, g, b, a);
+        line(buffer, matrix, minX, minY, maxZ, minX, maxY, maxZ, r, g, b, a);
+    }
+
+    private void line(BufferBuilder buffer, Matrix4f matrix, double x1, double y1, double z1, double x2, double y2, double z2, float r, float g, float b, float a) {
+        buffer.vertex(matrix, (float) x1, (float) y1, (float) z1).color(r, g, b, a);
+        buffer.vertex(matrix, (float) x2, (float) y2, (float) z2).color(r, g, b, a);
     }
 
     @Override
