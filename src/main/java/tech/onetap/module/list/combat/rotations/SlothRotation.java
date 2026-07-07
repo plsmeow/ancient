@@ -9,6 +9,7 @@ import tech.onetap.util.math.RotationUtil;
 import tech.onetap.util.player.combat.PredictUtils;
 import tech.onetap.util.player.combat.RaytraceUtil;
 import tech.onetap.util.render.math.GCDFixer;
+import tech.onetap.util.rotation.MoveFixMode;
 import tech.onetap.util.rotation.Rotation;
 import tech.onetap.util.rotation.RotationComponent;
 
@@ -133,7 +134,7 @@ public class SlothRotation extends RotationMode {
         newPitch = MathHelper.clamp(newPitch, -90.0F, 90.0F);
 
         Rotation rot = new Rotation(newYaw, newPitch);
-        RotationComponent.update(rot, 360.0F, 360.0F, 360.0F, 360.0F, 0, 1, ka.clientLook.getValue());
+        RotationComponent.update(rot, 360.0F, 360.0F, 360.0F, 360.0F, 0, 1, ka.clientLook.getValue(), ka.getMoveFixMode(), "KillAura");
 
         slothNew_currentYaw = newYaw;
         slothNew_currentPitch = newPitch;

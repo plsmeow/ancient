@@ -117,6 +117,7 @@ public class KillAura extends Module {
 
     public final BooleanSetting onlySpace = new BooleanSetting("Только с пробелом", true);
     public final BooleanSetting clientLook = new BooleanSetting("Клиент лук", true);
+    public final ModeSetting moveFix = new ModeSetting("MoveFix", "Сфокусированная", "Свободный", "Сфокусированная");
     public final BooleanSetting showPredictPoint = new BooleanSetting("Показать предикт точку", true);
     public final BooleanSetting elytraTurnaround = new BooleanSetting("Разворот на элитрах", true);
 
@@ -193,6 +194,10 @@ public class KillAura extends Module {
         return snapActive;
     }
 
+    public tech.onetap.util.rotation.MoveFixMode getMoveFixMode() {
+        return moveFix.is("Свободный") ? tech.onetap.util.rotation.MoveFixMode.FREE : tech.onetap.util.rotation.MoveFixMode.CORRECT;
+    }
+
     private final StopWatch turnaroundTimer = new StopWatch();
 
     public float preddict;
@@ -253,7 +258,7 @@ public class KillAura extends Module {
                 isResolving = false;
             } else if (resolverPoint != null) {
                 var rot = new Rotation(RotationUtil.calculate(resolverPoint));
-                RotationComponent.update(rot, 360, 360, 360, 360, 0, 1, clientLook.getValue());
+                RotationComponent.update(rot, 360, 360, 360, 360, 0, 1, clientLook.getValue(), getMoveFixMode(), "KillAura");
                 lastYaw = rot.getYaw();
                 lastPitch = rot.getPitch();
                 return;
@@ -320,7 +325,23 @@ public class KillAura extends Module {
                 boolean boatAuraMoved = boatAura != null && boatAura.beforeAttack(target);
                 boolean tpAuraMoved = !boatAuraMoved && tpAura != null && tpAura.beforeAttack(target);
 
+                Criticals crits = Onetap.getInstance().getModuleStorage().get(Criticals.class);
+                MaceKill maceKill = Onetap.getInstance().getModuleStorage().get(MaceKill.class);
+
+                if (maceKill.isEnabled()) {
+                    crits.killAuraTriggered = true;
+                    maceKill.killAuraTriggered = true;
+                    maceKill.doCrit();
+                } else if (crits.isEnabled()) {
+                    crits.killAuraTriggered = true;
+                    crits.doCrit();
+                }
+
                 mc.interactionManager.attackEntity(mc.player, target);
+
+                crits.killAuraTriggered = false;
+                maceKill.killAuraTriggered = false;
+
                 mc.player.swingHand(breakSwing.getValue() ? Hand.OFF_HAND : Hand.MAIN_HAND);
 
                 if (boatAuraMoved) {
@@ -878,6 +899,8 @@ public class KillAura extends Module {
         resolverPoint = null;
         Onetap.getInstance().getModuleStorage().setSpeedAcceleration(0);
         Onetap.getInstance().getModuleStorage().setRandomness(1);
+        RotationComponent.getInstance().clearMoveFixMode("KillAura");
+        RotationComponent.getInstance().stopRotation();
         super.onDisable();
     }
 }

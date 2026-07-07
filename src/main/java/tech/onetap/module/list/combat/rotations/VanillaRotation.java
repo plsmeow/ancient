@@ -5,6 +5,7 @@ import net.minecraft.util.math.Vec3d;
 import tech.onetap.module.list.combat.KillAura;
 import tech.onetap.util.math.BestPoint;
 import tech.onetap.util.math.RotationUtil;
+import tech.onetap.util.rotation.MoveFixMode;
 import tech.onetap.util.rotation.Rotation;
 import tech.onetap.util.rotation.RotationComponent;
 
@@ -17,6 +18,6 @@ public class VanillaRotation extends RotationMode {
         Vec3d targetPoint = ka.resolveMultipoint(target, BestPoint.getNearestPoint(target), ka.distance.getValue());
         var rotation = new Rotation(RotationUtil.calculate(targetPoint));
 
-        RotationComponent.update(rotation, 360, 360, 360, 360, 0, 1, ka.clientLook.getValue());
+        RotationComponent.update(rotation, 360, 360, 360, 360, 0, 1, ka.clientLook.getValue(), ka.getMoveFixMode(), "KillAura");
     }
 }

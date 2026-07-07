@@ -1,113 +1,46 @@
 package tech.onetap.module.list.combat;
 
 import com.google.common.eventbus.Subscribe;
-import net.minecraft.item.Items;
+import net.minecraft.entity.Entity;
+import net.minecraft.entity.decoration.EndCrystalEntity;
 import net.minecraft.network.packet.c2s.play.PlayerMoveC2SPacket;
-import net.minecraft.util.math.Box;
 import tech.onetap.event.list.EventAttack;
-import tech.onetap.event.list.EventPacket;
 import tech.onetap.module.Module;
 import tech.onetap.module.ModuleCategory;
 import tech.onetap.module.ModuleInformation;
 import tech.onetap.module.settings.SliderSetting;
+import tech.onetap.util.packet.NetworkUtils;
 
-@ModuleInformation(moduleName = "MaceKill", moduleDesc = "Усиливает булаву подменой высоты падения", moduleCategory = ModuleCategory.COMBAT)
-public class MaceKill extends Module {
-    private final SliderSetting fallHeight = new SliderSetting("Высота падения", 22, 1, 170, 1);
+@ModuleInformation(moduleName = "MaceKill", moduleDesc = "Усиливает булаву через packet criticals", moduleCategory = ModuleCategory.COMBAT)
+public final class MaceKill extends Module {
+    private final SliderSetting height = new SliderSetting("Height", 1.0f, 1.0f, 512.0f, 1.0f);
 
-    private boolean shouldWarp;
-
-    @Subscribe
-    private void onPacket(EventPacket event) {
-        if (mc.player == null || mc.getNetworkHandler() == null) return;
-        if (!isEnabled()) return;
-
-        if (event.getPacket() instanceof PlayerMoveC2SPacket packet) {
-            if (!packet.isOnGround()) return;
-
-            event.cancelEvent();
-
-            double x = packet.getX(mc.player.getX());
-            double y = packet.getY(mc.player.getY());
-            double z = packet.getZ(mc.player.getZ());
-            float yaw = packet.getYaw(mc.player.getYaw());
-            float pitch = packet.getPitch(mc.player.getPitch());
-            boolean collision = mc.player.horizontalCollision;
-
-            PlayerMoveC2SPacket modifiedPacket;
-
-            if (packet.changesPosition() && packet.changesLook()) {
-                modifiedPacket = new PlayerMoveC2SPacket.Full(x, y, z, yaw, pitch, false, collision);
-            } else if (packet.changesPosition()) {
-                modifiedPacket = new PlayerMoveC2SPacket.PositionAndOnGround(x, y, z, false, collision);
-            } else if (packet.changesLook()) {
-                modifiedPacket = new PlayerMoveC2SPacket.LookAndOnGround(yaw, pitch, false, collision);
-            } else {
-                modifiedPacket = new PlayerMoveC2SPacket.OnGroundOnly(false, collision);
-            }
-
-            mc.getNetworkHandler().sendPacket(modifiedPacket);
-        }
-    }
+    public static boolean cancelCrit;
+    public static boolean killAuraTriggered;
 
     @Subscribe
-    private void onAttack(EventAttack event) {
+    public void onAttack(EventAttack event) {
+        if (killAuraTriggered) return;
         if (mc.player == null || mc.world == null) return;
+        if (event.getEntity() instanceof EndCrystalEntity || cancelCrit) return;
 
-        boolean hasMace = mc.player.getMainHandStack().isOf(Items.MACE)
-                || mc.player.getOffHandStack().isOf(Items.MACE);
-
-        if (!hasMace) return;
-
-        int height = determineHeight();
-        if (height <= 0) return;
-
-        shouldWarp = true;
-
-        if (height > 10) {
-            for (int i = 0; i < Math.ceil(Math.abs(height / 10.0)); i++) {
-                warp(mc.player.getX(), mc.player.getY(), mc.player.getZ(), false);
-            }
-        } else {
-            for (int i = 0; i < 2; i++) {
-                warp(mc.player.getX(), mc.player.getY(), mc.player.getZ(), false);
-            }
-        }
-
-        warp(mc.player.getX(), mc.player.getY() + height, mc.player.getZ(), false);
-        warp(mc.player.getX(), mc.player.getY(), mc.player.getZ(), false);
+        doCrit();
     }
 
-    public boolean shouldWarp() {
-        return shouldWarp;
-    }
+    public void doCrit() {
+        if (!isEnabled() || mc.player == null || mc.world == null) return;
+        if (mc.player.isInLava() || mc.player.isSubmergedInWater()) return;
 
-    private int determineHeight() {
-        Box boundingBox = mc.player.getBoundingBox();
-        for (int i = fallHeight.getIntValue(); i > 0; i--) {
-            if (!mc.world.getBlockCollisions(mc.player, boundingBox.offset(0.0, i, 0.0)).iterator().hasNext()) {
-                return i;
-            }
-        }
+        double x = mc.player.getX();
+        double y = mc.player.getY();
+        double z = mc.player.getZ();
+        boolean hc = mc.player.horizontalCollision;
 
-        return 0;
-    }
+        double h = height.getValue();
+        if (h <= 0) return;
 
-    private void warp(double x, double y, double z, boolean onGround) {
-        mc.player.networkHandler.sendPacket(new PlayerMoveC2SPacket.PositionAndOnGround(
-                x, y, z, onGround, mc.player.horizontalCollision
-        ));
-    }
-
-    @Override
-    public void onEnable() {
-        super.onEnable();
-        shouldWarp = false;
-    }
-
-    @Override
-    public void onDisable() {
-        super.onDisable();
-        shouldWarp = false;
+        NetworkUtils.sendSilentPacket(new PlayerMoveC2SPacket.PositionAndOnGround(x, y, z, false, hc));
+        NetworkUtils.sendSilentPacket(new PlayerMoveC2SPacket.PositionAndOnGround(x, y + h, z, false, hc));
+        NetworkUtils.sendSilentPacket(new PlayerMoveC2SPacket.PositionAndOnGround(x, y, z, false, hc));
     }
 }

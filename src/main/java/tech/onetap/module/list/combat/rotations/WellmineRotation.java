@@ -10,6 +10,7 @@ import tech.onetap.util.math.BestPoint;
 import tech.onetap.util.math.RotationUtil;
 import tech.onetap.util.player.combat.PredictUtils;
 import tech.onetap.util.player.combat.RaytraceUtil;
+import tech.onetap.util.rotation.MoveFixMode;
 import tech.onetap.util.rotation.Rotation;
 import tech.onetap.util.rotation.RotationComponent;
 
@@ -83,7 +84,7 @@ public class WellmineRotation extends RotationMode {
                 MathHelper.clamp(mc.player.getPitch() + changePitch, -90, 90)
         );
 
-        RotationComponent.update(smoothRot, 360, 360, 360, 360, 0, 1, ka.clientLook.getValue());
+        RotationComponent.update(smoothRot, 360, 360, 360, 360, 0, 1, ka.clientLook.getValue(), ka.getMoveFixMode(), "KillAura");
 
         ka.lastYaw = smoothRot.getYaw();
         ka.lastPitch = smoothRot.getPitch();

@@ -9,6 +9,7 @@ import tech.onetap.module.ModuleCategory;
 import tech.onetap.module.ModuleInformation;
 import tech.onetap.module.list.combat.KillAura;
 import tech.onetap.util.render.math.GCDFixer;
+import tech.onetap.util.rotation.MoveFixMode;
 import tech.onetap.util.rotation.Rotation;
 import tech.onetap.util.rotation.RotationComponent;
 
@@ -50,12 +51,19 @@ public class GrimStrafe extends Module {
         RotationComponent.update(
                 new Rotation(moveYaw, 0),
                 360, 360, 360, 360,
-                0, 0, false
+                0, 0, false, MoveFixMode.CORRECT, "GrimStrafe"
         );
 
         RotationComponent.fixMovement(e, moveYaw);
 
         e.forward = 1f;
         e.strafe = 0f;
+    }
+
+    @Override
+    public void onDisable() {
+        super.onDisable();
+        RotationComponent.getInstance().clearMoveFixMode("GrimStrafe");
+        RotationComponent.getInstance().stopRotation();
     }
 }

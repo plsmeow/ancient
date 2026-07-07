@@ -6,6 +6,7 @@ import net.minecraft.util.math.Vec3d;
 import tech.onetap.module.list.combat.KillAura;
 import tech.onetap.util.math.RotationUtil;
 import tech.onetap.util.player.combat.PredictUtils;
+import tech.onetap.util.rotation.MoveFixMode;
 import tech.onetap.util.rotation.Rotation;
 import tech.onetap.util.rotation.RotationComponent;
 
@@ -44,7 +45,7 @@ public class Sloth3Rotation extends RotationMode {
 
         var aimRotation = new Rotation(RotationUtil.calculate(optimalPoint));
 
-        RotationComponent.update(aimRotation, 360, 360, 360, 360, 0, 1, ka.clientLook.getValue());
+        RotationComponent.update(aimRotation, 360, 360, 360, 360, 0, 1, ka.clientLook.getValue(), ka.getMoveFixMode(), "KillAura");
 
         ka.lastYaw = aimRotation.getYaw();
         ka.lastPitch = aimRotation.getPitch();

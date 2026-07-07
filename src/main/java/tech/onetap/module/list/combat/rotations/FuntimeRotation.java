@@ -8,6 +8,7 @@ import tech.onetap.util.math.BestPoint;
 import tech.onetap.util.math.RotationUtil;
 import tech.onetap.util.player.combat.PredictUtils;
 import tech.onetap.util.render.math.GCDFixer;
+import tech.onetap.util.rotation.MoveFixMode;
 import tech.onetap.util.rotation.Rotation;
 import tech.onetap.util.rotation.RotationComponent;
 
@@ -37,7 +38,7 @@ public class FuntimeRotation extends RotationMode {
 
         if (total < 0.001f) {
             var rot = new Rotation(ka.lastYaw, ka.lastPitch);
-            RotationComponent.update(rot, 360, 360, 360, 360, 0, 1, ka.clientLook.getValue());
+            RotationComponent.update(rot, 360, 360, 360, 360, 0, 1, ka.clientLook.getValue(), ka.getMoveFixMode(), "KillAura");
             return;
         }
 
@@ -86,7 +87,7 @@ public class FuntimeRotation extends RotationMode {
         nextPitch = ka.lastPitch + Math.round((nextPitch - ka.lastPitch) / gcd) * gcd;
 
         var funRot = new Rotation(nextYaw, nextPitch);
-        RotationComponent.update(funRot, 360, 360, 360, 360, 0, 1, ka.clientLook.getValue());
+        RotationComponent.update(funRot, 360, 360, 360, 360, 0, 1, ka.clientLook.getValue(), ka.getMoveFixMode(), "KillAura");
 
         ka.lastYaw = funRot.getYaw();
         ka.lastPitch = funRot.getPitch();

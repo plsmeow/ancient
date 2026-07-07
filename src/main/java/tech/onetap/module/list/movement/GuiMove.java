@@ -2,6 +2,7 @@ package tech.onetap.module.list.movement;
 
 import com.google.common.eventbus.Subscribe;
 import net.minecraft.client.gui.screen.ChatScreen;
+import net.minecraft.client.gui.screen.ingame.HandledScreen;
 import net.minecraft.client.gui.screen.ingame.InventoryScreen;
 import net.minecraft.client.option.KeyBinding;
 import net.minecraft.client.util.InputUtil;
@@ -15,6 +16,7 @@ import tech.onetap.module.ModuleCategory;
 import tech.onetap.module.ModuleInformation;
 import tech.onetap.module.settings.BooleanSetting;
 import tech.onetap.module.settings.ModeSetting;
+import tech.onetap.ui.ClickGuiFrame;
 import tech.onetap.util.packet.NetworkUtils;
 import tech.onetap.util.player.other.SlownessManager;
 
@@ -30,16 +32,9 @@ public class GuiMove extends Module {
     @Subscribe
     private void onGameUpdate(EventPlayerUpdate e) {
         if (mc.player == null) return;
-        if (!SlownessManager.slowTasksIsEmpty()) return;
         if (mc.currentScreen == null) bool = false;
 
-        if (!(mc.currentScreen instanceof InventoryScreen) && slowness.getValue()) return;
-
-        if (mc.currentScreen instanceof InventoryScreen && (!mc.player.currentScreenHandler.getSlot(1).getStack().isEmpty() || !mc.player.currentScreenHandler.getSlot(2).getStack().isEmpty() || !mc.player.currentScreenHandler.getSlot(3).getStack().isEmpty() || !mc.player.currentScreenHandler.getSlot(4).getStack().isEmpty())) return;
-
-        if (!mc.player.currentScreenHandler.getCursorStack().isEmpty() && slowness.getValue() || bool) return;
-
-        if (mc.currentScreen != null && !(mc.currentScreen instanceof ChatScreen)) {
+        if (!(mc.currentScreen instanceof ChatScreen) && mc.currentScreen != null && shouldAllowMovement()) {
             for (KeyBinding k : new KeyBinding[]{mc.options.forwardKey, mc.options.backKey, mc.options.leftKey, mc.options.rightKey, mc.options.jumpKey, mc.options.sprintKey}) {
                 k.setPressed(InputUtil.isKeyPressed(mc.getWindow().getHandle(),
                         InputUtil.fromTranslationKey(k.getBoundKeyTranslationKey()).getCode()));
@@ -47,12 +42,37 @@ public class GuiMove extends Module {
         }
     }
 
+    private boolean shouldAllowMovement() {
+        if (mc.currentScreen instanceof ClickGuiFrame) {
+            return true;
+        }
+
+        if (!(mc.currentScreen instanceof HandledScreen)) {
+            return !slowness.getValue() || SlownessManager.slowTasksIsEmpty();
+        }
+
+        if (slowness.getValue()) {
+            if (!SlownessManager.slowTasksIsEmpty()) return false;
+            if (mc.currentScreen instanceof InventoryScreen && hasArmorInSlots()) return false;
+            if (!mc.player.currentScreenHandler.getCursorStack().isEmpty() || bool) return false;
+        }
+
+        return true;
+    }
+
+    private boolean hasArmorInSlots() {
+        return !mc.player.currentScreenHandler.getSlot(1).getStack().isEmpty()
+                || !mc.player.currentScreenHandler.getSlot(2).getStack().isEmpty()
+                || !mc.player.currentScreenHandler.getSlot(3).getStack().isEmpty()
+                || !mc.player.currentScreenHandler.getSlot(4).getStack().isEmpty();
+    }
+
     @Subscribe
     public void onPacket(EventPacket e) {
         if (mc.player == null) return;
         if (!slowness.getValue() || mode.getValue().equals("Vanilla")) return;
 
-        if (e.getPacket() instanceof ClickSlotC2SPacket click && mc.currentScreen instanceof InventoryScreen) {
+        if (e.getPacket() instanceof ClickSlotC2SPacket click && mc.currentScreen instanceof HandledScreen) {
             if (click.getActionType() == SlotActionType.PICKUP) bool = true;
 
             // Настройка задержки в зависимости от выбранного режима

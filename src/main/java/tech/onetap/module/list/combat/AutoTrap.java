@@ -17,11 +17,14 @@ import tech.onetap.module.settings.BooleanSetting;
 import tech.onetap.module.settings.ModeSetting;
 import tech.onetap.module.settings.SliderSetting;
 import tech.onetap.util.player.other.InventoryUtil;
+import tech.onetap.util.rotation.MoveFixMode;
+import tech.onetap.util.rotation.Rotation;
+import tech.onetap.util.rotation.RotationComponent;
 
 @ModuleInformation(moduleName = "AutoTrap", moduleCategory = ModuleCategory.COMBAT)
 public class AutoTrap extends Module {
 
-    private final ModeSetting mode = new ModeSetting("Режим", "Паутина", "Ягоды", "Общий");
+    private final ModeSetting mode = new ModeSetting("Режим", "Паутина", "Паутина", "Ягоды", "Общий");
     private final SliderSetting range = new SliderSetting("Дистанция", 4.0f, 1.0f, 6.0f, 0.1f);
     private final SliderSetting delay = new SliderSetting("Задержка (тики)", 2.0f, 0.0f, 10.0f, 1.0f);
     private final BooleanSetting rotate = new BooleanSetting("Ротация", true);
@@ -46,6 +49,13 @@ public class AutoTrap extends Module {
                 ticks = 0;
             }
         }
+    }
+
+    @Override
+    public void onDisable() {
+        super.onDisable();
+        RotationComponent.getInstance().clearMoveFixMode("AutoTrap");
+        RotationComponent.getInstance().stopRotation();
     }
 
     private boolean canPlace(BlockPos pos) {
@@ -132,9 +142,9 @@ public class AutoTrap extends Module {
         float yaw = (float) (Math.toDegrees(Math.atan2(diffZ, diffX)) - 90.0);
         float pitch = (float) (-Math.toDegrees(Math.atan2(diffY, dist)));
 
-        tech.onetap.util.rotation.RotationComponent.update(
-                new tech.onetap.util.rotation.Rotation(yaw, pitch),
-                360, 360, 360, 360, 0, 1, false
+        RotationComponent.update(
+                new Rotation(yaw, pitch),
+                360, 360, 360, 360, 0, 1, false, MoveFixMode.FREE, "AutoTrap"
         );
     }
 

@@ -8,6 +8,7 @@ import tech.onetap.util.math.BestPoint;
 import tech.onetap.util.math.RotationUtil;
 import tech.onetap.util.player.combat.PredictUtils;
 import tech.onetap.util.render.math.GCDFixer;
+import tech.onetap.util.rotation.MoveFixMode;
 import tech.onetap.util.rotation.Rotation;
 import tech.onetap.util.rotation.RotationComponent;
 
@@ -71,7 +72,7 @@ public class SpookyTimeRotation extends RotationMode {
         nextPitch = ka.lastPitch + Math.round((nextPitch - ka.lastPitch) / gcd) * gcd;
 
         var rot = new Rotation(nextYaw, nextPitch);
-        RotationComponent.update(rot, 360, 360, 360, 360, 0, 1, ka.clientLook.getValue());
+        RotationComponent.update(rot, 360, 360, 360, 360, 0, 1, ka.clientLook.getValue(), ka.getMoveFixMode(), "KillAura");
 
         ka.lastYaw   = rot.getYaw();
         ka.lastPitch = rot.getPitch();

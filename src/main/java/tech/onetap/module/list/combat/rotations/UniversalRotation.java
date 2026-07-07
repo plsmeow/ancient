@@ -13,6 +13,7 @@ import tech.onetap.util.math.RotationUtil;
 import tech.onetap.util.player.combat.PredictUtils;
 import tech.onetap.util.render.math.GCDFixer;
 import tech.onetap.util.rotation.FreeLookComponent;
+import tech.onetap.util.rotation.MoveFixMode;
 import tech.onetap.util.rotation.Rotation;
 import tech.onetap.util.rotation.RotationComponent;
 
@@ -317,7 +318,9 @@ public class UniversalRotation extends RotationMode {
                 360,
                 0,
                 1,
-                ka.clientLook.getValue()
+                ka.clientLook.getValue(),
+                ka.getMoveFixMode(),
+                "KillAura"
             );
             ka.lastYaw = curYaw;
             ka.lastPitch = curPitch;
@@ -363,7 +366,9 @@ public class UniversalRotation extends RotationMode {
             360,
             0,
             1,
-            ka.clientLook.getValue()
+            ka.clientLook.getValue(),
+            ka.getMoveFixMode(),
+            "KillAura"
         );
 
         curYaw = newYaw;
@@ -437,7 +442,9 @@ public class UniversalRotation extends RotationMode {
             14,
             timeout,
             1,
-            ka.clientLook.getValue()
+            ka.clientLook.getValue(),
+            ka.getMoveFixMode(),
+            "KillAura"
         );
     }
 

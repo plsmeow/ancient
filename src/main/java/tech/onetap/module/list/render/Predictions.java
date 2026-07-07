@@ -6,6 +6,8 @@ import net.minecraft.client.util.math.Vector2f;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.ItemEntity;
 import net.minecraft.entity.LivingEntity;
+import net.minecraft.entity.mob.MobEntity;
+import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.entity.projectile.PersistentProjectileEntity;
 import net.minecraft.entity.projectile.TridentEntity;
 import net.minecraft.entity.projectile.thrown.ThrownItemEntity;
@@ -21,6 +23,8 @@ import tech.onetap.event.list.EventWorldRender;
 import tech.onetap.module.Module;
 import tech.onetap.module.ModuleCategory;
 import tech.onetap.module.ModuleInformation;
+import tech.onetap.module.settings.BooleanSetting;
+import tech.onetap.util.friend.FriendRepository;
 import tech.onetap.util.player.combat.RaytraceUtil;
 import tech.onetap.util.player.other.WorldUtils;
 import tech.onetap.util.render.math.ProjectionUtil;
@@ -35,6 +39,11 @@ import java.util.stream.StreamSupport;
 
 @ModuleInformation(moduleName = "Predictions", moduleDesc = "Показывает траекторию полета предметов", moduleCategory = ModuleCategory.RENDER)
 public class Predictions extends Module {
+
+    private final BooleanSetting targetSelf = new BooleanSetting("Себе", true);
+    private final BooleanSetting targetFriends = new BooleanSetting("На друзьях", true);
+    private final BooleanSetting targetPlayers = new BooleanSetting("На игроках", true);
+    private final BooleanSetting targetMobs = new BooleanSetting("На мобах", false);
 
     private final List<Point> points = new ArrayList<>();
 
@@ -113,7 +122,10 @@ public class Predictions extends Module {
     }
 
     public List<Entity> getProjectiles() {
-        return StreamSupport.stream(mc.world.getEntities().spliterator(), false).filter(e -> (e instanceof PersistentProjectileEntity || e instanceof ThrownItemEntity || e instanceof ItemEntity) && !visible(e)).toList();
+        return StreamSupport.stream(mc.world.getEntities().spliterator(), false)
+                .filter(e -> (e instanceof PersistentProjectileEntity || e instanceof ThrownItemEntity || e instanceof ItemEntity) && !visible(e))
+                .filter(this::isTargetEnabled)
+                .toList();
     }
 
     public Vec3d calculateMotion(Entity entity, Vec3d prevPos, Vec3d motion) {
@@ -141,6 +153,28 @@ public class Predictions extends Module {
         boolean posChange = entity.getX() == entity.prevX && entity.getY() == entity.prevY && entity.getZ() == entity.prevZ;
         boolean itemEntityCheck = entity instanceof ItemEntity && (entity.isOnGround() || WorldUtils.isBoxInBlock(entity.getBoundingBox().expand(2), Blocks.WATER));
         return posChange || itemEntityCheck;
+    }
+
+    private boolean isTargetEnabled(Entity entity) {
+        Entity owner = switch (entity) {
+            case PersistentProjectileEntity persistent -> persistent.getOwner();
+            case ThrownItemEntity thrown -> thrown.getOwner();
+            default -> null;
+        };
+
+        if (owner == mc.player) {
+            return targetSelf.getValue();
+        }
+
+        if (owner instanceof PlayerEntity player) {
+            return FriendRepository.isFriend(player.getNameForScoreboard()) ? targetFriends.getValue() : targetPlayers.getValue();
+        }
+
+        if (owner instanceof MobEntity) {
+            return targetMobs.getValue();
+        }
+
+        return targetSelf.getValue() || targetFriends.getValue() || targetPlayers.getValue() || targetMobs.getValue();
     }
 
     private record Point(ItemStack stack, Vec3d pos, int ticks) {}

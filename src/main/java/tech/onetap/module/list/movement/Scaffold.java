@@ -14,24 +14,20 @@ import tech.onetap.module.Module;
 import tech.onetap.module.ModuleCategory;
 import tech.onetap.module.ModuleInformation;
 import tech.onetap.module.settings.BooleanSetting;
-import tech.onetap.module.settings.ModeSetting;
 import tech.onetap.util.render.math.GCDFixer;
+import tech.onetap.util.rotation.MoveFixMode;
 import tech.onetap.util.rotation.Rotation;
 import tech.onetap.util.rotation.RotationComponent;
 
 @ModuleInformation(moduleName = "Scaffold", moduleCategory = ModuleCategory.MOVEMENT)
 public class Scaffold extends Module {
 
-    // Переключатель режимов ротаций по аналогии с KillAura
-    private final ModeSetting rotationMode = new ModeSetting("Ротация", "Grim", "Grim", "Vanilla");
     private final BooleanSetting clientLook = new BooleanSetting("Клиент лук", true);
 
     private BlockData currentBlock;
 
     @Subscribe
     private void onTick(final EventTick event) {
-        RotationComponent.getInstance().forceFreeMovement(!rotationMode.is("Vanilla"));
-
         if (mc.player == null || mc.world == null || mc.interactionManager == null || mc.getNetworkHandler() == null) {
             return;
         }
@@ -43,7 +39,8 @@ public class Scaffold extends Module {
     @Override
     public void onDisable() {
         super.onDisable();
-        RotationComponent.getInstance().forceFreeMovement(false);
+        RotationComponent.getInstance().clearMoveFixMode("Scaffold");
+        RotationComponent.getInstance().stopRotation();
     }
 
     private void preAction() {
@@ -89,29 +86,22 @@ public class Scaffold extends Module {
 
         BlockHitResult hitResult = createHitResult(currentBlock);
 
-        if (!rotationMode.is("Vanilla")) {
-            float[] rotations = calculateAngle(hitResult.getPos());
-            float finalYaw = rotations[0];
-            float finalPitch = rotations[1];
+        float[] rotations = calculateAngle(hitResult.getPos());
+        float finalYaw = rotations[0];
+        float finalPitch = rotations[1];
 
-            if (rotationMode.is("Grim")) {
-                // Режим Grim: Фиксируем углы под сетку чувствительности мыши (GCD), чтобы защитить от детектов углов
-                float gcd = GCDFixer.getGCDValue();
-                if (gcd > 0.0f) {
-                    finalYaw = mc.player.getYaw() + (float) Math.round((finalYaw - mc.player.getYaw()) / gcd) * gcd;
-                    finalPitch = mc.player.getPitch() + (float) Math.round((finalPitch - mc.player.getPitch()) / gcd) * gcd;
-                }
-            }
-
-            // Задаем лимиты для Pitch во избежание флагов
-            finalPitch = MathHelper.clamp(finalPitch, -89.9f, 89.9f);
-
-            // --- КЛИЕНТСКАЯ ОБРАБОТКА (ЧЕРЕЗ КОМПОНЕНТ КЛИЕНТА) ---
-            Rotation targetRotation = new Rotation(finalYaw, finalPitch);
-            // Скаффолд всегда использует свободную коррекцию движения, независимо от режима MoveFix.
-            RotationComponent.getInstance().forceFreeMovement(true);
-            RotationComponent.update(targetRotation, 360, 360, 360, 360, 0, 1, clientLook.getValue());
+        // Фиксируем углы под сетку чувствительности мыши (GCD)
+        float gcd = GCDFixer.getGCDValue();
+        if (gcd > 0.0f) {
+            finalYaw = mc.player.getYaw() + (float) Math.round((finalYaw - mc.player.getYaw()) / gcd) * gcd;
+            finalPitch = mc.player.getPitch() + (float) Math.round((finalPitch - mc.player.getPitch()) / gcd) * gcd;
         }
+
+        finalPitch = MathHelper.clamp(finalPitch, -89.9f, 89.9f);
+
+        Rotation targetRotation = new Rotation(finalYaw, finalPitch);
+        // Scaffold всегда использует свободную коррекцию движения
+        RotationComponent.update(targetRotation, 360, 360, 360, 360, 0, 1, clientLook.getValue(), MoveFixMode.FREE, "Scaffold");
 
         // Ставим блок легитно через клиентский менеджер
         mc.interactionManager.interactBlock(mc.player, hand, hitResult);

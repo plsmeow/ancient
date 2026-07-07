@@ -5,6 +5,7 @@ import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.Vec3d;
 import tech.onetap.module.list.combat.KillAura;
 import tech.onetap.util.render.math.GCDFixer;
+import tech.onetap.util.rotation.MoveFixMode;
 import tech.onetap.util.rotation.Rotation;
 import tech.onetap.util.rotation.RotationComponent;
 
@@ -18,7 +19,7 @@ public class VulcanRotation extends RotationMode {
         boolean isAttackReady = mc.player.getAttackCooldownProgress(0.5f) >= 0.9f;
 
         if (!isAttackReady) {
-            RotationComponent.update(new Rotation(mc.player.getYaw(), mc.player.getPitch()), 360, 360, 360, 360, 0, 1, false);
+            RotationComponent.update(new Rotation(mc.player.getYaw(), mc.player.getPitch()), 360, 360, 360, 360, 0, 1, false, ka.getMoveFixMode(), "KillAura");
             return;
         }
 
@@ -42,6 +43,6 @@ public class VulcanRotation extends RotationMode {
         }
 
         var VulcanRot = new Rotation(targetYaw, targetPitch);
-        RotationComponent.update(VulcanRot, 360, 360, 360, 360, 0, 1, false);
+        RotationComponent.update(VulcanRot, 360, 360, 360, 360, 0, 1, false, ka.getMoveFixMode(), "KillAura");
     }
 }

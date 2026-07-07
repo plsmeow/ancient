@@ -9,6 +9,7 @@ import tech.onetap.util.math.RotationUtil;
 import tech.onetap.util.player.combat.PredictUtils;
 import tech.onetap.util.player.combat.RaytraceUtil;
 import tech.onetap.util.render.math.GCDFixer;
+import tech.onetap.util.rotation.MoveFixMode;
 import tech.onetap.util.rotation.Rotation;
 import tech.onetap.util.rotation.RotationComponent;
 
@@ -121,7 +122,7 @@ public class Sloth2Rotation extends RotationMode {
         var finalRot = new Rotation(newYaw, newPitch);
 
         // 5. Отправка пакетов / обновление клиентского взгляда
-        RotationComponent.update(finalRot, 360, 360, 360, 360, 0, 1, ka.clientLook.getValue());
+        RotationComponent.update(finalRot, 360, 360, 360, 360, 0, 1, ka.clientLook.getValue(), ka.getMoveFixMode(), "KillAura");
 
         // Сохранение состояния для следующего тика
         ka.lastYaw = finalRot.getYaw();
