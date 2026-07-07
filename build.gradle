@@ -60,6 +60,11 @@ processResources {
 
 loom {
 	accessWidenerPath = file("src/main/resources/onetap.accesswidener")
+	runs {
+		client {
+			programArgs '--username', 'plsmeow '
+		}
+	}
 }
 
 tasks.withType(JavaCompile).configureEach {

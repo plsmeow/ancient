@@ -53,7 +53,7 @@ new FullBright(), new ClickGui(), new Optimization(), new Sprint(), new Troll(),
                 new AutoTool(), new AirPlace(), new TapeMouse(), new Ambience(), new BlockOverlay(), new FreeLook(),
                 new Trails(), new FastExp(), new NameProtect(), new CrystalSpammer(), new ChinaHat(),
                 new AirStuck(), new AutoSwap(), new NoSlow(), new NoWeb(), new DiscordRPC(), new FakePlayer(), new Interface(), new AutoEat(),new AutoLeave(), new MoveFix(), new Hide(), new SpecCordExploit(),
-                new BlockEsp(), new ScoreboardHealth(), new BoatNoClip()
+                new BlockEsp(), new ScoreboardHealth(), new BoatNoClip(), new AutoCart()
         ));
 
         Onetap.getInstance().getEventBus().register(this);
