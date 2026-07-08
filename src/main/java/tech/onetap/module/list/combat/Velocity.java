@@ -76,8 +76,6 @@ public class Velocity extends Module {
         // --- РЕЖИМ CUSTOM ---
         if (mode.is("Custom")) {
             if (e.getPacket() instanceof EntityVelocityUpdateS2CPacket packet) {
-                if (packet.getEntityId() != mc.player.getId()) return;
-
                 int hPct = (int) horizontal.getValue();
                 int vPct = (int) vertical.getValue();
 

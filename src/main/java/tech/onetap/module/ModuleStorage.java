@@ -47,13 +47,13 @@ new FullBright(), new ClickGui(), new Optimization(), new Sprint(), new Troll(),
                 new DogFly(), new AutoTpaccept(), new RPSpoofer(), new FireFly(), new AutoTrap(), new AutoPot(), new NoGround(),
                 new AntiBot(), new AutoExplosion(), new DeathCoords(), new CrystalOptimizer(), new InstantRebreak(), new BowBomb(),
                 new KillSay(), new KillSound(),
-                new GuiMove(), new Tracers(), new ElytraMotion(), new Velocity(), new ElytraFlight(), new ElytraJump(),
+                new GuiMove(), new Tracers(), new ElytraMotion(), new Velocity(), new ElytraFlight(), new ElytraFly(), new ElytraJump(),
                 new ViewModel(), new KillEffect(), new AutoArmor(), new LonyHelper(), new FtHelper(), new Speed(), new GrimGlide(),
                 new GrimStrafe(), new HWHelper(),
                 new AutoTool(), new AirPlace(), new TapeMouse(), new Ambience(), new BlockOverlay(), new FreeLook(),
                 new Trails(), new FastExp(), new NameProtect(), new CrystalSpammer(), new ChinaHat(),
                 new AirStuck(), new AutoSwap(), new NoSlow(), new NoWeb(), new DiscordRPC(), new FakePlayer(), new Interface(), new AutoEat(),new AutoLeave(), new Hide(), new SpecCordExploit(),
-                new BlockEsp(), new ScoreboardHealth(), new BoatNoClip(), new AutoCart()
+                new BlockEsp(), new ScoreboardHealth(), new BoatFly(), new AutoCart()
         ));
 
         Onetap.getInstance().getEventBus().register(this);

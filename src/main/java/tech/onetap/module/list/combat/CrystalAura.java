@@ -1,8 +1,16 @@
 package tech.onetap.module.list.combat;
 
 import com.google.common.eventbus.Subscribe;
+import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.Blocks;
+import net.minecraft.client.gl.ShaderProgramKeys;
+import net.minecraft.client.render.BufferBuilder;
+import net.minecraft.client.render.BufferRenderer;
+import net.minecraft.client.render.Tessellator;
+import net.minecraft.client.render.VertexFormat;
+import net.minecraft.client.render.VertexFormats;
+import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.decoration.EndCrystalEntity;
@@ -15,7 +23,9 @@ import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Box;
 import net.minecraft.util.math.Direction;
 import net.minecraft.util.math.Vec3d;
+import org.joml.Matrix4f;
 import tech.onetap.event.list.EventTick;
+import tech.onetap.event.list.EventWorldRender;
 import tech.onetap.module.Module;
 import tech.onetap.module.ModuleCategory;
 import tech.onetap.module.ModuleInformation;
@@ -26,6 +36,7 @@ import tech.onetap.util.friend.FriendRepository;
 import tech.onetap.util.math.CrystalDamageCalculator;
 import tech.onetap.util.math.RotationUtil;
 import tech.onetap.util.player.other.InventoryUtil;
+import tech.onetap.util.render.providers.ColorProvider;
 import tech.onetap.util.rotation.MoveFixMode;
 import tech.onetap.util.rotation.Rotation;
 import tech.onetap.util.rotation.RotationComponent;
@@ -36,6 +47,7 @@ public class CrystalAura extends Module {
     private final BooleanSetting autoBreak = new BooleanSetting("Взрыв", true);
     private final BooleanSetting antiSuicide = new BooleanSetting("Анти суицид", true);
     private final ModeSetting moveFix = new ModeSetting("MoveFix", "Сфокусированная", "Свободный", "Сфокусированная");
+    private final ModeSetting rotationMode = new ModeSetting("Ротация", "Vanilla", "Vanilla", "None");
     private final SliderSetting targetRange = new SliderSetting("Target Range", 10.0f, 1.0f, 16.0f, 0.1f);
     private final SliderSetting placeRange = new SliderSetting("Place Range", 4.5f, 1.0f, 6.0f, 0.1f);
     private final SliderSetting breakRange = new SliderSetting("Break Range", 4.5f, 1.0f, 6.0f, 0.1f);
@@ -80,6 +92,29 @@ public class CrystalAura extends Module {
             placeCrystal(bestPlaceHitResult);
             placeTimer = placeDelay.getIntValue();
         }
+    }
+
+    @Subscribe
+    public void onWorldRender(EventWorldRender event) {
+        if (mc.player == null || mc.world == null || bestPlacePos == null) return;
+
+        int color = ColorProvider.getThemeColor();
+        MatrixStack matrices = event.getMatrixStack();
+        Vec3d camPos = mc.gameRenderer.getCamera().getPos();
+
+        matrices.push();
+
+        double minX = bestPlacePos.getX() - camPos.x;
+        double minY = bestPlacePos.getY() - camPos.y;
+        double minZ = bestPlacePos.getZ() - camPos.z;
+        double maxX = minX + 1.0;
+        double maxY = minY + 1.0;
+        double maxZ = minZ + 1.0;
+
+        drawFilled(matrices, minX, minY, minZ, maxX, maxY, maxZ, color);
+        drawOutline(matrices, minX, minY, minZ, maxX, maxY, maxZ, color);
+
+        matrices.pop();
     }
 
     private void findTarget() {
@@ -282,6 +317,8 @@ public class CrystalAura extends Module {
     }
 
     private void rotateTo(Vec3d vec, boolean place) {
+        if (rotationMode.is("None")) return;
+
         Rotation rotation = new Rotation(RotationUtil.calculate(vec));
         RotationComponent.update(rotation, 360, 360, 360, 360, 0, place ? 51 : 52, false, getMoveFixMode(), "CrystalAura");
     }
@@ -306,6 +343,79 @@ public class CrystalAura extends Module {
         bestPlacePos = null;
         bestPlaceHitResult = null;
         bestPlaceDamage = 0.0;
+    }
+
+    private void drawOutline(MatrixStack matrices, double minX, double minY, double minZ, double maxX, double maxY, double maxZ, int color) {
+        RenderSystem.enableBlend();
+        RenderSystem.defaultBlendFunc();
+        RenderSystem.disableDepthTest();
+        RenderSystem.setShader(ShaderProgramKeys.POSITION_COLOR);
+        RenderSystem.lineWidth(2.0f);
+
+        Matrix4f matrix = matrices.peek().getPositionMatrix();
+        BufferBuilder buffer = Tessellator.getInstance().begin(VertexFormat.DrawMode.DEBUG_LINES, VertexFormats.POSITION_COLOR);
+
+        float r = ColorProvider.red(color) / 255f;
+        float g = ColorProvider.green(color) / 255f;
+        float b = ColorProvider.blue(color) / 255f;
+
+        line(buffer, matrix, minX, minY, minZ, maxX, minY, minZ, r, g, b);
+        line(buffer, matrix, maxX, minY, minZ, maxX, minY, maxZ, r, g, b);
+        line(buffer, matrix, maxX, minY, maxZ, minX, minY, maxZ, r, g, b);
+        line(buffer, matrix, minX, minY, maxZ, minX, minY, minZ, r, g, b);
+        line(buffer, matrix, minX, maxY, minZ, maxX, maxY, minZ, r, g, b);
+        line(buffer, matrix, maxX, maxY, minZ, maxX, maxY, maxZ, r, g, b);
+        line(buffer, matrix, maxX, maxY, maxZ, minX, maxY, maxZ, r, g, b);
+        line(buffer, matrix, minX, maxY, maxZ, minX, maxY, minZ, r, g, b);
+        line(buffer, matrix, minX, minY, minZ, minX, maxY, minZ, r, g, b);
+        line(buffer, matrix, maxX, minY, minZ, maxX, maxY, minZ, r, g, b);
+        line(buffer, matrix, maxX, minY, maxZ, maxX, maxY, maxZ, r, g, b);
+        line(buffer, matrix, minX, minY, maxZ, minX, maxY, maxZ, r, g, b);
+
+        BufferRenderer.drawWithGlobalProgram(buffer.end());
+        RenderSystem.enableDepthTest();
+        RenderSystem.disableBlend();
+        RenderSystem.lineWidth(1.0f);
+    }
+
+    private void drawFilled(MatrixStack matrices, double minX, double minY, double minZ, double maxX, double maxY, double maxZ, int color) {
+        RenderSystem.enableBlend();
+        RenderSystem.defaultBlendFunc();
+        RenderSystem.disableDepthTest();
+        RenderSystem.disableCull();
+        RenderSystem.setShader(ShaderProgramKeys.POSITION_COLOR);
+
+        Matrix4f matrix = matrices.peek().getPositionMatrix();
+        BufferBuilder buffer = Tessellator.getInstance().begin(VertexFormat.DrawMode.QUADS, VertexFormats.POSITION_COLOR);
+
+        float r = ColorProvider.red(color) / 255f;
+        float g = ColorProvider.green(color) / 255f;
+        float b = ColorProvider.blue(color) / 255f;
+        float a = 130 / 500f;
+
+        quad(buffer, matrix, minX, minY, minZ, maxX, minY, minZ, maxX, minY, maxZ, minX, minY, maxZ, r, g, b, a);
+        quad(buffer, matrix, minX, maxY, minZ, minX, maxY, maxZ, maxX, maxY, maxZ, maxX, maxY, minZ, r, g, b, a);
+        quad(buffer, matrix, minX, minY, minZ, minX, maxY, minZ, maxX, maxY, minZ, maxX, minY, minZ, r, g, b, a);
+        quad(buffer, matrix, minX, minY, maxZ, maxX, minY, maxZ, maxX, maxY, maxZ, minX, maxY, maxZ, r, g, b, a);
+        quad(buffer, matrix, minX, minY, minZ, minX, minY, maxZ, minX, maxY, maxZ, minX, maxY, minZ, r, g, b, a);
+        quad(buffer, matrix, maxX, minY, minZ, maxX, maxY, minZ, maxX, maxY, maxZ, maxX, minY, maxZ, r, g, b, a);
+
+        BufferRenderer.drawWithGlobalProgram(buffer.end());
+        RenderSystem.enableCull();
+        RenderSystem.enableDepthTest();
+        RenderSystem.disableBlend();
+    }
+
+    private void line(BufferBuilder buffer, Matrix4f matrix, double x1, double y1, double z1, double x2, double y2, double z2, float r, float g, float b) {
+        buffer.vertex(matrix, (float) x1, (float) y1, (float) z1).color(r, g, b, 1.0f);
+        buffer.vertex(matrix, (float) x2, (float) y2, (float) z2).color(r, g, b, 1.0f);
+    }
+
+    private void quad(BufferBuilder buffer, Matrix4f matrix, double x1, double y1, double z1, double x2, double y2, double z2, double x3, double y3, double z3, double x4, double y4, double z4, float r, float g, float b, float a) {
+        buffer.vertex(matrix, (float) x1, (float) y1, (float) z1).color(r, g, b, a);
+        buffer.vertex(matrix, (float) x2, (float) y2, (float) z2).color(r, g, b, a);
+        buffer.vertex(matrix, (float) x3, (float) y3, (float) z3).color(r, g, b, a);
+        buffer.vertex(matrix, (float) x4, (float) y4, (float) z4).color(r, g, b, a);
     }
 
     @Override

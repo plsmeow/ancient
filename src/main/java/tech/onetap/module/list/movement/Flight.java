@@ -7,6 +7,7 @@ import tech.onetap.event.list.EventTick;
 import tech.onetap.module.Module;
 import tech.onetap.module.ModuleCategory;
 import tech.onetap.module.ModuleInformation;
+import tech.onetap.module.settings.BooleanSetting;
 import tech.onetap.module.settings.ModeSetting;
 import tech.onetap.module.settings.SliderSetting;
 import tech.onetap.util.packet.NetworkUtils;
@@ -18,6 +19,8 @@ public class Flight extends Module {
     public final ModeSetting mode = new ModeSetting("Режим", "Vanilla", "Vanilla", "Vulcan");
     public SliderSetting speed = new SliderSetting("Скорость", 1.0, 0.1, 10.0, 0.1).setVisible(() -> mode.is("Vanilla"));
 
+    public final BooleanSetting antiKick = new BooleanSetting("Анти-кик", true);
+
     private int vulcanStep;
     private int vulcanResetCount;
     private boolean vulcanSwitch;
@@ -26,10 +29,14 @@ public class Flight extends Module {
     private double lastMotionX;
     private double lastMotionZ;
 
+    private int antiKickDelayLeft;
+    private int antiKickOffLeft;
+
     @Override
     public void onEnable() {
         super.onEnable();
         resetVulcanState();
+        resetAntiKickState();
         if (mc.player != null) {
             vulcanStartHeight = mc.player.getY();
         }
@@ -39,14 +46,20 @@ public class Flight extends Module {
     public void onDisable() {
         super.onDisable();
         resetVulcanState();
+        resetAntiKickState();
     }
 
     @Subscribe
     public void onUpdate(EventTick event) {
         if (mc.player == null || mc.getNetworkHandler() == null) return;
+
         if (!mode.is("Vanilla")) return;
 
-        if (mc.options.jumpKey.isPressed()) {
+        boolean antiKicking = tickAntiKick();
+
+        if (antiKicking) {
+            mc.player.setVelocity(mc.player.getVelocity().x, -0.0313, mc.player.getVelocity().z);
+        } else if (mc.options.jumpKey.isPressed()) {
             mc.player.setVelocity(mc.player.getVelocity().x, speed.getValue() * 0.5, mc.player.getVelocity().z);
         } else if (mc.options.sneakKey.isPressed()) {
             mc.player.setVelocity(mc.player.getVelocity().x, -speed.getValue() * 0.5, mc.player.getVelocity().z);
@@ -79,6 +92,10 @@ public class Flight extends Module {
         if (mc.player == null || mc.getNetworkHandler() == null) return;
         if (!mode.is("Vulcan")) return;
 
+        handleVulcanMode();
+    }
+
+    private void handleVulcanMode() {
         boolean downwards = mc.options.sneakKey.isPressed();
         boolean upwards = mc.options.jumpKey.isPressed();
 
@@ -169,6 +186,31 @@ public class Flight extends Module {
         vulcanDownwards = false;
         lastMotionX = 0.0;
         lastMotionZ = 0.0;
+    }
+
+    private void resetAntiKickState() {
+        antiKickDelayLeft = 0;
+        antiKickOffLeft = 0;
+    }
+
+    private boolean tickAntiKick() {
+        if (!antiKick.getValue()) return false;
+        if (!mode.is("Vanilla")) return false;
+
+        if (antiKickDelayLeft > 0) antiKickDelayLeft--;
+
+        if (antiKickDelayLeft <= 0 && antiKickOffLeft <= 0) {
+            antiKickDelayLeft = 20;
+            antiKickOffLeft = 1;
+            return false;
+        }
+
+        if (antiKickDelayLeft <= 0 && antiKickOffLeft > 0) {
+            antiKickOffLeft--;
+            return true;
+        }
+
+        return false;
     }
 
     private double snapToStep(double value, double step) {

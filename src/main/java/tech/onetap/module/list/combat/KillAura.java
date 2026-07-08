@@ -92,7 +92,7 @@ public class KillAura extends Module {
             new BooleanSetting("Монстры", true),
             new BooleanSetting("Животные", true)
     );
-
+    public final ModeSetting moveFix = new ModeSetting("MoveFix", "Сфокусированная", "Свободный", "Сфокусированная");
     public final SliderSetting snapHoldTicks = new SliderSetting("Snap tick", ValueUnit.countable("тик", "тика", "тиков"), 2, 1, 10, 1)
             .setVisible(() -> rotation.is("Snap"));
 
@@ -117,7 +117,6 @@ public class KillAura extends Module {
 
     public final BooleanSetting onlySpace = new BooleanSetting("Только с пробелом", true);
     public final BooleanSetting clientLook = new BooleanSetting("Клиент лук", true);
-    public final ModeSetting moveFix = new ModeSetting("MoveFix", "Сфокусированная", "Свободный", "Сфокусированная");
     public final BooleanSetting showPredictPoint = new BooleanSetting("Показать предикт точку", true);
     public final BooleanSetting elytraTurnaround = new BooleanSetting("Разворот на элитрах", true);
 
@@ -137,6 +136,8 @@ public class KillAura extends Module {
             .setVisible(() -> autoMace.getValue() && autoMaceElytra.getValue());
     public final SliderSetting autoMaceElytraBackDelay = new SliderSetting("Задержка возврата элитры", 0, 0, 10, 1)
             .setVisible(() -> autoMace.getValue() && autoMaceElytra.getValue() && autoMaceElytraBack.getValue());
+
+    public final BooleanSetting breachDamage = new BooleanSetting("Breach damage", false);
 
     public boolean isResolving = false;
     public Vec3d resolverPoint = null;
@@ -316,6 +317,9 @@ public class KillAura extends Module {
                 autoMaceElytraSwappedThisAttack = false;
 
                 int previousSlot = swapToAxe();
+                if (previousSlot == -1) {
+                    previousSlot = swapToBreachMace();
+                }
                 if (previousSlot == -1) {
                     previousSlot = swapToMace();
                 }
@@ -598,6 +602,34 @@ public class KillAura extends Module {
 
         if (macePriority.is("Нет")) return firstMaceSlot;
         return bestSlot != -1 ? bestSlot : firstMaceSlot;
+    }
+
+    private int findBreachMaceSlot() {
+        var breach = mc.world.getRegistryManager()
+                .getOptional(RegistryKeys.ENCHANTMENT).get()
+                .getEntry(Enchantments.BREACH.getValue()).orElseThrow();
+
+        for (int slot = 0; slot < 9; slot++) {
+            ItemStack stack = mc.player.getInventory().getStack(slot);
+            if (stack.isOf(Items.MACE) && EnchantmentHelper.getLevel(breach, stack) > 0) {
+                return slot;
+            }
+        }
+        return -1;
+    }
+
+    private int swapToBreachMace() {
+        if (!breachDamage.getValue()) return -1;
+
+        int maceSlot = findBreachMaceSlot();
+        if (maceSlot == -1) return -1;
+
+        int previousSlot = mc.player.getInventory().selectedSlot;
+        if (previousSlot == maceSlot) return -1;
+
+        mc.player.getInventory().selectedSlot = maceSlot;
+        mc.interactionManager.syncSelectedSlot();
+        return previousSlot;
     }
 
     private void swapElytraForAutoMace() {

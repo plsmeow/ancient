@@ -16,8 +16,8 @@ import tech.onetap.module.ModuleInformation;
 import tech.onetap.module.settings.BooleanSetting;
 import tech.onetap.module.settings.SliderSetting;
 
-@ModuleInformation(moduleName = "BoatNoClip", moduleDesc = "Позволяет двигаться на лодке сквозь блоки", moduleCategory = ModuleCategory.MOVEMENT)
-public final class BoatNoClip extends Module {
+@ModuleInformation(moduleName = "BoatFly", moduleDesc = "Позволяет двигаться на лодке сквозь блоки", moduleCategory = ModuleCategory.MOVEMENT)
+public final class BoatFly extends Module {
 
     private static final int BYPASS_IDLE_REMOUNT_TICKS = 15;
 
@@ -26,6 +26,8 @@ public final class BoatNoClip extends Module {
     private final SliderSetting boatHorizontalSpeed = new SliderSetting("В стороны", 0.6, 0.05, 5.0, 0.05);
     private final BooleanSetting bypass = new BooleanSetting("Обход(тест, удары вроде идут)", false);
     private final SliderSetting bypassTicks = new SliderSetting("Тики обхода", 3.0, 1.0, 5.0, 1.0).setVisible(() -> bypass.getValue());
+    private final BooleanSetting noClipMode = new BooleanSetting("NoClip", true);
+    private final BooleanSetting antiKick = new BooleanSetting("Анти-кик", true);
 
     private boolean wasInsideBlock;
     private BoatEntity bypassBoat;
@@ -35,7 +37,10 @@ public final class BoatNoClip extends Module {
     private int bypassRemountDelay;
     private int bypassIdleTicks;
 
-    public BoatNoClip() {
+    private int antiKickDelayLeft;
+    private int antiKickOffLeft;
+
+    public BoatFly() {
     }
 
     @Subscribe
@@ -49,9 +54,11 @@ public final class BoatNoClip extends Module {
             return;
         }
 
-        boat.noClip = true;
-        boat.setNoGravity(true);
-        mc.player.noClip = true;
+        if (noClipMode.getValue()) {
+            boat.noClip = true;
+            boat.setNoGravity(true);
+            mc.player.noClip = true;
+        }
 
         boolean sneakDown = mc.options.sneakKey.isPressed();
         if (!this.isBypassWaiting()) {
@@ -59,7 +66,7 @@ public final class BoatNoClip extends Module {
         }
         mc.options.useKey.setPressed(false);
 
-        boolean insideBlock = this.isInsideSolidBlock();
+        boolean insideBlock = noClipMode.getValue() && this.isInsideSolidBlock();
         double horizontalSpeed = insideBlock ? 0.25D : this.boatHorizontalSpeed.getValue();
 
         boat.setYaw(mc.player.getYaw());
@@ -93,6 +100,10 @@ public final class BoatNoClip extends Module {
         if (mc.options.leftKey.isPressed()) {
             motionX += MathHelper.cos((float) rad) * horizontalSpeed;
             motionZ += MathHelper.sin((float) rad) * horizontalSpeed;
+        }
+
+        if (tickAntiKick()) {
+            motionY += -0.0313;
         }
 
         boat.setVelocity(new Vec3d(motionX, motionY, motionZ));
@@ -254,11 +265,36 @@ public final class BoatNoClip extends Module {
         return false;
     }
 
+    private boolean tickAntiKick() {
+        if (!antiKick.getValue()) return false;
+
+        if (antiKickDelayLeft > 0) antiKickDelayLeft--;
+
+        if (antiKickDelayLeft <= 0 && antiKickOffLeft <= 0) {
+            antiKickDelayLeft = 20;
+            antiKickOffLeft = 1;
+            return false;
+        }
+
+        if (antiKickDelayLeft <= 0 && antiKickOffLeft > 0) {
+            antiKickOffLeft--;
+            return true;
+        }
+
+        return false;
+    }
+
+    private void resetAntiKickState() {
+        antiKickDelayLeft = 0;
+        antiKickOffLeft = 0;
+    }
+
     @Override
     public void onDisable() {
         super.onDisable();
         this.wasInsideBlock = false;
         this.resetBypassState();
+        this.resetAntiKickState();
 
         if (mc.player != null) {
             mc.player.noClip = false;
