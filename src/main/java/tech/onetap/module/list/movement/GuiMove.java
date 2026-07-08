@@ -6,11 +6,14 @@ import net.minecraft.client.gui.screen.ingame.HandledScreen;
 import net.minecraft.client.gui.screen.ingame.InventoryScreen;
 import net.minecraft.client.option.KeyBinding;
 import net.minecraft.client.util.InputUtil;
+import net.minecraft.util.PlayerInput;
 import net.minecraft.network.packet.c2s.play.ClickSlotC2SPacket;
 import net.minecraft.network.packet.c2s.play.CloseHandledScreenC2SPacket;
+import net.minecraft.network.packet.c2s.play.PlayerInputC2SPacket;
 import net.minecraft.screen.slot.SlotActionType;
 import tech.onetap.event.list.EventPacket;
 import tech.onetap.event.list.EventPlayerUpdate;
+import tech.onetap.event.list.MoveInputEvent;
 import tech.onetap.module.Module;
 import tech.onetap.module.ModuleCategory;
 import tech.onetap.module.ModuleInformation;
@@ -28,6 +31,7 @@ public class GuiMove extends Module {
     private final ModeSetting mode = modeCreate();
 
     private boolean bool;
+    private long grimSlowUntil;
 
     @Subscribe
     private void onGameUpdate(EventPlayerUpdate e) {
@@ -44,6 +48,10 @@ public class GuiMove extends Module {
 
     private boolean shouldAllowMovement() {
         if (mc.currentScreen instanceof ClickGuiFrame) {
+            return true;
+        }
+
+        if (slowness.getValue() && mode.is("Grim")) {
             return true;
         }
 
@@ -67,6 +75,21 @@ public class GuiMove extends Module {
                 || !mc.player.currentScreenHandler.getSlot(4).getStack().isEmpty();
     }
 
+    private boolean shouldCloseAfterClick(ClickSlotC2SPacket click) {
+        if (mode.is("Grim") && !(mc.currentScreen instanceof InventoryScreen)) return false;
+
+        return (click.getActionType() == SlotActionType.SWAP && click.getSlot() != 1 && click.getSlot() != 2 && click.getSlot() != 3 && click.getSlot() != 4)
+                || click.getActionType() == SlotActionType.QUICK_MOVE;
+    }
+
+    @Subscribe
+    private void onMoveInput(MoveInputEvent e) {
+        if (!slowness.getValue() || !mode.is("Grim") || System.currentTimeMillis() > grimSlowUntil) return;
+
+        e.forward *= 0.2f;
+        e.strafe *= 0.2f;
+    }
+
     @Subscribe
     public void onPacket(EventPacket e) {
         if (mc.player == null) return;
@@ -82,9 +105,24 @@ public class GuiMove extends Module {
                 default -> 60;
             };
 
+            boolean closeAfterClick = shouldCloseAfterClick(click);
+
+            if (mode.is("Grim")) {
+                grimSlowUntil = System.currentTimeMillis() + delay;
+                SlownessManager.addTimeTask(new SlownessManager.TimeTask(delay, () -> {
+                    NetworkUtils.sendSilentPacket(new PlayerInputC2SPacket(new PlayerInput(false, false, false, false, false, false, false)));
+                    NetworkUtils.sendSilentPacket(click);
+                    if (closeAfterClick)
+                        NetworkUtils.sendSilentPacket(new CloseHandledScreenC2SPacket(0));
+                    NetworkUtils.sendSilentPacket(new PlayerInputC2SPacket(mc.player.input.playerInput));
+                }, true));
+                e.cancelEvent();
+                return;
+            }
+
             SlownessManager.addTask(new SlownessManager.SlowTask(delay, 0, () -> {
                 NetworkUtils.sendSilentPacket(click);
-                if ((click.getActionType() == SlotActionType.SWAP && click.getSlot() != 1 && click.getSlot() != 2 && click.getSlot() != 3 && click.getSlot() != 4) || click.getActionType() == SlotActionType.QUICK_MOVE)
+                if (closeAfterClick)
                     NetworkUtils.sendSilentPacket(new CloseHandledScreenC2SPacket(0));
             }));
             e.cancelEvent();
