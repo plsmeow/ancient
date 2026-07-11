@@ -86,7 +86,7 @@ public class Scaffold extends Module {
 
         BlockHitResult hitResult = createHitResult(currentBlock);
 
-        float[] rotations = calculateAngle(hitResult.getPos());
+        float[] rotations = calculateAngle(getFaceCenter(currentBlock));
         float finalYaw = rotations[0];
         float finalPitch = rotations[1];
 
@@ -124,6 +124,10 @@ public class Scaffold extends Module {
         );
 
         return new BlockHitResult(hitVec, blockData.facing(), blockData.position(), false);
+    }
+
+    private Vec3d getFaceCenter(BlockData blockData) {
+        return Vec3d.ofCenter(blockData.position()).add(Vec3d.of(blockData.facing().getVector()).multiply(0.5));
     }
 
     private BlockData checkNearBlocksExtended(BlockPos blockPos) {

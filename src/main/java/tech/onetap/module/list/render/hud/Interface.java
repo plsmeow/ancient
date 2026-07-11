@@ -1432,7 +1432,7 @@ public class Interface extends Module {
     private void renderWatermarkCelestial(DrawContext context) {
         Counter.updateFPS();
 
-        String userText = "plsmeow";
+        String userText = mc.player.getName().getString();
         String uid = "UID: 1337";
         String timeText = LocalTime.now().format(DateTimeFormatter.ofPattern("hh:mm a"));
 
@@ -1466,7 +1466,7 @@ public class Interface extends Module {
     private void renderWatermarkNursultan(DrawContext context) {
         Counter.updateFPS();
 
-        String userText = "plsmeow";
+        String userText = mc.player.getName().getString();
         String fpsValue = Counter.getCurrentFPS() + " Fps";
         String timeText = LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm:ss"));
         String coordsText = (int) mc.player.getX() + " " + (int) mc.player.getY() + " " + (int) mc.player.getZ();

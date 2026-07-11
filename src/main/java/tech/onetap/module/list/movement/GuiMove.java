@@ -30,13 +30,9 @@ public class GuiMove extends Module {
     // Добавляем режимы свапа, аналогичные другим боевым модулям
     private final ModeSetting mode = modeCreate();
 
-    private boolean bool;
-    private long grimSlowUntil;
-
     @Subscribe
     private void onGameUpdate(EventPlayerUpdate e) {
         if (mc.player == null) return;
-        if (mc.currentScreen == null) bool = false;
 
         if (!(mc.currentScreen instanceof ChatScreen) && mc.currentScreen != null && shouldAllowMovement()) {
             for (KeyBinding k : new KeyBinding[]{mc.options.forwardKey, mc.options.backKey, mc.options.leftKey, mc.options.rightKey, mc.options.jumpKey, mc.options.sprintKey}) {
@@ -51,10 +47,6 @@ public class GuiMove extends Module {
             return true;
         }
 
-        if (slowness.getValue() && mode.is("Grim")) {
-            return true;
-        }
-
         if (!(mc.currentScreen instanceof HandledScreen)) {
             return !slowness.getValue() || SlownessManager.slowTasksIsEmpty();
         }
@@ -62,7 +54,6 @@ public class GuiMove extends Module {
         if (slowness.getValue()) {
             if (!SlownessManager.slowTasksIsEmpty()) return false;
             if (mc.currentScreen instanceof InventoryScreen && hasArmorInSlots()) return false;
-            if (!mc.player.currentScreenHandler.getCursorStack().isEmpty() || bool) return false;
         }
 
         return true;
@@ -84,7 +75,7 @@ public class GuiMove extends Module {
 
     @Subscribe
     private void onMoveInput(MoveInputEvent e) {
-        if (!slowness.getValue() || !mode.is("Grim") || System.currentTimeMillis() > grimSlowUntil) return;
+        if (!slowness.getValue() || !mode.is("Grim") || SlownessManager.slowTasksIsEmpty()) return;
 
         e.forward *= 0.2f;
         e.strafe *= 0.2f;
@@ -96,8 +87,6 @@ public class GuiMove extends Module {
         if (!slowness.getValue() || mode.getValue().equals("Vanilla")) return;
 
         if (e.getPacket() instanceof ClickSlotC2SPacket click && mc.currentScreen instanceof HandledScreen) {
-            if (click.getActionType() == SlotActionType.PICKUP) bool = true;
-
             // Настройка задержки в зависимости от выбранного режима
             int delay = switch (mode.getValue()) {
                 case "Grim" -> 50;
@@ -108,14 +97,13 @@ public class GuiMove extends Module {
             boolean closeAfterClick = shouldCloseAfterClick(click);
 
             if (mode.is("Grim")) {
-                grimSlowUntil = System.currentTimeMillis() + delay;
-                SlownessManager.addTimeTask(new SlownessManager.TimeTask(delay, () -> {
+                SlownessManager.addTask(new SlownessManager.SlowTask(delay, 0, () -> {
                     NetworkUtils.sendSilentPacket(new PlayerInputC2SPacket(new PlayerInput(false, false, false, false, false, false, false)));
                     NetworkUtils.sendSilentPacket(click);
                     if (closeAfterClick)
                         NetworkUtils.sendSilentPacket(new CloseHandledScreenC2SPacket(0));
                     NetworkUtils.sendSilentPacket(new PlayerInputC2SPacket(mc.player.input.playerInput));
-                }, true));
+                }));
                 e.cancelEvent();
                 return;
             }
