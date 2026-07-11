@@ -16,6 +16,8 @@ import tech.onetap.module.settings.SliderSetting;
 public class NoWeb extends Module {
 
     private final SliderSetting strength = new SliderSetting("Strength", 0.8, 0.3, 1.05, 0.05);
+    private final SliderSetting upSpeed = new SliderSetting("Up Speed", 0.35, 0.05, 2.0, 0.05);
+    private final SliderSetting downSpeed = new SliderSetting("Down Speed", 0.35, 0.05, 2.0, 0.05);
 
     @Subscribe
     private void onCobweb(EventCobweb e) {
@@ -25,13 +27,17 @@ public class NoWeb extends Module {
 
         float forward = mc.player.input.movementForward;
         float strafe = mc.player.input.movementSideways;
-        if (forward == 0.0f && strafe == 0.0f) return;
+        boolean up = mc.options.jumpKey.isPressed();
+        boolean down = mc.options.sneakKey.isPressed();
+        if (forward == 0.0f && strafe == 0.0f && !up && !down) return;
 
         Vec3d dir = inputDirection(forward, strafe);
 
         Vec3d v = mc.player.getVelocity();
         double targetSpeed = 0.2873 * strength.getValue();
-        mc.player.setVelocity(dir.x * targetSpeed, v.y, dir.z * targetSpeed);
+        double y = up ? upSpeed.getValue() : down ? -downSpeed.getValue() : 0.0;
+        mc.player.setVelocity(dir.x * targetSpeed, y, dir.z * targetSpeed);
+        mc.player.fallDistance = 0;
     }
 
     private Vec3d inputDirection(float forward, float strafe) {

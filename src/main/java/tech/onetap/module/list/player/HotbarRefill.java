@@ -58,20 +58,27 @@ public class HotbarRefill extends Module {
         if (stack.isEmpty() && previousStack.isEmpty()) return false;
 
         int fromSlot = -1;
+        boolean quickMove = false;
         if (stack.isStackable() && !stack.isEmpty() && stack.getCount() <= minCount.getIntValue()) {
             fromSlot = findMatchingStack(stack, slot, true);
+            quickMove = true;
         } else if (previousStack.isStackable() && stack.isEmpty() && !previousStack.isEmpty()) {
             fromSlot = findMatchingStack(previousStack, slot, false);
+            quickMove = true;
         } else if (unstackable.getValue() && !previousStack.isStackable() && stack.isEmpty() && !previousStack.isEmpty()) {
             fromSlot = findMatchingStack(previousStack, slot, false);
         }
 
         if (fromSlot == -1) return false;
 
-        int targetSlot = slot + 36;
         int finalFromSlot = fromSlot;
-        InventoryUtil.clickWithGuiBypass(() -> mc.interactionManager.clickSlot(0, finalFromSlot, slot, SlotActionType.SWAP, mc.player));
-        previousStacks[slot] = mc.player.currentScreenHandler.getSlot(targetSlot).getStack().copy();
+        if (quickMove) {
+            mc.interactionManager.clickSlot(0, finalFromSlot, 0, SlotActionType.QUICK_MOVE, mc.player);
+        } else {
+            InventoryUtil.clickWithGuiBypass(() -> mc.interactionManager.clickSlot(0, finalFromSlot, slot, SlotActionType.SWAP, mc.player));
+        }
+
+        fillPreviousStacks();
         return true;
     }
 
