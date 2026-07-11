@@ -227,7 +227,6 @@ public class CrystalAura extends Module {
         BlockState state = mc.world.getBlockState(pos);
         if (!state.isOf(Blocks.OBSIDIAN) && !state.isOf(Blocks.BEDROCK)) return false;
         if (!mc.world.getBlockState(pos.up()).isAir()) return false;
-        if (!mc.world.getBlockState(pos.up(2)).isAir()) return false;
 
         Box crystalBox = new Box(pos.up());
         for (Entity entity : mc.world.getOtherEntities(null, crystalBox)) {

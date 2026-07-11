@@ -40,7 +40,7 @@ public class RWHelper extends Module {
                 NetworkUtils.sendPacket(new ClientCommandC2SPacket(mc.player, ClientCommandC2SPacket.Mode.START_FALL_FLYING));
                 mc.player.startGliding();
                 if (fireworkUse) {
-                    InventoryUtil.swapAndUseHvH(Items.FIREWORK_ROCKET);
+                    InventoryUtil.swapAndUseWithGuiBypass(Items.FIREWORK_ROCKET);
                     fireworkUse = false;
                 }
             } else need = false;

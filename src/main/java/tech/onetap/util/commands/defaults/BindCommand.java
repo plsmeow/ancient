@@ -10,7 +10,6 @@ import tech.onetap.module.ModuleStorage;
 import tech.onetap.util.commands.api.Command;
 import tech.onetap.util.commands.api.argument.IArgConsumer;
 import tech.onetap.util.commands.api.argument.ICommandArgument;
-import tech.onetap.util.commands.api.datatypes.KeyDataType;
 import tech.onetap.util.commands.api.exception.CommandException;
 import tech.onetap.util.commands.api.helpers.Paginator;
 import tech.onetap.util.commands.api.helpers.TabCompleteHelper;
@@ -52,21 +51,31 @@ public class BindCommand extends Command {
 
     private void handleAddBind(String label, IArgConsumer args) throws CommandException {
         args.requireMin(2);
-        String moduleName = args.getString();
-        Module module = moduleStorage.get(moduleName);
+        List<ICommandArgument> raw = args.getArgs();
+        String moduleName = joinArgs(raw, 0, raw.size() - 1);
+        Module module = getModule(moduleName);
         if (module == null) {
             logDirect(Formatting.GRAY + "Модуль с названием " + Formatting.WHITE + moduleName + Formatting.GRAY + " не найден");
             return;
         }
-        int key = args.getDatatypeFor(KeyDataType.INSTANCE).getValue();
+        String keyName = raw.getLast().getValue();
+        Integer key = KeyStorage.keyMap.entrySet().stream()
+                .filter(entry -> entry.getKey().equalsIgnoreCase(keyName))
+                .map(java.util.Map.Entry::getValue)
+                .findFirst()
+                .orElse(null);
+        if (key == null) {
+            logDirect(Formatting.GRAY + "Клавиша " + Formatting.WHITE + keyName + Formatting.GRAY + " не найдена");
+            return;
+        }
         module.setKey(key);
         logDirect(Formatting.GRAY + "Модуль " + Formatting.WHITE + module.getName() + Formatting.GRAY + " успешно привязан к клавише " + Formatting.WHITE + KeyStorage.getKey(key).toUpperCase());
     }
 
     private void handleRemoveBind(IArgConsumer args) throws CommandException {
         args.requireMin(1);
-        String moduleName = args.getString();
-        Module module = moduleStorage.get(moduleName);
+        String moduleName = joinArgs(args.getArgs(), 0, args.getArgs().size());
+        Module module = getModule(moduleName);
         if (module == null) {
             logDirect(Formatting.GRAY + "Модуль с названием " + Formatting.WHITE + moduleName + Formatting.GRAY + " не найден");
             return;
@@ -121,10 +130,11 @@ public class BindCommand extends Command {
         String action = args.peekString(0).toLowerCase(Locale.ROOT);
 
         if ((action.equals("add")) && size == 2) {
-            String modulePrefix = args.peekString(1);
+            String modulePrefix = normalizeModuleName(args.peekString(1));
             return moduleStorage.getModules().stream()
                     .map(Module::getName)
-                    .filter(n -> n.toLowerCase(Locale.ROOT).startsWith(modulePrefix.toLowerCase(Locale.ROOT)))
+                    .map(this::moduleCommandName)
+                    .filter(n -> normalizeModuleName(n).startsWith(modulePrefix))
                     .sorted()
                     .distinct();
         }
@@ -138,11 +148,12 @@ public class BindCommand extends Command {
         }
 
         if ((action.equals("remove")) && size == 2) {
-            String modulePrefix = args.peekString(1);
+            String modulePrefix = normalizeModuleName(args.peekString(1));
             return moduleStorage.getModules().stream()
                     .filter(m -> m.getKey() != -1)
                     .map(Module::getName)
-                    .filter(n -> n.toLowerCase(Locale.ROOT).startsWith(modulePrefix.toLowerCase(Locale.ROOT)))
+                    .map(this::moduleCommandName)
+                    .filter(n -> normalizeModuleName(n).startsWith(modulePrefix))
                     .sorted()
                     .distinct();
         }
@@ -166,5 +177,27 @@ public class BindCommand extends Command {
             "> bind list — показать все привязанные модули",
             "> bind clear — отвязать все модули от своих клавиш"
         );
+    }
+
+    private Module getModule(String name) {
+        String normalizedName = normalizeModuleName(name);
+        return moduleStorage.getModules().stream()
+                .filter(module -> normalizeModuleName(module.getName()).equals(normalizedName))
+                .findFirst()
+                .orElse(null);
+    }
+
+    private String joinArgs(List<ICommandArgument> args, int from, int to) {
+        return args.subList(from, to).stream()
+                .map(ICommandArgument::getValue)
+                .collect(Collectors.joining(" "));
+    }
+
+    private String moduleCommandName(String name) {
+        return name.toLowerCase(Locale.ROOT).replace(' ', '-');
+    }
+
+    private String normalizeModuleName(String name) {
+        return name.toLowerCase(Locale.ROOT).replace('-', ' ').replace('_', ' ').trim();
     }
 }

@@ -25,6 +25,7 @@ import net.minecraft.util.Hand;
 import net.minecraft.util.PlayerInput;
 import net.minecraft.util.collection.DefaultedList;
 import tech.onetap.Onetap;
+import tech.onetap.module.list.movement.GuiMove;
 import tech.onetap.module.list.movement.Sprint;
 import tech.onetap.util.IMinecraft;
 import tech.onetap.util.base.Instance;
@@ -143,6 +144,85 @@ public class InventoryUtil implements IMinecraft {
         } catch (Exception e) {
             e.printStackTrace();
         }
+    }
+
+    public static void clickWithGuiBypass(String mode, Runnable runnable) {
+        clickWithGuiBypass(mode, runnable, true);
+    }
+
+    public static void clickWithGuiBypass(Runnable runnable) {
+        clickWithGuiBypass(GuiMove.getBypassMode(), runnable, true);
+    }
+
+    public static void clickWithGuiBypass(Runnable runnable, boolean closeAfterClick) {
+        clickWithGuiBypass(GuiMove.getBypassMode(), runnable, closeAfterClick);
+    }
+
+    public static void clickWithGuiBypass(String mode, Runnable runnable, boolean closeAfterClick) {
+        if (mc.player == null || mc.getNetworkHandler() == null) return;
+
+        switch (mode) {
+            case "Grim" -> SlownessManager.addTask(new SlownessManager.SlowTask(50, 0, () -> {
+                NetworkUtils.sendSilentPacket(new PlayerInputC2SPacket(new PlayerInput(false, false, false, false, false, false, false)));
+                runnable.run();
+                if (closeAfterClick) NetworkUtils.sendSilentPacket(new CloseHandledScreenC2SPacket(0));
+                NetworkUtils.sendSilentPacket(new PlayerInputC2SPacket(mc.player.input.playerInput));
+            }));
+            case "Polar" -> SlownessManager.addTask(new SlownessManager.SlowTask(100, 0, () -> {
+                runnable.run();
+                if (closeAfterClick) NetworkUtils.sendSilentPacket(new CloseHandledScreenC2SPacket(0));
+            }));
+            default -> runnable.run();
+        }
+    }
+
+    public static void swapAndUseWithGuiBypass(Item item) {
+        if (mc.player.getItemCooldownManager().isCoolingDown(new ItemStack(item))) return;
+
+        int inventorySlot = searchItem(item, 9, 45);
+        int hotbarSlot = searchItem(item, 0, 9);
+        int previousSlot = mc.player.getInventory().selectedSlot;
+
+        if (mc.player.getMainHandStack().getItem() == item) {
+            mc.interactionManager.interactItem(mc.player, Hand.MAIN_HAND);
+            return;
+        }
+
+        if (mc.player.getOffHandStack().getItem() == item) {
+            mc.interactionManager.interactItem(mc.player, Hand.OFF_HAND);
+            return;
+        }
+
+        if (hotbarSlot != -1) {
+            mc.getNetworkHandler().sendPacket(new UpdateSelectedSlotC2SPacket(hotbarSlot));
+            mc.interactionManager.interactItem(mc.player, Hand.MAIN_HAND);
+            mc.getNetworkHandler().sendPacket(new UpdateSelectedSlotC2SPacket(previousSlot));
+            return;
+        }
+
+        if (inventorySlot == -1) return;
+
+        int swapSlot = findUsableHotbarSwapSlot();
+        if (swapSlot == -1) swapSlot = 8;
+
+        int finalInventorySlot = inventorySlot;
+        int finalSwapSlot = swapSlot;
+        clickWithGuiBypass(() -> {
+            mc.interactionManager.clickSlot(0, finalInventorySlot, finalSwapSlot, SlotActionType.SWAP, mc.player);
+            mc.getNetworkHandler().sendPacket(new UpdateSelectedSlotC2SPacket(finalSwapSlot));
+            mc.interactionManager.interactItem(mc.player, Hand.MAIN_HAND);
+            mc.getNetworkHandler().sendPacket(new UpdateSelectedSlotC2SPacket(previousSlot));
+            mc.interactionManager.clickSlot(0, finalInventorySlot, finalSwapSlot, SlotActionType.SWAP, mc.player);
+        });
+    }
+
+    private static int findUsableHotbarSwapSlot() {
+        for (int slot = 0; slot < 9; slot++) {
+            ItemStack stack = mc.player.getInventory().getStack(slot);
+            if (stack.isEmpty() || stack.getUseAction() == UseAction.NONE) return slot;
+        }
+
+        return -1;
     }
 
     public static void swapAndUseHvH(Item item) {

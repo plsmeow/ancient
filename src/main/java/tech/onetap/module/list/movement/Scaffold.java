@@ -25,6 +25,8 @@ public class Scaffold extends Module {
     private final BooleanSetting clientLook = new BooleanSetting("Клиент лук", true);
 
     private BlockData currentBlock;
+    private BlockData lastRotationBlock;
+    private Rotation lastRotation;
 
     @Subscribe
     private void onTick(final EventTick event) {
@@ -39,6 +41,8 @@ public class Scaffold extends Module {
     @Override
     public void onDisable() {
         super.onDisable();
+        lastRotationBlock = null;
+        lastRotation = null;
         RotationComponent.getInstance().clearMoveFixMode("Scaffold");
         RotationComponent.getInstance().stopRotation();
     }
@@ -86,22 +90,10 @@ public class Scaffold extends Module {
 
         BlockHitResult hitResult = createHitResult(currentBlock);
 
-        float[] rotations = calculateAngle(getFaceCenter(currentBlock));
-        float finalYaw = rotations[0];
-        float finalPitch = rotations[1];
-
-        // Фиксируем углы под сетку чувствительности мыши (GCD)
-        float gcd = GCDFixer.getGCDValue();
-        if (gcd > 0.0f) {
-            finalYaw = mc.player.getYaw() + (float) Math.round((finalYaw - mc.player.getYaw()) / gcd) * gcd;
-            finalPitch = mc.player.getPitch() + (float) Math.round((finalPitch - mc.player.getPitch()) / gcd) * gcd;
+        updateRotation(currentBlock);
+        if (new Rotation(mc.player).getDelta(lastRotation) > 2.0f) {
+            return;
         }
-
-        finalPitch = MathHelper.clamp(finalPitch, -89.9f, 89.9f);
-
-        Rotation targetRotation = new Rotation(finalYaw, finalPitch);
-        // Scaffold всегда использует свободную коррекцию движения
-        RotationComponent.update(targetRotation, 360, 360, 360, 360, 0, 1, clientLook.getValue(), MoveFixMode.FREE, "Scaffold");
 
         // Ставим блок легитно через клиентский менеджер
         mc.interactionManager.interactBlock(mc.player, hand, hitResult);
@@ -124,6 +116,32 @@ public class Scaffold extends Module {
         );
 
         return new BlockHitResult(hitVec, blockData.facing(), blockData.position(), false);
+    }
+
+    private void updateRotation(BlockData blockData) {
+        if (lastRotation == null || !blockData.equals(lastRotationBlock)) {
+            lastRotation = createRotation(blockData);
+            lastRotationBlock = blockData;
+        }
+
+        // Держим ротацию, чтобы Scaffold не отводил взгляд между постановками.
+        RotationComponent.update(lastRotation, 45, 45, 180, 180, 999999, 1, clientLook.getValue(), MoveFixMode.FREE, "Scaffold");
+    }
+
+    private Rotation createRotation(BlockData blockData) {
+        float[] rotations = calculateAngle(getFaceCenter(blockData));
+        float finalYaw = rotations[0];
+        float finalPitch = rotations[1];
+
+        // Фиксируем углы под сетку чувствительности мыши (GCD)
+        float gcd = GCDFixer.getGCDValue();
+        if (gcd > 0.0f) {
+            finalYaw = mc.player.getYaw() + (float) Math.round((finalYaw - mc.player.getYaw()) / gcd) * gcd;
+            finalPitch = mc.player.getPitch() + (float) Math.round((finalPitch - mc.player.getPitch()) / gcd) * gcd;
+        }
+
+        finalPitch = MathHelper.clamp(finalPitch, -89.9f, 89.9f);
+        return new Rotation(finalYaw, finalPitch);
     }
 
     private Vec3d getFaceCenter(BlockData blockData) {

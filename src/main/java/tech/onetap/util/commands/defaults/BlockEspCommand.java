@@ -56,7 +56,7 @@ public class BlockEspCommand extends Command {
                     logDirect("§7Список пуст");
                 } else {
                     logDirect("§7Блоки: §f" + String.join(", ", blocks.stream()
-                            .map(b -> net.minecraft.registry.Registries.BLOCK.getId(b).getPath())
+                            .map(b -> net.minecraft.registry.Registries.BLOCK.getId(b).toString())
                             .toList()));
                 }
             }
@@ -111,14 +111,14 @@ public class BlockEspCommand extends Command {
             if (sub.equals("add")) {
                 List<String> allBlocks = new ArrayList<>();
                 for (var block : net.minecraft.registry.Registries.BLOCK) {
-                    allBlocks.add(net.minecraft.registry.Registries.BLOCK.getId(block).getPath());
+                    allBlocks.add(net.minecraft.registry.Registries.BLOCK.getId(block).toString());
                 }
                 return allBlocks.stream().filter(b -> b.startsWith(prefix));
             }
 
             if (sub.equals("remove")) {
                 return module.getTargetBlocks().stream()
-                        .map(b -> net.minecraft.registry.Registries.BLOCK.getId(b).getPath())
+                        .map(b -> net.minecraft.registry.Registries.BLOCK.getId(b).toString())
                         .filter(b -> b.startsWith(prefix));
             }
         }

@@ -17,13 +17,13 @@ import tech.onetap.module.ModuleInformation;
 import tech.onetap.module.settings.BindSetting;
 import tech.onetap.module.settings.BooleanSetting;
 import tech.onetap.module.settings.ModeSetting;
+import tech.onetap.module.list.movement.GuiMove;
 import tech.onetap.util.chat.ChatUtil;
 import tech.onetap.util.packet.NetworkUtils;
 import tech.onetap.util.player.other.InventoryUtil;
 
 @ModuleInformation(moduleName = "Elytra Helper", moduleCategory = ModuleCategory.PLAYER)
 public class ElytraHelper extends Module {
-    private final ModeSetting mode = new ModeSetting("Мод", "Vanilla", "Vanilla", "Grim", "Polar");
     private final BindSetting swapKey = new BindSetting("Кнопка свапа", -1);
     private final BindSetting fireworkKey = new BindSetting("Кнопка феерверка", -1);
     private final ModeSetting throwFireworkMode = new ModeSetting("Мод пуска феера", "Обычный", "Обычный", "Легитный");
@@ -43,7 +43,7 @@ public class ElytraHelper extends Module {
     private void onPlayerUpdate(EventPlayerUpdate e) {
         if (!swapped) return;
         swapped = false;
-        swap(mode, mc.player.getEquippedStack(EquipmentSlot.CHEST).getItem() == Items.ELYTRA);
+        swap(mc.player.getEquippedStack(EquipmentSlot.CHEST).getItem() == Items.ELYTRA);
     }
 
     @Subscribe
@@ -84,51 +84,17 @@ public class ElytraHelper extends Module {
         }
 
         switch (throwFireworkMode.getValue()) {
-            case "Обычный" -> InventoryUtil.swapAndUseHvH(Items.FIREWORK_ROCKET);
+            case "Обычный" -> InventoryUtil.swapAndUseWithGuiBypass(Items.FIREWORK_ROCKET);
             case "Легитный" -> InventoryUtil.swapAndUseLegit(Items.FIREWORK_ROCKET);
         }
         fireworkUsed = false;
     }
 
-    public void swap(ModeSetting mode, boolean chestplate) {
-        switch (mode.getValue()) {
-            case "Vanilla" -> vanillaSwap(chestplate);
-            case "Grim" -> grimSwap(chestplate);
-            case "Polar" -> polarSwap(chestplate);
-        }
-    }
-
     public void swap(boolean chestplate) {
-        swap(mode, chestplate);
+        swap(GuiMove.getBypassMode(), chestplate);
     }
 
     public void swap(String mode, boolean chestplate) {
-        switch (mode) {
-            case "Vanilla" -> vanillaSwap(chestplate);
-            case "Grim" -> grimSwap(chestplate);
-            case "Polar" -> polarSwap(chestplate);
-        }
-    }
-
-    private void vanillaSwap(boolean chestplate) {
-        var slot = chestplate ? InventoryUtil.findBestChestplateSlot() : InventoryUtil.findBestElytraSlot();
-
-        if (slot == -1) {
-            var info = "Элитра" + Formatting.GRAY + " не найдена в инвентаре";
-            if (chestplate) info = "Нагрудник" + Formatting.GRAY + " не найден в инвентаре";
-            ChatUtil.send(info);
-            return;
-        }
-
-        if (slot >= 0 && slot <= 8) mc.interactionManager.clickSlot(0, 6, slot, SlotActionType.SWAP, mc.player);
-        else if (slot >= 8 && slot <= 45) {
-            mc.interactionManager.clickSlot(0, slot, 8, SlotActionType.SWAP, mc.player);
-            mc.interactionManager.clickSlot(0, 6, 8, SlotActionType.SWAP, mc.player);
-            mc.interactionManager.clickSlot(0, slot, 8, SlotActionType.SWAP, mc.player);
-        }
-    }
-
-    private void grimSwap(boolean chestplate) {
         var slot = chestplate ? InventoryUtil.findBestChestplateSlot() : InventoryUtil.findBestElytraSlot();
 
         if (slot == -1) {
@@ -139,32 +105,9 @@ public class ElytraHelper extends Module {
         }
 
         if (slot >= 0 && slot <= 8) {
-            InventoryUtil.swapWithBypassGrim(() -> mc.interactionManager.clickSlot(0, 6, slot, SlotActionType.SWAP, mc.player));
+            InventoryUtil.clickWithGuiBypass(mode, () -> mc.interactionManager.clickSlot(0, 6, slot, SlotActionType.SWAP, mc.player));
         } else if (slot >= 8 && slot <= 45) {
-            InventoryUtil.swapWithBypassGrim(() -> {
-                mc.interactionManager.clickSlot(0, slot, 8, SlotActionType.SWAP, mc.player);
-                mc.interactionManager.clickSlot(0, 6, 8, SlotActionType.SWAP, mc.player);
-                mc.interactionManager.clickSlot(0, slot, 8, SlotActionType.SWAP, mc.player);
-            });
-        }
-    }
-
-    private void polarSwap(boolean chestplate) {
-        var slot = chestplate ? InventoryUtil.findBestChestplateSlot() : InventoryUtil.findBestElytraSlot();
-
-        if (slot == -1) {
-            var info = "Элитра" + Formatting.GRAY + " не найдена в инвентаре";
-            if (chestplate) info = "Нагрудник" + Formatting.GRAY + " не найден в инвентаре";
-            ChatUtil.send(info);
-            return;
-        }
-
-        if (slot >= 0 && slot <= 8) {
-            InventoryUtil.swapWithBypassPolar(() -> {
-                mc.interactionManager.clickSlot(0, 6, slot, SlotActionType.SWAP, mc.player);
-            });
-        } else if (slot >= 8 && slot <= 45) {
-            InventoryUtil.swapWithBypassPolar(() -> {
+            InventoryUtil.clickWithGuiBypass(mode, () -> {
                 mc.interactionManager.clickSlot(0, slot, 8, SlotActionType.SWAP, mc.player);
                 mc.interactionManager.clickSlot(0, 6, 8, SlotActionType.SWAP, mc.player);
                 mc.interactionManager.clickSlot(0, slot, 8, SlotActionType.SWAP, mc.player);
@@ -212,22 +155,10 @@ public class ElytraHelper extends Module {
             }
         };
 
-        switch (mode.getValue()) {
-            case "Vanilla" -> {
-                swapToOffhand.run();
-                mc.interactionManager.interactItem(mc.player, Hand.OFF_HAND);
-                swapBack.run();
-            }
-            case "Grim" -> InventoryUtil.swapWithBypassGrim(() -> {
-                swapToOffhand.run();
-                mc.interactionManager.interactItem(mc.player, Hand.OFF_HAND);
-                swapBack.run();
-            });
-            case "Polar" -> InventoryUtil.swapWithBypassPolar(() -> {
-                swapToOffhand.run();
-                mc.interactionManager.interactItem(mc.player, Hand.OFF_HAND);
-                swapBack.run();
-            });
-        }
+        InventoryUtil.clickWithGuiBypass(() -> {
+            swapToOffhand.run();
+            mc.interactionManager.interactItem(mc.player, Hand.OFF_HAND);
+            swapBack.run();
+        });
     }
 }

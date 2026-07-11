@@ -8,7 +8,6 @@ import tech.onetap.module.Module;
 import tech.onetap.module.ModuleCategory;
 import tech.onetap.module.ModuleInformation;
 import tech.onetap.module.settings.BindSetting;
-import tech.onetap.module.settings.ModeSetting;
 import tech.onetap.util.player.other.InventoryUtil;
 import tech.onetap.util.rotation.FreeLookComponent;
 
@@ -40,7 +39,7 @@ public class FtHelper extends Module {
             mc.player.setYaw(FreeLookComponent.getFreeYaw());
             mc.player.setPitch(FreeLookComponent.getFreePitch());
         }
-        InventoryUtil.swapAndUseHvH(item);
+        InventoryUtil.swapAndUseWithGuiBypass(item);
         mc.player.setYaw(savedYaw);
         mc.player.setPitch(savedPitch);
     }

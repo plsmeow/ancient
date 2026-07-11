@@ -51,7 +51,7 @@ public class ElytraFlight extends Module {
                 } else {
                     NetworkUtils.sendPacket(new ClientCommandC2SPacket(mc.player, ClientCommandC2SPacket.Mode.START_FALL_FLYING));
                     mc.player.startGliding();
-                    InventoryUtil.swapAndUseHvH(Items.FIREWORK_ROCKET);
+                    InventoryUtil.swapAndUseWithGuiBypass(Items.FIREWORK_ROCKET);
                     stopWatch.reset();
                 }
                 return;
@@ -64,7 +64,7 @@ public class ElytraFlight extends Module {
         boolean killauraActive = killAura != null && killAura.isEnabled() && killAura.getTarget() != null;
 
         if (stopWatch.isReached((long) fireworkDelay.getValue())) {
-            InventoryUtil.swapAndUseHvH(Items.FIREWORK_ROCKET);
+            InventoryUtil.swapAndUseWithGuiBypass(Items.FIREWORK_ROCKET);
             stopWatch.reset();
         }
 

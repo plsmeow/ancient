@@ -38,13 +38,16 @@ public class BlockEsp extends Module {
 
     private int lastPlayerChunkX = Integer.MIN_VALUE;
     private int lastPlayerChunkZ = Integer.MIN_VALUE;
+    private boolean blocksLoaded;
 
     public boolean addBlock(String name) {
-        String id = name.toLowerCase(Locale.US);
+        ensureBlocksLoaded();
+        String id = normalizeBlockName(name);
         for (Block block : Registries.BLOCK) {
-            if (Registries.BLOCK.getId(block).getPath().equals(id)) {
+            if (matchesBlockName(block, id)) {
                 if (targetBlocks.add(block)) {
                     logDirect("§a" + name + " §7добавлен в BlockEsp");
+                    saveBlocks();
                     rescanAll();
                     return true;
                 }
@@ -57,13 +60,15 @@ public class BlockEsp extends Module {
     }
 
     public boolean removeBlock(String name) {
-        String id = name.toLowerCase(Locale.US);
+        ensureBlocksLoaded();
+        String id = normalizeBlockName(name);
         Iterator<Block> it = targetBlocks.iterator();
         while (it.hasNext()) {
             Block block = it.next();
-            if (Registries.BLOCK.getId(block).getPath().equals(id)) {
+            if (matchesBlockName(block, id)) {
                 it.remove();
                 logDirect("§a" + name + " §7удалён из BlockEsp");
+                saveBlocks();
                 rescanAll();
                 return true;
             }
@@ -73,20 +78,23 @@ public class BlockEsp extends Module {
     }
 
     public void clearBlocks() {
+        ensureBlocksLoaded();
         targetBlocks.clear();
         chunkCache.clear();
         scanningChunks.clear();
+        saveBlocks();
         logDirect("§aСписок BlockEsp очищен");
     }
 
     public Set<Block> getTargetBlocks() {
+        ensureBlocksLoaded();
         return targetBlocks;
     }
 
     public void saveBlocks() {
         com.google.gson.JsonArray arr = new com.google.gson.JsonArray();
         for (Block block : targetBlocks) {
-            arr.add(Registries.BLOCK.getId(block).getPath());
+            arr.add(Registries.BLOCK.getId(block).toString());
         }
         com.google.gson.JsonObject root = new com.google.gson.JsonObject();
         root.add("blocks", arr);
@@ -101,6 +109,7 @@ public class BlockEsp extends Module {
     }
 
     public void loadBlocks() {
+        blocksLoaded = true;
         java.nio.file.Path file = java.nio.file.Paths.get(".options/configs/blockesp.json");
         if (!java.nio.file.Files.exists(file)) return;
         try (java.io.Reader reader = java.nio.file.Files.newBufferedReader(file)) {
@@ -111,7 +120,7 @@ public class BlockEsp extends Module {
             for (com.google.gson.JsonElement el : arr) {
                 String name = el.getAsString();
                 for (Block block : Registries.BLOCK) {
-                    if (Registries.BLOCK.getId(block).getPath().equals(name)) {
+                    if (matchesBlockName(block, normalizeBlockName(name))) {
                         targetBlocks.add(block);
                         break;
                     }
@@ -125,7 +134,7 @@ public class BlockEsp extends Module {
     @Override
     public void onEnable() {
         super.onEnable();
-        loadBlocks();
+        ensureBlocksLoaded();
         lastPlayerChunkX = Integer.MIN_VALUE;
         lastPlayerChunkZ = Integer.MIN_VALUE;
         rescanAll();
@@ -144,6 +153,19 @@ public class BlockEsp extends Module {
         scanningChunks.clear();
         lastPlayerChunkX = Integer.MIN_VALUE;
         lastPlayerChunkZ = Integer.MIN_VALUE;
+    }
+
+    private void ensureBlocksLoaded() {
+        if (!blocksLoaded) loadBlocks();
+    }
+
+    private String normalizeBlockName(String name) {
+        return name.toLowerCase(Locale.US);
+    }
+
+    private boolean matchesBlockName(Block block, String name) {
+        var id = Registries.BLOCK.getId(block);
+        return id.toString().equals(name) || id.getPath().equals(name);
     }
 
     private long chunkKey(int cx, int cz) {

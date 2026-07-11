@@ -36,7 +36,7 @@ public class HWHelper extends Module {
             mc.player.setYaw(FreeLookComponent.getFreeYaw());
             mc.player.setPitch(FreeLookComponent.getFreePitch());
         }
-        InventoryUtil.swapAndUseHvH(item);
+        InventoryUtil.swapAndUseWithGuiBypass(item);
         mc.player.setYaw(savedYaw);
         mc.player.setPitch(savedPitch);
     }

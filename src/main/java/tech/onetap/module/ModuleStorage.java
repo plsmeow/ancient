@@ -40,7 +40,7 @@ new FullBright(), new ClickGui(), new Optimization(), new Sprint(), new Troll(),
                   new TriggerBot(), new Criticals(), new MaceKill(), new BoatAura(), new TpAura(),
                 new NoRender(), new KillAura(), new AutoFlyMace(),
                 new Tags(), new TargetESP(), new NoPush(), new SoulESP(), new DragonFly(),
-                new NoJumpDelay(), new TeleportBack(), new ElytraHelper(), new Flight(),
+                new NoJumpDelay(), new TeleportBack(), new ElytraHelper(), new HotbarRefill(), new Flight(),
                 new AutoTotem(), new ClickPearl(), new UseTracker(), new CrystalAura(), new AnchorAura(), new Scaffold(),
                 new ClientSounds(), new NoFriendDamage(), new ElytraBooster(),
                 new FreeCamera(), new SwingAnimations(), new Predictions(), new HighJump(),
@@ -53,7 +53,7 @@ new FullBright(), new ClickGui(), new Optimization(), new Sprint(), new Troll(),
                 new AutoTool(), new AirPlace(), new TapeMouse(), new Ambience(), new BlockOverlay(), new FreeLook(),
                 new Trails(), new FastExp(), new NameProtect(), new CrystalSpammer(), new ChinaHat(),
                 new AirStuck(), new AutoSwap(), new NoSlow(), new NoWeb(), new DiscordRPC(), new FakePlayer(), new Interface(), new AutoEat(),new AutoLeave(), new Hide(), new SpecCordExploit(),
-                new BlockEsp(), new ScoreboardHealth(), new BoatFly(), new AutoCart()
+                new BlockEsp(), new TPLoot(), new ScoreboardHealth(), new BoatFly(), new AutoCart()
         ));
 
         Onetap.getInstance().getEventBus().register(this);

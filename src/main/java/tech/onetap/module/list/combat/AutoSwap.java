@@ -15,7 +15,6 @@ import tech.onetap.util.player.other.InventoryUtil;
 
 @ModuleInformation(moduleName = "Auto Swap", moduleCategory = ModuleCategory.COMBAT)
 public class AutoSwap extends Module {
-    private final ModeSetting mode = modeCreate();
     private final BindSetting swapKey = new BindSetting("Клавиша свапа", -1);
     private final ModeSetting firstItem = new ModeSetting("Свапать с", "Шар", "Гепл", "Щит", "Талисман", "Шар");
     private final ModeSetting secondItem = new ModeSetting("Свапать с", "Шар", "Гепл", "Щит", "Талисман", "Шар");
@@ -44,49 +43,17 @@ public class AutoSwap extends Module {
             if (slotFirstItem == 40 || slotFirstItem == -1 && slotSecondItem != 40) {
                 if (slotSecondItem >= 0 && slotSecondItem <= 8) {
                     int finalSlotSecondItem = slotSecondItem;
-                    switch (mode.getValue()) {
-                        case "Vanilla" -> mc.interactionManager.clickSlot(0, 45, slotSecondItem, SlotActionType.SWAP, mc.player);
-                        case "Grim" -> InventoryUtil.swapWithBypassGrim(() -> mc.interactionManager.clickSlot(0, 45, finalSlotSecondItem, SlotActionType.SWAP, mc.player));
-                        case "Polar" -> InventoryUtil.swapWithBypassPolar(() -> mc.interactionManager.clickSlot(0, 45, finalSlotSecondItem, SlotActionType.SWAP, mc.player));
-                        case "ReallyWorld" -> {
-                            if (mc.player.isOnGround()) InventoryUtil.swapWithBypassPolar(() -> mc.interactionManager.clickSlot(0, 45, finalSlotSecondItem, SlotActionType.SWAP, mc.player));
-                            else InventoryUtil.swapWithBypassGrim(() -> mc.interactionManager.clickSlot(0, 45, finalSlotSecondItem, SlotActionType.SWAP, mc.player));
-                        }
-                    }
+                    runSwap(() -> mc.interactionManager.clickSlot(0, 45, finalSlotSecondItem, SlotActionType.SWAP, mc.player));
                 } else if (slotSecondItem != -1) {
                     int finalSlotSecondItem = slotSecondItem;
-                    switch (mode.getValue()) {
-                        case "Vanilla" -> mc.interactionManager.clickSlot(0, slotSecondItem, 40, SlotActionType.SWAP, mc.player);
-                        case "Grim" -> InventoryUtil.swapWithBypassGrim(() -> mc.interactionManager.clickSlot(0, finalSlotSecondItem, 40, SlotActionType.SWAP, mc.player));
-                        case "Polar" -> InventoryUtil.swapWithBypassPolar(() -> mc.interactionManager.clickSlot(0, finalSlotSecondItem, 40, SlotActionType.SWAP, mc.player));
-                        case "ReallyWorld" -> {
-                            if (mc.player.isOnGround()) InventoryUtil.swapWithBypassPolar(() -> mc.interactionManager.clickSlot(0, finalSlotSecondItem, 40, SlotActionType.SWAP, mc.player));
-                            else InventoryUtil.swapWithBypassGrim(() -> mc.interactionManager.clickSlot(0, finalSlotSecondItem, 40, SlotActionType.SWAP, mc.player));
-                        }
-                    }
+                    runSwap(() -> mc.interactionManager.clickSlot(0, finalSlotSecondItem, 40, SlotActionType.SWAP, mc.player));
                 }
             } else {
                 if (slotFirstItem == -1) return;
                 if (slotFirstItem >= 0 && slotFirstItem <= 8) {
-                    switch (mode.getValue()) {
-                        case "Vanilla" -> mc.interactionManager.clickSlot(0, 45, slotFirstItem, SlotActionType.SWAP, mc.player);
-                        case "Grim" -> InventoryUtil.swapWithBypassGrim(() -> mc.interactionManager.clickSlot(0, 45, slotFirstItem, SlotActionType.SWAP, mc.player));
-                        case "Polar" -> InventoryUtil.swapWithBypassPolar(() -> mc.interactionManager.clickSlot(0, 45, slotFirstItem, SlotActionType.SWAP, mc.player));
-                        case "ReallyWorld" -> {
-                            if (mc.player.isOnGround()) InventoryUtil.swapWithBypassPolar(() -> mc.interactionManager.clickSlot(0, 45, slotFirstItem, SlotActionType.SWAP, mc.player));
-                            else InventoryUtil.swapWithBypassGrim(() -> mc.interactionManager.clickSlot(0, 45, slotFirstItem, SlotActionType.SWAP, mc.player));
-                        }
-                    }
+                    runSwap(() -> mc.interactionManager.clickSlot(0, 45, slotFirstItem, SlotActionType.SWAP, mc.player));
                 } else {
-                    switch (mode.getValue()) {
-                        case "Vanilla" -> mc.interactionManager.clickSlot(0, slotFirstItem, 40, SlotActionType.SWAP, mc.player);
-                        case "Grim" -> InventoryUtil.swapWithBypassGrim(() -> mc.interactionManager.clickSlot(0, slotFirstItem, 40, SlotActionType.SWAP, mc.player));
-                        case "Polar" -> InventoryUtil.swapWithBypassPolar(() -> mc.interactionManager.clickSlot(0, slotFirstItem, 40, SlotActionType.SWAP, mc.player));
-                        case "ReallyWorld" -> {
-                            if (mc.player.isOnGround()) InventoryUtil.swapWithBypassPolar(() -> mc.interactionManager.clickSlot(0, slotFirstItem, 40, SlotActionType.SWAP, mc.player));
-                            else InventoryUtil.swapWithBypassGrim(() -> mc.interactionManager.clickSlot(0, slotFirstItem, 40, SlotActionType.SWAP, mc.player));
-                        }
-                    }
+                    runSwap(() -> mc.interactionManager.clickSlot(0, slotFirstItem, 40, SlotActionType.SWAP, mc.player));
                 }
             }
         }
@@ -96,6 +63,10 @@ public class AutoSwap extends Module {
     private void onKey(EventKeyInput e) {
         if (e.getAction() == 0) return;
         if (e.getKey() == swapKey.getValue()) swapped = true;
+    }
+
+    private void runSwap(Runnable action) {
+        InventoryUtil.clickWithGuiBypass(action);
     }
 
     private int findItemByName(String name, boolean ignoreOffhand) {

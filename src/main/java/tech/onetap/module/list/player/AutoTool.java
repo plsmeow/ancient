@@ -10,13 +10,10 @@ import tech.onetap.event.list.EventPlayerUpdate;
 import tech.onetap.module.Module;
 import tech.onetap.module.ModuleCategory;
 import tech.onetap.module.ModuleInformation;
-import tech.onetap.module.settings.ModeSetting;
 import tech.onetap.util.player.other.InventoryUtil;
 
 @ModuleInformation(moduleName = "Auto Tool", moduleDesc = "Выбирает лучший инструмент для добычи блоков", moduleCategory = ModuleCategory.PLAYER)
 public class AutoTool extends Module {
-
-    private final ModeSetting mode = new ModeSetting("Мод", "Vanilla", "Vanilla", "Grim");
 
     private int itemIndex = -1, oldSlot = -1;
     private boolean status;
@@ -41,14 +38,7 @@ public class AutoTool extends Module {
                         mc.interactionManager.syncSelectedSlot();
                         status = true;
                     } else {
-                        switch (mode.getValue()) {
-                            case "Vanilla" -> swap();
-                            case "Grim" -> InventoryUtil.swapWithBypassGrim(this::swap);
-                            case "ReallyWorld" -> {
-                                if (mc.player.isOnGround()) InventoryUtil.swapWithBypassPolar(this::swap);
-                                else InventoryUtil.swapWithBypassGrim(this::swap);
-                            }
-                        }
+                        InventoryUtil.clickWithGuiBypass(this::swap);
                         oldSlot = itemIndex;
                     }
                 }
@@ -60,14 +50,7 @@ public class AutoTool extends Module {
                 oldSlot = -1;
                 status = false;
             } else {
-                switch (mode.getValue()) {
-                    case "Vanilla" -> swapBack();
-                    case "Grim" -> InventoryUtil.swapWithBypassGrim(this::swapBack);
-                    case "ReallyWorld" -> {
-                        if (mc.player.isOnGround()) InventoryUtil.swapWithBypassPolar(this::swapBack);
-                        else InventoryUtil.swapWithBypassGrim(this::swapBack);
-                    }
-                }
+                InventoryUtil.clickWithGuiBypass(this::swapBack);
             }
         }
     }

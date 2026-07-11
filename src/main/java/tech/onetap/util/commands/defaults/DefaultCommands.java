@@ -41,7 +41,8 @@ public final class DefaultCommands {
                 new GpsCommand(),
                 new AICommand(),
                 new BotCommand(),
-                new BlockEspCommand()
+                new BlockEspCommand(),
+                new TPLootCommand()
         ));
         return Collections.unmodifiableList(commands);
     }

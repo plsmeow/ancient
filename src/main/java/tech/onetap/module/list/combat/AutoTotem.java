@@ -11,7 +11,6 @@ import tech.onetap.module.Module;
 import tech.onetap.module.ModuleCategory;
 import tech.onetap.module.ModuleInformation;
 import tech.onetap.module.settings.BooleanSetting;
-import tech.onetap.module.settings.ModeSetting;
 import tech.onetap.module.settings.SliderSetting;
 import tech.onetap.util.math.StopWatch;
 import tech.onetap.util.player.other.InventoryUtil;
@@ -19,13 +18,6 @@ import tech.onetap.util.text.ValueUnit;
 
 @ModuleInformation(moduleName = "Auto Totem", moduleCategory = ModuleCategory.COMBAT)
 public class AutoTotem extends Module {
-
-    private final ModeSetting mode =
-            new ModeSetting("Режим", "Grim",
-                    "Vanilla",
-                    "Grim",
-                    "Polar",
-                    "ReallyWorld");
 
     private final SliderSetting health =
             new SliderSetting("Здоровье", ValueUnit.abbreviation("ХП"), 4, 1, 20, 0.1f);
@@ -35,13 +27,6 @@ public class AutoTotem extends Module {
 
     private final BooleanSetting crystalsCheck =
             new BooleanSetting("Работать на кристалы", false);
-
-    private final BooleanSetting slowness =
-            new BooleanSetting("Замедление", false);
-
-    private final SliderSetting slownessDuration =
-            new SliderSetting("Длительность замедления", 100, 0, 160, 1)
-                    .setVisible(slowness::getValue);
 
     private int swapBackItem = -1;
     private float cooldownTicks;
@@ -160,39 +145,6 @@ public class AutoTotem extends Module {
     }
 
     private void swapTotem(Runnable action) {
-        switch (mode.getValue()) {
-
-            case "Vanilla" -> action.run();
-
-            case "Grim" -> {
-                InventoryUtil.swapWithBypassGrim(action);
-            }
-
-            case "Polar" -> {
-                if (slowness.getValue()) {
-                    InventoryUtil.swapWithBypassPolar(
-                            action,
-                            (long) slownessDuration.getValue()
-                    );
-                } else {
-                    InventoryUtil.swapWithBypassPolar(action);
-                }
-            }
-
-            case "ReallyWorld" -> {
-                if (mc.player.isOnGround()) {
-                    if (slowness.getValue()) {
-                        InventoryUtil.swapWithBypassPolar(
-                                action,
-                                (long) slownessDuration.getValue()
-                        );
-                    } else {
-                        InventoryUtil.swapWithBypassPolar(action);
-                    }
-                } else {
-                    InventoryUtil.swapWithBypassGrim(action);
-                }
-            }
-        }
+        InventoryUtil.clickWithGuiBypass(action);
     }
 }

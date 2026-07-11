@@ -8,14 +8,11 @@ import tech.onetap.event.list.EventPlayerUpdate;
 import tech.onetap.module.Module;
 import tech.onetap.module.ModuleCategory;
 import tech.onetap.module.ModuleInformation;
-import tech.onetap.module.settings.ModeSetting;
 import tech.onetap.util.math.StopWatch;
 import tech.onetap.util.player.other.InventoryUtil;
 
 @ModuleInformation(moduleName = "Auto Armor", moduleDesc = "Автоматически экипирует броню", moduleCategory = ModuleCategory.COMBAT)
 public class AutoArmor extends Module {
-
-    private final ModeSetting mode = new ModeSetting("Мод", "Vanilla", "Vanilla", "Grim");
 
     private final StopWatch equipArmorCooldownHelmet = new StopWatch();
     private final StopWatch equipArmorCooldownChestplate = new StopWatch();
@@ -48,10 +45,7 @@ public class AutoArmor extends Module {
 
         int finalSlot = slot;
 
-        switch (mode.getValue()) {
-            case "Vanilla" -> mc.interactionManager.clickSlot(0, slot, 0, SlotActionType.QUICK_MOVE, mc.player);
-            case "Grim" -> InventoryUtil.swapWithBypassGrim(() -> mc.interactionManager.clickSlot(0, finalSlot, 0, SlotActionType.QUICK_MOVE, mc.player));
-        }
+        InventoryUtil.clickWithGuiBypass(() -> mc.interactionManager.clickSlot(0, finalSlot, 0, SlotActionType.QUICK_MOVE, mc.player));
 
         if (equipmentSlot == EquipmentSlot.HEAD) equipArmorCooldownHelmet.reset();
         if (equipmentSlot == EquipmentSlot.CHEST) equipArmorCooldownChestplate.reset();
