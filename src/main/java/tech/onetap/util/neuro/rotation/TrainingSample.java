@@ -9,5 +9,12 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class TrainingSample {
     private float[] input;
-    private float[] output; // [actualDeltaYaw, actualDeltaPitch]
+    private float[] output;
+    private int age;
+
+    public TrainingSample(float[] input, float[] output) {
+        this.input = input;
+        this.output = output;
+        this.age = 0;
+    }
 }

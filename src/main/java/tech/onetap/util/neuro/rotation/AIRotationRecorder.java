@@ -83,7 +83,19 @@ public class AIRotationRecorder implements IMinecraft {
         float actualDeltaYaw = MathHelper.wrapDegrees(nextRotation.getYaw() - currentRotation.getYaw());
         float actualDeltaPitch = nextRotation.getPitch() - currentRotation.getPitch();
 
-        Vec3d targetPoint = BestPoint.getMultipoint(target, distance);
+        if (mode == Mode.KILLAURA) {
+            boolean noCameraMovement = Math.abs(actualDeltaYaw) < 0.01f && Math.abs(actualDeltaPitch) < 0.01f;
+            boolean noKeyPress = mc.player.input.movementForward == 0.0f && mc.player.input.movementSideways == 0.0f;
+            if (noCameraMovement && noKeyPress) {
+                previousRotation = currentRotation;
+                currentRotation = nextRotation;
+                return;
+            }
+        }
+
+        Vec3d targetPoint = killAura != null && killAura.isEnabled()
+                ? killAura.resolveMultipoint(target, BestPoint.getMultipoint(target, distance), distance)
+                : BestPoint.getMultipoint(target, distance);
         Rotation targetRotation = new Rotation(RotationUtil.calculate(targetPoint));
 
         float[] input = AIRotationFeatures.buildInput(
@@ -91,7 +103,8 @@ public class AIRotationRecorder implements IMinecraft {
                 target,
                 currentRotation,
                 targetRotation,
-                previousRotation
+                previousRotation,
+                targetPoint
         );
 
         float[] output = new float[]{actualDeltaYaw, actualDeltaPitch};

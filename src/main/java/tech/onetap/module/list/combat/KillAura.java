@@ -138,6 +138,15 @@ public class KillAura extends Module {
     public final SliderSetting autoMaceElytraBackDelay = new SliderSetting("Задержка возврата элитры", 0, 0, 10, 1)
             .setVisible(() -> autoMace.getValue() && autoMaceElytra.getValue() && autoMaceElytraBack.getValue());
 
+    public final SliderSetting neuroYawMultiplier = new SliderSetting("Yaw множитель", 1.0, 0.5, 2.0, 0.05)
+            .setVisible(() -> rotation.is("Neuro"));
+    public final SliderSetting neuroPitchMultiplier = new SliderSetting("Pitch множитель", 1.0, 0.5, 2.0, 0.05)
+            .setVisible(() -> rotation.is("Neuro"));
+    public final BooleanSetting neuroCorrection = new BooleanSetting("Интерполяция", false)
+            .setVisible(() -> rotation.is("Neuro"));
+    public final SliderSetting neuroEpochs = new SliderSetting("Эпохи обучения", 100, 10, 500, 10)
+            .setVisible(() -> rotation.is("Neuro"));
+
     public boolean isResolving = false;
     public Vec3d resolverPoint = null;
     private final StopWatch resolverTimer = new StopWatch();

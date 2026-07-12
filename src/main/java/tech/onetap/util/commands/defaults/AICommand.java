@@ -1,6 +1,6 @@
 package tech.onetap.util.commands.defaults;
 
-import tech.onetap.Onetap;
+import tech.onetap.module.list.combat.KillAura;
 import tech.onetap.util.chat.ChatUtil;
 import tech.onetap.util.commands.api.Command;
 import tech.onetap.util.commands.api.argument.IArgConsumer;
@@ -12,9 +12,7 @@ import java.util.List;
 import java.util.stream.Stream;
 
 public class AICommand extends Command {
-    
-    private static AIRotationRecorder recorder = null;
-    
+
     public AICommand() {
         super("ai");
     }
@@ -29,48 +27,6 @@ public class AICommand extends Command {
         String subcommand = args.getString().toLowerCase();
 
         switch (subcommand) {
-            case "start" -> {
-                if (AIRotationRecorder.isRecording()) {
-                    ChatUtil.send("§cЗапись уже идет!");
-                    return;
-                }
-
-                if (recorder == null) {
-                    recorder = new AIRotationRecorder();
-                    Onetap.getInstance().getEventBus().register(recorder);
-                }
-
-                AIRotationRecorder.Mode recordMode = AIRotationRecorder.Mode.KILLAURA;
-                if (args.hasAny()) {
-                    String modeArg = args.getString().toLowerCase();
-                    if (modeArg.equals("slimes") || modeArg.equals("slime") || modeArg.equals("слизни")) {
-                        recordMode = AIRotationRecorder.Mode.SLIMES;
-                    }
-                }
-
-                AIRotationRecorder.startRecording(recordMode);
-                if (recordMode == AIRotationRecorder.Mode.SLIMES) {
-                    ChatUtil.send("§aЗапись начата (режим слизней)!");
-                    ChatUtil.send("§7Ищите слизня рядом, цельтесь в него вручную");
-                } else {
-                    ChatUtil.send("§aЗапись начата!");
-                    ChatUtil.send("§7Атакуйте цель, ваши движения будут записаны");
-                }
-                ChatUtil.send("§7Используйте §f.ai stop §7для остановки");
-            }
-
-            case "stop" -> {
-                if (!AIRotationRecorder.isRecording()) {
-                    ChatUtil.send("§cЗапись не идет!");
-                    return;
-                }
-                
-                int samples = AIRotationRecorder.stopRecording();
-                ChatUtil.send("§aЗапись остановлена!");
-                ChatUtil.send("§7Записано сэмплов: §f" + samples);
-                ChatUtil.send("§7Используйте §f.ai save <name> §7для сохранения");
-            }
-
             case "save" -> {
                 if (!args.hasAny()) {
                     ChatUtil.send("§cИспользование: §f.ai save <name>");
@@ -91,20 +47,60 @@ public class AICommand extends Command {
 
             case "train" -> {
                 if (!args.has(2)) {
-                    ChatUtil.send("§cИспользование: §f.ai train <dataset> <modelname>");
+                    ChatUtil.send("§cИспользование: §f.ai train <dataset> <model> [epochs]");
                     return;
                 }
                 String datasetName = args.getString();
                 String modelName = args.getString();
-                
-                ChatUtil.send("§7Начинаю обучение...");
-                // Запускаем в отдельном потоке чтобы не блокировать игру
+                int epochs = 100;
+                if (args.hasAny()) {
+                    try {
+                        epochs = Integer.parseInt(args.getString());
+                        epochs = Math.max(10, Math.min(500, epochs));
+                    } catch (NumberFormatException ignored) {
+                    }
+                }
+
+                int finalEpochs = epochs;
+                ChatUtil.send("§7Начинаю обучение (" + finalEpochs + " эпох)...");
                 new Thread(() -> {
-                    AIRotationManager.trainModel(datasetName, modelName);
+                    AIRotationManager.trainModel(datasetName, modelName, finalEpochs);
                 }).start();
             }
 
-            case "list" -> {
+            case "improve" -> {
+                if (!args.has(2)) {
+                    ChatUtil.send("§cИспользование: §f.ai improve <model> <dataset> [epochs]");
+                    return;
+                }
+                String modelName = args.getString();
+                String datasetName = args.getString();
+                int epochs = 100;
+                if (args.hasAny()) {
+                    try {
+                        epochs = Integer.parseInt(args.getString());
+                        epochs = Math.max(10, Math.min(500, epochs));
+                    } catch (NumberFormatException ignored) {
+                    }
+                }
+
+                int finalEpochs = epochs;
+                ChatUtil.send("§7Дообучаю модель §e" + modelName + " §7на §f" + finalEpochs + " §7эпох...");
+                new Thread(() -> {
+                    AIRotationManager.improveModel(modelName, datasetName, finalEpochs);
+                }).start();
+            }
+
+            case "delete" -> {
+                if (!args.hasAny()) {
+                    ChatUtil.send("§cИспользование: §f.ai delete <modelname>");
+                    return;
+                }
+                String modelName = args.getString();
+                AIRotationManager.deleteModel(modelName);
+            }
+
+            case "list", "models" -> {
                 AIRotationManager.listFiles();
             }
 
@@ -121,13 +117,12 @@ public class AICommand extends Command {
 
     private void printHelp() {
         ChatUtil.send("§e§l=== AI Rotation Commands ===");
-        ChatUtil.send("§f.ai start §7- Начать запись (KillAura)");
-        ChatUtil.send("§f.ai start slimes §7- Запись датасета на слизнях");
-        ChatUtil.send("§f.ai stop §7- Остановить запись");
         ChatUtil.send("§f.ai save <name> §7- Сохранить датасет");
-        ChatUtil.send("§f.ai train <dataset> <model> §7- Обучить модель");
+        ChatUtil.send("§f.ai train <ds> <model> [ep] §7- Обучить модель");
+        ChatUtil.send("§f.ai improve <model> <ds> [ep] §7- Дообучить модель");
         ChatUtil.send("§f.ai load <model> §7- Загрузить модель");
-        ChatUtil.send("§f.ai list §7- Список файлов");
+        ChatUtil.send("§f.ai delete <model> §7- Удалить модель");
+        ChatUtil.send("§f.ai models §7- Список моделей");
         ChatUtil.send("§f.ai dir §7- Открыть папку");
     }
 
@@ -139,16 +134,15 @@ public class AICommand extends Command {
     @Override
     public List<String> getLongDesc() {
         return List.of(
-                "Команда для записи, обучения и использования AI моделей ротаций",
+                "Команда для управления AI моделями ротаций",
                 "",
                 "Использование:",
-                ".ai start - начать запись (KillAura)",
-                ".ai start slimes - запись датасета на слизнях",
-                ".ai stop - остановить запись",
                 ".ai save <name> - сохранить датасет",
-                ".ai train <dataset> <model> - обучить модель",
+                ".ai train <ds> <model> [epochs] - обучить модель",
+                ".ai improve <model> <ds> [epochs] - дообучить модель",
                 ".ai load <model> - загрузить модель",
-                ".ai list - список файлов",
+                ".ai delete <model> - удалить модель",
+                ".ai models - список моделей",
                 ".ai dir - открыть папку"
         );
     }
@@ -156,14 +150,7 @@ public class AICommand extends Command {
     @Override
     public Stream<String> tabComplete(String label, IArgConsumer args) throws CommandException {
         if (args.hasExactlyOne()) {
-            return Stream.of("start", "stop", "save", "load", "train", "list", "dir");
-        }
-        if (args.hasAny()) {
-            String subcommand = args.getString();
-            if (subcommand.equalsIgnoreCase("start") && args.hasExactlyOne()) {
-                String prefix = args.peekString();
-                return Stream.of("slimes").filter(mode -> mode.startsWith(prefix.toLowerCase()));
-            }
+            return Stream.of("save", "load", "train", "improve", "delete", "models", "dir");
         }
         return Stream.empty();
     }

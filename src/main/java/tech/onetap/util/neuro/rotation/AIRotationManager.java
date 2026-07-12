@@ -13,6 +13,7 @@ import java.io.File;
 import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.io.InputStream;
 import java.lang.reflect.Type;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -22,12 +23,12 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class AIRotationManager {
-    
+
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static final Path AI_DIR = Paths.get(".options", "ai");
     private static final Path DATASETS_DIR = AI_DIR.resolve("datasets");
     private static final Path MODELS_DIR = AI_DIR.resolve("models");
-    
+
     @Getter
     private static AIRotationModel currentModel = null;
     @Getter
@@ -35,7 +36,7 @@ public class AIRotationManager {
 
     private record DatasetInfo(String name, String mode, int samples, int inputSize, int outputSize, String createdAt) {
     }
-    
+
     static {
         try {
             Files.createDirectories(DATASETS_DIR);
@@ -77,8 +78,11 @@ public class AIRotationManager {
     }
 
     public static void trainModel(String datasetName, String modelName) {
+        trainModel(datasetName, modelName, 100);
+    }
+
+    public static void trainModel(String datasetName, String modelName, int numEpochs) {
         try {
-            // Загружаем датасет
             Path datasetPath = DATASETS_DIR.resolve(datasetName + ".json");
             if (!Files.exists(datasetPath)) {
                 ChatUtil.send("§cДатасет §e" + datasetName + " §cне найден!");
@@ -87,7 +91,7 @@ public class AIRotationManager {
 
             Type listType = new TypeToken<List<TrainingSample>>(){}.getType();
             List<TrainingSample> samples;
-            
+
             try (FileReader reader = new FileReader(datasetPath.toFile())) {
                 samples = GSON.fromJson(reader, listType);
             }
@@ -121,59 +125,161 @@ public class AIRotationManager {
                 ChatUtil.send("§7Пропущено несовместимых сэмплов: §f" + skipped);
             }
 
-            // Конвертируем в массивы
             float[][] features = new float[validSamples.size()][];
             float[][] labels = new float[validSamples.size()][];
-            
+
             for (int i = 0; i < validSamples.size(); i++) {
                 features[i] = validSamples.get(i).getInput();
                 labels[i] = validSamples.get(i).getOutput();
-            }
-
-            // Создаем и обучаем модель
-            AIRotationModel model = new AIRotationModel(modelName);
-            model.train(features, labels);
-
-            // Сохраняем модель
-            Path modelPath = MODELS_DIR.resolve(modelName);
-            Files.createDirectories(modelPath);
-            model.save(modelPath);
-            
-            model.close();
-            
-            ChatUtil.send("§aМодель §e" + modelName + " §aуспешно обучена и сохранена!");
-            
-        } catch (IOException | ModelException | TranslateException e) {
-            ChatUtil.send("§cОшибка обучения модели: " + e.getMessage());
-            e.printStackTrace();
-        }
-    }
-
-    public static void loadModel(String modelName) {
-        try {
-            Path modelPath = MODELS_DIR.resolve(modelName);
-            if (!Files.exists(modelPath)) {
-                ChatUtil.send("§cМодель §e" + modelName + " §cне найдена!");
-                System.out.println("MODEL PATH NOT FOUND: " + modelPath.toAbsolutePath());
-                return;
             }
 
             if (currentModel != null) {
                 currentModel.close();
             }
 
-            System.out.println("Loading model from: " + modelPath.toAbsolutePath());
-            currentModel = new AIRotationModel(modelName);
-            currentModel.load(modelPath);
+            AIRotationModel model = new AIRotationModel(modelName);
+            model.train(features, labels, numEpochs);
+
+            Path modelPath = MODELS_DIR.resolve(modelName);
+            Files.createDirectories(modelPath);
+            model.save(modelPath);
+
+            currentModel = model;
             currentModelName = modelName;
-            
+
+            ChatUtil.send("§aМодель §e" + modelName + " §aуспешно обучена и активна!");
+
+        } catch (IOException | ModelException | TranslateException e) {
+            ChatUtil.send("§cОшибка обучения модели: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
+    public static void improveModel(String modelName, String datasetName, int numEpochs) {
+        try {
+            Path modelPath = MODELS_DIR.resolve(modelName);
+            Path modelParams = modelPath.resolve("model.params");
+            String resourcePath = "/resources/onetap/models/" + modelName.toLowerCase() + ".params";
+            boolean hasOnDisk = Files.exists(modelParams);
+            boolean hasResource = AIRotationManager.class.getResourceAsStream(resourcePath) != null;
+
+            if (!hasOnDisk && !hasResource) {
+                ChatUtil.send("§cМодель §e" + modelName + " §cне найдена!");
+                return;
+            }
+
+            Path datasetPath = DATASETS_DIR.resolve(datasetName + ".json");
+            if (!Files.exists(datasetPath)) {
+                ChatUtil.send("§cДатасет §e" + datasetName + " §cне найден!");
+                return;
+            }
+
+            Type listType = new TypeToken<List<TrainingSample>>(){}.getType();
+            List<TrainingSample> samples;
+
+            try (FileReader reader = new FileReader(datasetPath.toFile())) {
+                samples = GSON.fromJson(reader, listType);
+            }
+
+            if (samples == null || samples.isEmpty()) {
+                ChatUtil.send("§cДатасет пуст!");
+                return;
+            }
+
+            List<TrainingSample> validSamples = new ArrayList<>();
+            for (TrainingSample sample : samples) {
+                if (sample != null
+                        && AIRotationFeatures.isValidInput(sample.getInput())
+                        && AIRotationFeatures.isValidOutput(sample.getOutput())) {
+                    validSamples.add(sample);
+                }
+            }
+
+            if (validSamples.size() < 64) {
+                ChatUtil.send("§cНедостаточно валидных сэмплов: §f" + validSamples.size() + "§c/64");
+                return;
+            }
+
+            float[][] features = new float[validSamples.size()][];
+            float[][] labels = new float[validSamples.size()][];
+
+            for (int i = 0; i < validSamples.size(); i++) {
+                features[i] = validSamples.get(i).getInput();
+                labels[i] = validSamples.get(i).getOutput();
+            }
+
+            if (currentModel != null) {
+                currentModel.close();
+            }
+
+            AIRotationModel model = new AIRotationModel(modelName);
+            if (hasOnDisk) {
+                model.load(modelPath);
+            } else {
+                InputStream stream = AIRotationManager.class.getResourceAsStream(resourcePath);
+                if (stream != null) {
+                    model.loadFromStream(stream);
+                    stream.close();
+                }
+            }
+            Files.createDirectories(modelPath);
+            model.train(features, labels, numEpochs);
+            model.save(modelPath);
+
+            currentModel = model;
+            currentModelName = modelName;
+
+            ChatUtil.send("§aМодель §e" + modelName + " §aдообучена и активна! (§f" + numEpochs + " §aэпох)");
+
+        } catch (IOException | ModelException | TranslateException e) {
+            ChatUtil.send("§cОшибка дообучения модели: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
+    private static boolean hasModelFiles(Path modelPath) {
+        if (Files.exists(modelPath.resolve("model.params"))) return true;
+        try {
+            return Files.exists(modelPath) && Files.list(modelPath)
+                    .anyMatch(p -> p.toString().endsWith(".params"));
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
+    public static void loadModel(String modelName) {
+        try {
+            Path modelPath = MODELS_DIR.resolve(modelName);
+
+            if (currentModel != null) {
+                currentModel.close();
+            }
+
+            currentModel = new AIRotationModel(modelName);
+
+            if (hasModelFiles(modelPath)) {
+                currentModel.load(modelPath);
+            } else {
+                String resourcePath = "/resources/onetap/models/" + modelName.toLowerCase() + ".params";
+                InputStream stream = AIRotationManager.class.getResourceAsStream(resourcePath);
+                if (stream != null) {
+                    currentModel.loadFromStream(stream);
+                    stream.close();
+                    System.out.println("AI: Loaded model from resource: " + resourcePath);
+                } else {
+                    currentModelName = null;
+                    currentModel = null;
+                    ChatUtil.send("§cМодель §e" + modelName + " §cне найдена!");
+                    return;
+                }
+            }
+
+            currentModelName = modelName;
             ChatUtil.send("§aМодель §e" + modelName + " §aактивна!");
-            System.out.println("MODEL LOADED SUCCESSFULLY: " + modelName);
-            
+
         } catch (IOException | ModelException e) {
             currentModelName = null;
             ChatUtil.send("§cОшибка загрузки модели: " + e.getMessage());
-            System.out.println("MODEL LOAD ERROR: " + e.getMessage());
             e.printStackTrace();
         }
     }
@@ -197,8 +303,7 @@ public class AIRotationManager {
 
     public static void listFiles() {
         ChatUtil.send("§e§l=== AI Rotation Files ===");
-        
-        // Датасеты
+
         File[] datasets = DATASETS_DIR.toFile().listFiles((dir, name) -> name.endsWith(".json") && !name.endsWith(".meta.json"));
         if (datasets != null && datasets.length > 0) {
             ChatUtil.send("§aДатасеты:");
@@ -210,7 +315,6 @@ public class AIRotationManager {
             ChatUtil.send("§7Датасеты: §cнет");
         }
 
-        // Модели
         File[] models = MODELS_DIR.toFile().listFiles(File::isDirectory);
         if (models != null && models.length > 0) {
             ChatUtil.send("§aМодели:");
@@ -222,6 +326,41 @@ public class AIRotationManager {
         } else {
             ChatUtil.send("§7Модели: §cнет");
         }
+    }
+
+    public static void deleteModel(String modelName) {
+        try {
+            Path modelPath = MODELS_DIR.resolve(modelName);
+            if (!Files.exists(modelPath)) {
+                ChatUtil.send("§cМодель §e" + modelName + " §cне найдена!");
+                return;
+            }
+
+            if (modelName.equals(currentModelName)) {
+                if (currentModel != null) {
+                    currentModel.close();
+                    currentModel = null;
+                }
+                currentModelName = null;
+            }
+
+            deleteRecursive(modelPath.toFile());
+            ChatUtil.send("§aМодель §e" + modelName + " §aудалена!");
+        } catch (Exception e) {
+            ChatUtil.send("§cОшибка удаления модели: " + e.getMessage());
+        }
+    }
+
+    private static void deleteRecursive(File file) {
+        if (file.isDirectory()) {
+            File[] children = file.listFiles();
+            if (children != null) {
+                for (File child : children) {
+                    deleteRecursive(child);
+                }
+            }
+        }
+        file.delete();
     }
 
     public static void openDirectory() {

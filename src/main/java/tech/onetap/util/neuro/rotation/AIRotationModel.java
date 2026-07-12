@@ -29,7 +29,6 @@ import java.nio.file.Path;
 
 public class AIRotationModel implements Closeable {
 
-    private static final int NUM_EPOCH = 100;
     private static final int BATCH_SIZE = 32;
     private static final int INPUT_SIZE = AIRotationFeatures.INPUT_SIZE;
     private static final int OUTPUT_SIZE = AIRotationFeatures.OUTPUT_SIZE;
@@ -50,6 +49,10 @@ public class AIRotationModel implements Closeable {
     }
 
     public void train(float[][] features, float[][] labels) throws ModelException, IOException, TranslateException {
+        train(features, labels, 100);
+    }
+
+    public void train(float[][] features, float[][] labels, int numEpochs) throws ModelException, IOException, TranslateException {
         if (features.length != labels.length || features.length == 0) {
             throw new IllegalArgumentException("Features and labels must have the same size and be non-empty");
         }
@@ -58,11 +61,12 @@ public class AIRotationModel implements Closeable {
         validateShape(labels, OUTPUT_SIZE, "labels");
 
         ChatUtil.send("§aНачинаю обучение модели §e" + name + "§a...");
-        ChatUtil.send("§7Сэмплов: §f" + features.length + " §7| Эпох: §f" + NUM_EPOCH);
+        ChatUtil.send("§7Сэмплов: §f" + features.length + " §7| Эпох: §f" + numEpochs);
 
         TrainingConfig trainingConfig = new DefaultTrainingConfig(Loss.l2Loss())
                 .optInitializer(new XavierInitializer(), "weight")
                 .optOptimizer(Adam.builder().optLearningRateTracker(Tracker.fixed(0.001f)).build())
+                .addTrainingListeners(new OverlayTrainingListener(numEpochs))
                 .addTrainingListeners(TrainingListener.Defaults.logging("train"));
 
         try (Trainer trainer = model.newTrainer(trainingConfig);
@@ -75,20 +79,46 @@ public class AIRotationModel implements Closeable {
                     .build();
 
             trainer.initialize(new Shape(BATCH_SIZE, INPUT_SIZE));
-            EasyTrain.fit(trainer, NUM_EPOCH, trainingSet, null);
-            
+            EasyTrain.fit(trainer, numEpochs, trainingSet, null);
+
             ChatUtil.send("§aОбучение завершено!");
         }
     }
 
     public void load(Path path) throws IOException, ModelException {
-        model.load(path, "model");
-        ChatUtil.send("§aМодель §e" + name + " §aзагружена");
+        java.nio.file.Path paramsFile = path.resolve("model.params");
+        if (java.nio.file.Files.exists(paramsFile)) {
+            try (java.io.InputStream stream = java.nio.file.Files.newInputStream(paramsFile)) {
+                model.load(stream);
+            }
+        } else {
+            try (java.nio.file.DirectoryStream<java.nio.file.Path> ds = java.nio.file.Files.newDirectoryStream(path, "*.params")) {
+                java.nio.file.Path first = null;
+                for (java.nio.file.Path p : ds) {
+                    first = p;
+                    break;
+                }
+                if (first != null) {
+                    try (java.io.InputStream is = java.nio.file.Files.newInputStream(first)) {
+                        model.load(is);
+                    }
+                } else {
+                    model.load(path, "model");
+                }
+            }
+        }
+    }
+
+    public void loadFromStream(java.io.InputStream stream) throws IOException, ModelException {
+        model.load(stream);
     }
 
     public void save(Path path) throws IOException {
         model.save(path, "model");
-        ChatUtil.send("§aМодель §e" + name + " §aсохранена");
+    }
+
+    public String getName() {
+        return name;
     }
 
     @Override
@@ -115,6 +145,8 @@ public class AIRotationModel implements Closeable {
                 .add(Activation.reluBlock())
 
                 .add(Linear.builder().setUnits(32).build())
+                .add(Blocks.batchFlattenBlock())
+                .add(BatchNorm.builder().build())
                 .add(Activation.reluBlock())
 
                 .add(Linear.builder().setUnits(OUTPUT_SIZE).build());
