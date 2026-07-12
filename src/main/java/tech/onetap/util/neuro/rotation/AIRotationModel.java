@@ -29,10 +29,10 @@ import java.nio.file.Path;
 
 public class AIRotationModel implements Closeable {
 
-    private static final int NUM_EPOCH = 500;
+    private static final int NUM_EPOCH = 100;
     private static final int BATCH_SIZE = 32;
-    private static final int INPUT_SIZE = 4;
-    private static final int OUTPUT_SIZE = 2;
+    private static final int INPUT_SIZE = AIRotationFeatures.INPUT_SIZE;
+    private static final int OUTPUT_SIZE = AIRotationFeatures.OUTPUT_SIZE;
 
     private final Model model;
     private final Predictor<float[], float[]> predictor;
@@ -53,6 +53,9 @@ public class AIRotationModel implements Closeable {
         if (features.length != labels.length || features.length == 0) {
             throw new IllegalArgumentException("Features and labels must have the same size and be non-empty");
         }
+
+        validateShape(features, INPUT_SIZE, "features");
+        validateShape(labels, OUTPUT_SIZE, "labels");
 
         ChatUtil.send("§aНачинаю обучение модели §e" + name + "§a...");
         ChatUtil.send("§7Сэмплов: §f" + features.length + " §7| Эпох: §f" + NUM_EPOCH);
@@ -101,16 +104,27 @@ public class AIRotationModel implements Closeable {
                 .add(BatchNorm.builder().build())
                 .add(Activation.reluBlock())
 
+                .add(Linear.builder().setUnits(128).build())
+                .add(Blocks.batchFlattenBlock())
+                .add(BatchNorm.builder().build())
+                .add(Activation.reluBlock())
+
                 .add(Linear.builder().setUnits(64).build())
                 .add(Blocks.batchFlattenBlock())
                 .add(BatchNorm.builder().build())
                 .add(Activation.reluBlock())
 
                 .add(Linear.builder().setUnits(32).build())
-                .add(Blocks.batchFlattenBlock())
-                .add(BatchNorm.builder().build())
                 .add(Activation.reluBlock())
 
                 .add(Linear.builder().setUnits(OUTPUT_SIZE).build());
+    }
+
+    private static void validateShape(float[][] values, int size, String name) {
+        for (float[] row : values) {
+            if (row == null || row.length != size) {
+                throw new IllegalArgumentException("Invalid " + name + " shape, expected " + size);
+            }
+        }
     }
 }

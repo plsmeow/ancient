@@ -8,6 +8,6 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class TrainingSample {
-    private float[] input;  // [prevDeltaYaw, prevDeltaPitch, targetDeltaYaw, targetDeltaPitch]
+    private float[] input;
     private float[] output; // [actualDeltaYaw, actualDeltaPitch]
 }

@@ -83,7 +83,8 @@ public class KillAura extends Module {
             "Funtime",
             "SpookyTime",
             "Universal",
-            "GrimFun"
+            "GrimFun",
+            "Neuro"
     );
     public final ModeSetting sortBy = new ModeSetting("Сортировка", "FOV", "FOV", "Дистанция", "Здоровье");
     private final ModeListSetting targets = new ModeListSetting("Таргеты",
@@ -155,6 +156,7 @@ public class KillAura extends Module {
     private final SpookyTimeRotation spookyTimeRotation = new SpookyTimeRotation();
     private final UniversalRotation universalRotation = new UniversalRotation();
     private final GrimFunRotation grimFunRotation = new GrimFunRotation();
+    private final NeuroRotation neuroRotation = new NeuroRotation();
 
     private boolean interpolationRotationInitialized;
     private LivingEntity interpolationRotationTarget;
@@ -278,6 +280,7 @@ public class KillAura extends Module {
             case "SpookyTime" -> spookyTimeRotation.update(this, target);
             case "Universal" -> universalRotation.update(this, target);
             case "GrimFun" -> grimFunRotation.update(this, target);
+            case "Neuro" -> neuroRotation.update(this, target);
         }
     }
 
@@ -380,6 +383,7 @@ public class KillAura extends Module {
                 universalRotation.reset(this);
             }
             grimFunRotation.reset(this);
+            neuroRotation.reset(this);
         }
     }
 
@@ -878,6 +882,7 @@ public class KillAura extends Module {
         razvorotikTicks = 0;
         snapActive = false;
         snapTimer = 0;
+        neuroRotation.reset(this);
         Onetap.getInstance().getModuleStorage().setSpeedAcceleration(0);
 
         if (!renderListenerRegistered) {
@@ -903,6 +908,7 @@ public class KillAura extends Module {
         snapTimer = 0;
         isResolving = false;
         resolverPoint = null;
+        neuroRotation.reset(this);
         Onetap.getInstance().getModuleStorage().setSpeedAcceleration(0);
         Onetap.getInstance().getModuleStorage().setRandomness(1);
         RotationComponent.getInstance().clearMoveFixMode("KillAura");

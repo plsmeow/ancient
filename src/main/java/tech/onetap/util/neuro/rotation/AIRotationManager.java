@@ -17,6 +17,8 @@ import java.lang.reflect.Type;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 
 public class AIRotationManager {
@@ -28,6 +30,11 @@ public class AIRotationManager {
     
     @Getter
     private static AIRotationModel currentModel = null;
+    @Getter
+    private static String currentModelName = null;
+
+    private record DatasetInfo(String name, String mode, int samples, int inputSize, int outputSize, String createdAt) {
+    }
     
     static {
         try {
@@ -49,6 +56,17 @@ public class AIRotationManager {
             Path datasetPath = DATASETS_DIR.resolve(name + ".json");
             try (FileWriter writer = new FileWriter(datasetPath.toFile())) {
                 GSON.toJson(samples, writer);
+            }
+            Path infoPath = DATASETS_DIR.resolve(name + ".meta.json");
+            try (FileWriter writer = new FileWriter(infoPath.toFile())) {
+                GSON.toJson(new DatasetInfo(
+                        name,
+                        AIRotationRecorder.getMode().name().toLowerCase(),
+                        samples.size(),
+                        AIRotationFeatures.INPUT_SIZE,
+                        AIRotationFeatures.OUTPUT_SIZE,
+                        Instant.now().toString()
+                ), writer);
             }
             ChatUtil.send("§aДатасет §e" + name + " §aсохранен (§f" + samples.size() + " §aсэмплов)");
             ChatUtil.send("§7Путь: §f" + datasetPath.toAbsolutePath());
@@ -79,13 +97,37 @@ public class AIRotationManager {
                 return;
             }
 
+            List<TrainingSample> validSamples = new ArrayList<>();
+            int skipped = 0;
+            for (TrainingSample sample : samples) {
+                if (sample != null
+                        && AIRotationFeatures.isValidInput(sample.getInput())
+                        && AIRotationFeatures.isValidOutput(sample.getOutput())) {
+                    validSamples.add(sample);
+                } else {
+                    skipped++;
+                }
+            }
+
+            if (validSamples.size() < 64) {
+                ChatUtil.send("§cНедостаточно валидных сэмплов для обучения: §f" + validSamples.size() + "§c/64");
+                if (skipped > 0) {
+                    ChatUtil.send("§7Пропущено несовместимых сэмплов: §f" + skipped);
+                }
+                return;
+            }
+
+            if (skipped > 0) {
+                ChatUtil.send("§7Пропущено несовместимых сэмплов: §f" + skipped);
+            }
+
             // Конвертируем в массивы
-            float[][] features = new float[samples.size()][];
-            float[][] labels = new float[samples.size()][];
+            float[][] features = new float[validSamples.size()][];
+            float[][] labels = new float[validSamples.size()][];
             
-            for (int i = 0; i < samples.size(); i++) {
-                features[i] = samples.get(i).getInput();
-                labels[i] = samples.get(i).getOutput();
+            for (int i = 0; i < validSamples.size(); i++) {
+                features[i] = validSamples.get(i).getInput();
+                labels[i] = validSamples.get(i).getOutput();
             }
 
             // Создаем и обучаем модель
@@ -94,6 +136,7 @@ public class AIRotationManager {
 
             // Сохраняем модель
             Path modelPath = MODELS_DIR.resolve(modelName);
+            Files.createDirectories(modelPath);
             model.save(modelPath);
             
             model.close();
@@ -122,11 +165,13 @@ public class AIRotationManager {
             System.out.println("Loading model from: " + modelPath.toAbsolutePath());
             currentModel = new AIRotationModel(modelName);
             currentModel.load(modelPath);
+            currentModelName = modelName;
             
             ChatUtil.send("§aМодель §e" + modelName + " §aактивна!");
             System.out.println("MODEL LOADED SUCCESSFULLY: " + modelName);
             
         } catch (IOException | ModelException e) {
+            currentModelName = null;
             ChatUtil.send("§cОшибка загрузки модели: " + e.getMessage());
             System.out.println("MODEL LOAD ERROR: " + e.getMessage());
             e.printStackTrace();
@@ -135,27 +180,26 @@ public class AIRotationManager {
 
     public static float[] predict(float[] input) {
         if (currentModel == null) {
-            System.out.println("AI MODEL IS NULL! Load a model first.");
             return new float[]{0, 0};
         }
 
         try {
-            System.out.println("AI Input: [" + input[0] + ", " + input[1] + ", " + input[2] + ", " + input[3] + "]");
-            float[] result = currentModel.predict(input);
-            System.out.println("AI Output: [" + result[0] + ", " + result[1] + "]");
-            return result;
+            return currentModel.predict(input);
         } catch (Exception e) {
             System.out.println("AI PREDICTION ERROR: " + e.getMessage());
-            e.printStackTrace();
             return new float[]{0, 0};
         }
+    }
+
+    public static boolean hasModel() {
+        return currentModel != null;
     }
 
     public static void listFiles() {
         ChatUtil.send("§e§l=== AI Rotation Files ===");
         
         // Датасеты
-        File[] datasets = DATASETS_DIR.toFile().listFiles((dir, name) -> name.endsWith(".json"));
+        File[] datasets = DATASETS_DIR.toFile().listFiles((dir, name) -> name.endsWith(".json") && !name.endsWith(".meta.json"));
         if (datasets != null && datasets.length > 0) {
             ChatUtil.send("§aДатасеты:");
             for (File dataset : datasets) {
@@ -172,7 +216,7 @@ public class AIRotationManager {
             ChatUtil.send("§aМодели:");
             for (File model : models) {
                 String name = model.getName();
-                String status = currentModel != null && currentModel.toString().contains(name) ? " §a(активна)" : "";
+                String status = name.equals(currentModelName) ? " §a(активна)" : "";
                 ChatUtil.send("  §7- §f" + name + status);
             }
         } else {

@@ -34,16 +34,28 @@ public class AICommand extends Command {
                     ChatUtil.send("§cЗапись уже идет!");
                     return;
                 }
-                
-                // Создаем и регистрируем recorder если еще не создан
+
                 if (recorder == null) {
                     recorder = new AIRotationRecorder();
                     Onetap.getInstance().getEventBus().register(recorder);
                 }
-                
-                AIRotationRecorder.startRecording();
-                ChatUtil.send("§aЗапись начата!");
-                ChatUtil.send("§7Атакуйте цель, ваши движения будут записаны");
+
+                AIRotationRecorder.Mode recordMode = AIRotationRecorder.Mode.KILLAURA;
+                if (args.hasAny()) {
+                    String modeArg = args.getString().toLowerCase();
+                    if (modeArg.equals("slimes") || modeArg.equals("slime") || modeArg.equals("слизни")) {
+                        recordMode = AIRotationRecorder.Mode.SLIMES;
+                    }
+                }
+
+                AIRotationRecorder.startRecording(recordMode);
+                if (recordMode == AIRotationRecorder.Mode.SLIMES) {
+                    ChatUtil.send("§aЗапись начата (режим слизней)!");
+                    ChatUtil.send("§7Ищите слизня рядом, цельтесь в него вручную");
+                } else {
+                    ChatUtil.send("§aЗапись начата!");
+                    ChatUtil.send("§7Атакуйте цель, ваши движения будут записаны");
+                }
                 ChatUtil.send("§7Используйте §f.ai stop §7для остановки");
             }
 
@@ -109,7 +121,8 @@ public class AICommand extends Command {
 
     private void printHelp() {
         ChatUtil.send("§e§l=== AI Rotation Commands ===");
-        ChatUtil.send("§f.ai start §7- Начать запись движений");
+        ChatUtil.send("§f.ai start §7- Начать запись (KillAura)");
+        ChatUtil.send("§f.ai start slimes §7- Запись датасета на слизнях");
         ChatUtil.send("§f.ai stop §7- Остановить запись");
         ChatUtil.send("§f.ai save <name> §7- Сохранить датасет");
         ChatUtil.send("§f.ai train <dataset> <model> §7- Обучить модель");
@@ -129,7 +142,8 @@ public class AICommand extends Command {
                 "Команда для записи, обучения и использования AI моделей ротаций",
                 "",
                 "Использование:",
-                ".ai start - начать запись",
+                ".ai start - начать запись (KillAura)",
+                ".ai start slimes - запись датасета на слизнях",
                 ".ai stop - остановить запись",
                 ".ai save <name> - сохранить датасет",
                 ".ai train <dataset> <model> - обучить модель",
@@ -140,9 +154,16 @@ public class AICommand extends Command {
     }
 
     @Override
-    public Stream<String> tabComplete(String label, IArgConsumer args) {
+    public Stream<String> tabComplete(String label, IArgConsumer args) throws CommandException {
         if (args.hasExactlyOne()) {
             return Stream.of("start", "stop", "save", "load", "train", "list", "dir");
+        }
+        if (args.hasAny()) {
+            String subcommand = args.getString();
+            if (subcommand.equalsIgnoreCase("start") && args.hasExactlyOne()) {
+                String prefix = args.peekString();
+                return Stream.of("slimes").filter(mode -> mode.startsWith(prefix.toLowerCase()));
+            }
         }
         return Stream.empty();
     }

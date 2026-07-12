@@ -8,7 +8,7 @@ public class FloatArrayTranslator implements Translator<float[], float[]> {
 
     @Override
     public NDList processInput(TranslatorContext ctx, float[] input) {
-        return new NDList(ctx.getNDManager().create(input));
+        return new NDList(ctx.getNDManager().create(input).reshape(1, input.length));
     }
 
     @Override
