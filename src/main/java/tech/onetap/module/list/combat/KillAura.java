@@ -360,6 +360,10 @@ public class KillAura extends Module {
                     ticksToAttack = 10;
                 }
 
+                if (rotation.is("Sloth2")) {
+                    sloth2Rotation.onAttack();
+                }
+
                 if (rotation.is("Snap")) {
                     snapActive = false;
                     snapTimer = 0;
@@ -371,6 +375,7 @@ public class KillAura extends Module {
             snapActive = false;
             snapTimer = 0;
             slothRotation.reset(this);
+            sloth2Rotation.reset(this);
             if (!rotation.is("Universal")) {
                 universalRotation.reset(this);
             }
@@ -384,15 +389,17 @@ public class KillAura extends Module {
         if (entity == Onetap.getInstance().getModuleStorage().get(FreeCamera.class).fakePlayer) return false;
         if (entity instanceof ClientPlayerEntity) return false;
         if (entity instanceof ArmorStandEntity) return false;
-        if (entity instanceof PlayerEntity p && p.getArmor() != 0 && !targets.isEnabled("Игроки")) return false;
-        if (entity instanceof PlayerEntity p && p.getArmor() == 0 && !targets.isEnabled("Голые")) return false;
-        if ((entity instanceof HostileEntity || entity instanceof AmbientEntity) && !targets.isEnabled("Монстры"))
-            return false;
-        if ((entity instanceof PassiveEntity || entity instanceof FishEntity) && !targets.isEnabled("Животные"))
-            return false;
         if (entity instanceof PlayerEntity p) {
+            if (p.getArmor() != 0 && !targets.isEnabled("Игроки")) return false;
+            if (p.getArmor() == 0 && !targets.isEnabled("Голые")) return false;
             if (Onetap.getInstance().getModuleStorage().get(AntiBot.class).isBot(p)) return false;
             if (!FriendRepository.shouldAttack(p)) return false;
+        } else if (entity instanceof HostileEntity || entity instanceof AmbientEntity) {
+            if (!targets.isEnabled("Монстры")) return false;
+        } else if (entity instanceof PassiveEntity || entity instanceof FishEntity) {
+            if (!targets.isEnabled("Животные")) return false;
+        } else {
+            return false;
         }
         if (player.getEyePos().distanceTo(BestPoint.getNearestPoint(entity)) > getTargetSearchDistance(player))
             return false;

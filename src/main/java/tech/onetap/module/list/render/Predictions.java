@@ -6,11 +6,10 @@ import net.minecraft.client.util.math.Vector2f;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.ItemEntity;
 import net.minecraft.entity.LivingEntity;
-import net.minecraft.entity.mob.MobEntity;
-import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.entity.projectile.PersistentProjectileEntity;
 import net.minecraft.entity.projectile.TridentEntity;
 import net.minecraft.entity.projectile.thrown.ThrownItemEntity;
+import net.minecraft.item.Items;
 import net.minecraft.item.ItemStack;
 import net.minecraft.registry.tag.FluidTags;
 import net.minecraft.util.hit.HitResult;
@@ -24,7 +23,7 @@ import tech.onetap.module.Module;
 import tech.onetap.module.ModuleCategory;
 import tech.onetap.module.ModuleInformation;
 import tech.onetap.module.settings.BooleanSetting;
-import tech.onetap.util.friend.FriendRepository;
+import tech.onetap.module.settings.ModeListSetting;
 import tech.onetap.util.player.combat.RaytraceUtil;
 import tech.onetap.util.player.other.WorldUtils;
 import tech.onetap.util.render.math.ProjectionUtil;
@@ -40,10 +39,15 @@ import java.util.stream.StreamSupport;
 @ModuleInformation(moduleName = "Predictions", moduleDesc = "Показывает траекторию полета предметов", moduleCategory = ModuleCategory.RENDER)
 public class Predictions extends Module {
 
-    private final BooleanSetting targetSelf = new BooleanSetting("Себе", true);
-    private final BooleanSetting targetFriends = new BooleanSetting("На друзьях", true);
-    private final BooleanSetting targetPlayers = new BooleanSetting("На игроках", true);
-    private final BooleanSetting targetMobs = new BooleanSetting("На мобах", false);
+    private final ModeListSetting targets = new ModeListSetting("Таргеты",
+            new BooleanSetting("Эндерперлы", true),
+            new BooleanSetting("Стрелы", true),
+            new BooleanSetting("Трезубцы", true),
+            new BooleanSetting("Зелья", true),
+            new BooleanSetting("Опыт", true),
+            new BooleanSetting("Снежки/яйца", true),
+            new BooleanSetting("Предметы", true)
+    );
 
     private final List<Point> points = new ArrayList<>();
 
@@ -156,25 +160,20 @@ public class Predictions extends Module {
     }
 
     private boolean isTargetEnabled(Entity entity) {
-        Entity owner = switch (entity) {
-            case PersistentProjectileEntity persistent -> persistent.getOwner();
-            case ThrownItemEntity thrown -> thrown.getOwner();
-            default -> null;
+        return switch (entity) {
+            case TridentEntity ignored -> targets.isEnabled("Трезубцы");
+            case PersistentProjectileEntity ignored -> targets.isEnabled("Стрелы");
+            case ItemEntity ignored -> targets.isEnabled("Предметы");
+            case ThrownItemEntity thrown -> {
+                ItemStack stack = thrown.getStack();
+                if (stack.isOf(Items.ENDER_PEARL)) yield targets.isEnabled("Эндерперлы");
+                if (stack.isOf(Items.SPLASH_POTION) || stack.isOf(Items.LINGERING_POTION) || stack.isOf(Items.POTION)) yield targets.isEnabled("Зелья");
+                if (stack.isOf(Items.EXPERIENCE_BOTTLE)) yield targets.isEnabled("Опыт");
+                if (stack.isOf(Items.SNOWBALL) || stack.isOf(Items.EGG)) yield targets.isEnabled("Снежки/яйца");
+                yield false;
+            }
+            default -> false;
         };
-
-        if (owner == mc.player) {
-            return targetSelf.getValue();
-        }
-
-        if (owner instanceof PlayerEntity player) {
-            return FriendRepository.isFriend(player.getNameForScoreboard()) ? targetFriends.getValue() : targetPlayers.getValue();
-        }
-
-        if (owner instanceof MobEntity) {
-            return targetMobs.getValue();
-        }
-
-        return targetSelf.getValue() || targetFriends.getValue() || targetPlayers.getValue() || targetMobs.getValue();
     }
 
     private record Point(ItemStack stack, Vec3d pos, int ticks) {}
