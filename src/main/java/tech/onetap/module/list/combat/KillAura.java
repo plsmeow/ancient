@@ -144,8 +144,7 @@ public class KillAura extends Module {
             .setVisible(() -> rotation.is("Neuro"));
     public final BooleanSetting neuroCorrection = new BooleanSetting("Интерполяция", false)
             .setVisible(() -> rotation.is("Neuro"));
-    public final SliderSetting neuroEpochs = new SliderSetting("Эпохи обучения", 100, 10, 500, 10)
-            .setVisible(() -> rotation.is("Neuro"));
+
 
     public boolean isResolving = false;
     public Vec3d resolverPoint = null;
