@@ -12,27 +12,32 @@ import tech.onetap.util.rotation.Rotation;
 
 public final class AIRotationFeatures {
 
-    public static final int INPUT_SIZE = 13;
+    public static final int INPUT_SIZE = 12;
     public static final int OUTPUT_SIZE = 2;
+
+    private static float prevAttackCooldown = 1.0f;
 
     private AIRotationFeatures() {
     }
 
+    public static void reset() {
+        prevAttackCooldown = 1.0f;
+    }
+
     /**
-     * 13 входных фичей:
-     *  [0] targetDeltaYaw      — разница углов к цели (yaw)
+     * 12 входных фичей:
+     *  [0] targetDeltaYaw      — разница углов к цели (yaw, -180..180)
      *  [1] targetDeltaPitch    — разница углов к цели (pitch)
      *  [2] previousDeltaYaw    — предыдущая скорость поворота (yaw)
      *  [3] previousDeltaPitch  — предыдущая скорость поворота (pitch)
      *  [4] combinedHorizontalSpeed — суммарная горизонтальная скорость игрока + цели
      *  [5] distance            — квадрат расстояния (AABB)
-     *  [6] targetHurtTime      — время HurtTime цели (0-1)
-     *  [7] attackCooldown      — прогресс кулдауна атаки (0-1)
-     *  [8] onTarget            — попадает ли луч в хитбокс (0/1)
-     *  [9] aimPointX           — позиция точки удара по X (0-1 внутри бокса)
-     * [10] aimPointY           — позиция точки удара по Y (0-1)
-     * [11] aimPointZ           — позиция точки удара по Z (0-1)
-     * [12] isAttacking         — зажата ли ЛКМ (0/1)
+     *  [6] attackCooldown      — прогресс кулдауна атаки (0-1)
+     *  [7] onTarget            — попадает ли луч в хитбокс (0/1)
+     *  [8] aimPointX           — позиция точки удара по X (0-1 внутри бокса)
+     *  [9] aimPointY           — позиция точки удара по Y (0-1)
+     * [10] aimPointZ           — позиция точки удара по Z (0-1)
+     * [11] attackOccurred      — произошла ли атака в этом тике (0/1)
      */
     public static float[] buildInput(
             PlayerEntity player,
@@ -54,15 +59,12 @@ public final class AIRotationFeatures {
         float combinedHorizontalSpeed = horizontalMove(currentVelocity(player)) + horizontalMove(currentVelocity(target));
         float distance = squaredBoxedDistance(player, target);
 
-        float hurtTime = MathHelper.clamp(target.hurtTime / 10.0f, 0.0f, 1.0f);
-
         float attackCooldown = 0.0f;
         if (player instanceof net.minecraft.client.network.ClientPlayerEntity) {
             attackCooldown = MinecraftClient.getInstance().player.getAttackCooldownProgress(0.5f);
         }
 
         float onTarget = 0.0f;
-        Vec3d eyePos = player.getEyePos();
         Vec3d lookVec = currentDir;
         if (RaytraceUtil.rayTrace(lookVec, 6.0, target.getBoundingBox())) {
             onTarget = 1.0f;
@@ -81,18 +83,20 @@ public final class AIRotationFeatures {
             if (dz > 0) aimPointZ = (float) MathHelper.clamp((aimPoint.z - box.minZ) / dz, 0.0, 1.0);
         }
 
-        float isAttacking = 0.0f;
-        if (MinecraftClient.getInstance().options.attackKey.isPressed()) {
-            isAttacking = 1.0f;
+        float attackOccurred = 0.0f;
+        float currentCooldown = MinecraftClient.getInstance().player.getAttackCooldownProgress(0.5f);
+        if (currentCooldown < prevAttackCooldown - 0.3f && prevAttackCooldown > 0.5f) {
+            attackOccurred = 1.0f;
         }
+        prevAttackCooldown = currentCooldown;
 
         return new float[]{
                 targetDeltaYaw, targetDeltaPitch,
                 previousDeltaYaw, previousDeltaPitch,
                 combinedHorizontalSpeed, distance,
-                hurtTime, attackCooldown, onTarget,
+                attackCooldown, onTarget,
                 aimPointX, aimPointY, aimPointZ,
-                isAttacking
+                attackOccurred
         };
     }
 
@@ -126,8 +130,7 @@ public final class AIRotationFeatures {
                 && input[8] >= 0.0f && input[8] <= 1.0f
                 && input[9] >= 0.0f && input[9] <= 1.0f
                 && input[10] >= 0.0f && input[10] <= 1.0f
-                && input[11] >= 0.0f && input[11] <= 1.0f
-                && input[12] >= 0.0f && input[12] <= 1.0f;
+                && input[11] >= 0.0f && input[11] <= 1.0f;
     }
 
     public static boolean isValidOutput(float[] output) {

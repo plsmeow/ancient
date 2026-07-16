@@ -158,9 +158,8 @@ public class AIRotationManager {
     public static void improveModel(String modelName, String datasetName, int numEpochs) {
         try {
             Path modelPath = MODELS_DIR.resolve(modelName);
-            Path modelParams = modelPath.resolve("model.params");
             String resourcePath = "/resources/onetap/models/" + modelName.toLowerCase() + ".params";
-            boolean hasOnDisk = Files.exists(modelParams);
+            boolean hasOnDisk = hasModelFiles(modelPath);
             boolean hasResource = AIRotationManager.class.getResourceAsStream(resourcePath) != null;
 
             if (!hasOnDisk && !hasResource) {

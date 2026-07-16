@@ -18,6 +18,10 @@ public class NeuroRotation extends RotationMode {
     private float previousDeltaPitch;
     private int invalidPredictionTicks;
 
+    private Vec3d stableAimPoint = null;
+    private int stableAimTicks = 0;
+    private static final int AIM_POINT_INTERVAL = 8;
+
     private NoRotRotation noRotFallback = new NoRotRotation();
 
     @Override
@@ -30,7 +34,13 @@ public class NeuroRotation extends RotationMode {
         var mc = ka.mc;
         if (target == null || mc.player == null) return;
 
-        Vec3d point = ka.resolveMultipoint(target, BestPoint.getMultipoint(target, ka.distance.getValue()), ka.distance.getValue());
+        stableAimTicks++;
+        if (stableAimPoint == null || stableAimTicks >= AIM_POINT_INTERVAL) {
+            stableAimPoint = ka.resolveMultipoint(target, BestPoint.getMultipoint(target, ka.distance.getValue()), ka.distance.getValue());
+            stableAimTicks = 0;
+        }
+        Vec3d point = stableAimPoint;
+
         Rotation targetRotation = new Rotation(RotationUtil.calculate(point));
 
         float currentYaw = ka.lastYaw == 0.0f && ka.lastPitch == 0.0f ? MathHelper.wrapDegrees(mc.player.getYaw()) : ka.lastYaw;
@@ -96,6 +106,8 @@ public class NeuroRotation extends RotationMode {
         previousDeltaYaw = 0.0f;
         previousDeltaPitch = 0.0f;
         invalidPredictionTicks = 0;
+        stableAimPoint = null;
+        stableAimTicks = AIM_POINT_INTERVAL;
     }
 
     private float sanitize(float value, float fallback, float limit) {

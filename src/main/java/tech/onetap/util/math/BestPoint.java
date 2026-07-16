@@ -176,13 +176,10 @@ public class BestPoint implements IMinecraft {
         else if (rotationPoint.z <= -safeZ)
             rotationMotion = new Vec3d(rotationMotion.getX(), rotationMotion.getY(), MathUtil.random(minMotionXZ, maxMotionXZ));
 
-        rotationPoint.add(MathUtil.random(-0.05f, 0.05f), 0f, MathUtil.random(-0.05f, 0.05f));
-
         Rotation rotation;
 
         if (!RaytraceUtil.rayTrace(mc.player.getRotationVector(), distance, target.getBoundingBox())) {
             float halfBox = (float) (lenghtX / 2f) * 0.8f;
-
 
             for (float x1 = -halfBox; x1 <= halfBox; x1 += 0.1f) {
                 for (float z1 = -halfBox; z1 <= halfBox; z1 += 0.1f) {

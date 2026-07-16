@@ -24,7 +24,7 @@ import java.time.format.DateTimeFormatter;
 )
 public class AiRecord extends Module {
 
-    private static final DateTimeFormatter DATASET_TIME = DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss");
+    private static final DateTimeFormatter DATASET_TIME = DateTimeFormatter.ofPattern("MMdd_HHmm");
 
     public final ModeSetting mode = new ModeSetting("Режим", "Слизни", "Слизни", "KillAura");
     private final BooleanSetting autoSave = new BooleanSetting("Auto Save", true);
@@ -87,7 +87,7 @@ public class AiRecord extends Module {
 
         if (autoSave.getValue()) {
             if (samples >= minSamples.getIntValue()) {
-                String datasetName = "dataset_" + LocalDateTime.now().format(DATASET_TIME);
+                String datasetName = "ds" + LocalDateTime.now().format(DATASET_TIME);
                 AIRotationManager.saveDataset(datasetName);
             } else {
                 ChatUtil.send("§cДатасет не сохранён, мало сэмплов: §f" + samples + "§c/" + minSamples.getIntValue());
