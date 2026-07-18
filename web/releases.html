@@ -3,20 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ancient - 1.21.4</title>
+    <title>Ancient - Релизы</title>
     <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
     <canvas id="starCanvas"></canvas>
 
-    <div class="hero-container">
-        <h1 class="hero-title">
-            ancient <span class="version">1.21.4</span>
-        </h1>
-    </div>
-
     <nav class="navbar">
-        <div class="logo">ancient</div>
+        <div class="logo">ancient <span class="logo-separator">·</span> <span class="logo-section">releases</span></div>
         <div class="nav-links">
             <a href="index.html">главная</a>
             <a href="https://github.com/plsmeow/ancient" target="_blank">github</a>
@@ -24,6 +18,13 @@
         </div>
     </nav>
 
+    <div class="releases-container">
+        <div id="releases-list" class="releases-list">
+            <div class="releases-loading">загрузка...</div>
+        </div>
+    </div>
+
     <script src="js/script.js"></script>
+    <script src="js/releases.js"></script>
 </body>
 </html>
