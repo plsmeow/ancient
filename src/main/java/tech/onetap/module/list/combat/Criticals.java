@@ -62,13 +62,13 @@ public class Criticals extends Module {
                 mc.player.fallDistance = 0.08f;
 
                 NetworkUtils.sendSilentPacket(new PlayerMoveC2SPacket.PositionAndOnGround(
-                        x, y + 0.035, z, false, false
+                        x, y + 0.0625, z, false, false
                 ));
                 NetworkUtils.sendSilentPacket(new PlayerMoveC2SPacket.PositionAndOnGround(
                         x, y, z, false, false
                 ));
                 NetworkUtils.sendSilentPacket(new PlayerMoveC2SPacket.PositionAndOnGround(
-                        x, y + 0.011, z, false, false
+                        x, y + 0.0015, z, false, false
                 ));
                 NetworkUtils.sendSilentPacket(new PlayerMoveC2SPacket.PositionAndOnGround(
                         x, y, z, false, false
