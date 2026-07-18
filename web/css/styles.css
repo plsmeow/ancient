@@ -16,6 +16,7 @@ body, html {
     width: 100%;
     height: 100%;
     z-index: 1;
+    opacity: 0.82;
 }
 
 .navbar {
@@ -30,13 +31,29 @@ body, html {
     padding: 0 16px;
     box-sizing: border-box;
     z-index: 10;
-    background: rgba(10, 10, 10, 0.6);
+    background: rgba(10, 10, 10, 0.58);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
-    border: 1px solid rgba(255, 255, 255, 0.06);
-    border-radius: 6px;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 7px;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.45);
     transition: border-color 0.3s ease;
+    opacity: 0;
+    animation: navbarIn 1.1s cubic-bezier(0.22, 1, 0.36, 1) 0.15s forwards;
+}
+
+@keyframes navbarIn {
+    0% {
+        opacity: 0;
+        transform: translateY(-24px);
+    }
+    60% {
+        opacity: 1;
+    }
+    100% {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
 .logo {
@@ -56,19 +73,23 @@ body, html {
 }
 
 .nav-links a {
-    color: rgba(255, 255, 255, 0.45);
+    color: rgba(255, 255, 255, 0.48);
     text-decoration: none;
     font-size: 0.8rem;
     font-weight: 400;
     padding: 4px 10px;
     border-radius: 4px;
-    transition: color 0.25s ease, background-color 0.25s ease;
+    transition: color 0.25s ease, background-color 0.25s ease, transform 0.25s ease;
     border: none;
 }
 
 .nav-links a:hover {
+    transform: translateY(-1px);
+}
+
+.nav-links a:hover {
     color: rgba(255, 255, 255, 0.95);
-    background-color: rgba(255, 255, 255, 0.04);
+    background-color: rgba(255, 255, 255, 0.05);
 }
 
 @media (max-width: 520px) {
@@ -117,7 +138,7 @@ body, html {
     font-size: 1.8rem;
     font-weight: 200;
     color: rgba(255, 255, 255, 0.35);
-    letter-spacing: 0px;
+    letter-spacing: 0;
 }
 
 @keyframes fadeIn {
@@ -132,23 +153,11 @@ body, html {
 }
 
 @media (max-width: 768px) {
-    .hero-title {
-        font-size: 3rem;
-        gap: 8px;
-    }
-    .hero-title .version {
-        font-size: 1.4rem;
-    }
+    .hero-title { font-size: 3rem; gap: 8px; }
+    .hero-title .version { font-size: 1.4rem; }
 }
 
 @media (max-width: 480px) {
-    .hero-title {
-        font-size: 2.4rem;
-        flex-direction: column;
-        align-items: center;
-        gap: 2px;
-    }
-    .hero-title .version {
-        font-size: 1.2rem;
-    }
+    .hero-title { font-size: 2.4rem; flex-direction: column; align-items: center; gap: 2px; }
+    .hero-title .version { font-size: 1.2rem; }
 }
