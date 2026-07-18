@@ -39,8 +39,7 @@ jobs:
         COMMIT_SHA=$(git rev-parse --short HEAD)
         echo "commit_message=$COMMIT_MSG" >> $GITHUB_OUTPUT
         echo "commit_sha=$COMMIT_SHA" >> $GITHUB_OUTPUT
-        VERSION=$(./gradlew properties -q | awk '/^version:/ { print $2 }')
-        TAG="v${VERSION}-${GITHUB_RUN_NUMBER}"
+        TAG="v${GITHUB_RUN_NUMBER}"
         echo "tag_name=$TAG" >> $GITHUB_OUTPUT
 
     - name: Remove sources jars
