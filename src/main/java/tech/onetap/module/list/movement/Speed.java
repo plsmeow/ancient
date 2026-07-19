@@ -37,7 +37,7 @@ public class Speed extends Module {
 
     private final BooleanSetting vulcanOnlyWhileMoving = new BooleanSetting("Только в движении", true).setVisible(() -> mode.is("Vulcan"));
 
-    private final SliderSetting vanillaSpeed = new SliderSetting("Скорость", 1.18f, 1.05f, 1.30f, 0.01f).setVisible(() -> mode.is("Vanilla"));
+    private final SliderSetting vanillaSpeed = new SliderSetting("Скорость", 1.18f, 1.05f, 10.0f, 0.01f).setVisible(() -> mode.is("Vanilla"));
 
     private static final double VANILLA_DEFAULT_SPEED = 0.2873;
 
