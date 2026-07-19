@@ -41,6 +41,8 @@ dependencies {
     // Gson for JSON (authentication)
     implementation(include("com.google.code.gson:gson:2.10.1"))
 
+	implementation files('libs/BareAPI_lib.jar')
+
 	include modImplementation("ai.djl:api:0.32.0")
 	include modImplementation("ai.djl.pytorch:pytorch-engine:0.32.0")
 
@@ -86,6 +88,9 @@ jar {
 
 	from("LICENSE") {
 		rename { "${it}_${inputs.properties.archivesName}"}
+	}
+	from(zipTree('libs/BareAPI_lib.jar')) {
+		exclude 'META-INF/MANIFEST.MF'
 	}
 }
 

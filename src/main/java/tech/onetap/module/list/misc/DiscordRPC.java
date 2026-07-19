@@ -15,7 +15,7 @@ import tech.onetap.util.discord.ExtendedRichPresence;
 public class DiscordRPC extends Module {
 
     private final ExtendedRichPresence rpc = new ExtendedRichPresence();
-    private static final long APPLICATION_ID = 1469299305268645991L;
+    private static final long APPLICATION_ID = 1528020097627852940L;
     private boolean buttonsAdded = false;
 
     @Override
@@ -64,21 +64,14 @@ public class DiscordRPC extends Module {
 
         rpc.setDetails(details);
         
-        String username = "я хуесос";
-        int uid = 1488;
-        String discordId = "123";
-        String discordAvatar = "asda";
+        String username = String.valueOf(mc.player.getName());
         
-        rpc.setState("User: " + username + " | UID: " + uid);
+        rpc.setState("User: " + username);
         rpc.setLargeImage("logo", "Ancient 1.21.4");
 
-        if (discordId != null && discordAvatar != null) {
-            String avatarUrl = "mp:avatars/" + discordId + "/" + discordAvatar;
-            rpc.setSmallImage(avatarUrl, username);
-        }
-
         if (!buttonsAdded) {
-            rpc.addButton("Дискорд чита", "https://discord.gg/VxArvpNs28");
+            rpc.addButton("Сайт чита", "https://ancientclient.vercel.app/");
+            rpc.addButton("Github чита", "https://github.com/plsmeow/ancient");
             buttonsAdded = true;
         }
 

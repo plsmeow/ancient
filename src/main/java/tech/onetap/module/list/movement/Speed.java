@@ -21,7 +21,7 @@ import tech.onetap.util.player.move.MoveUtil;
 @ModuleInformation(moduleName = "Speed", moduleCategory = ModuleCategory.MOVEMENT)
 public class Speed extends Module {
 
-    private final ModeSetting mode = new ModeSetting("Режим", "Contact", "Contact", "Vulcan");
+    private final ModeSetting mode = new ModeSetting("Режим", "Contact", "Contact", "Vulcan", "Vanilla");
 
     private final SliderSetting boost = new SliderSetting("Сила буста", 8.0f, 1.0f, 20.0f, 0.1f);
     private final SliderSetting targetRange = new SliderSetting("Радиус цели", 3.0f, 0.5f, 10.0f, 0.1f);
@@ -34,6 +34,30 @@ public class Speed extends Module {
     private final BooleanSetting predict = new BooleanSetting("Предикт", true).setVisible(() -> mode.is("Contact"));
     private final SliderSetting predictStrength = new SliderSetting("Сила предикта", 2.0f, 0.1f, 10.0f, 0.1f).setVisible(() -> mode.is("Contact") && predict.getValue());
 
+    private final SliderSetting vanillaSpeed = new SliderSetting("Скорость", 1.18f, 1.05f, 1.30f, 0.01f).setVisible(() -> mode.is("Vanilla"));
+    private final BooleanSetting vanillaSpeedLimit = new BooleanSetting("Лимит", true).setVisible(() -> mode.is("Vanilla"));
+
+    private static final double VANILLA_DEFAULT_SPEED = 0.2873;
+    private static final double VANILLA_HOP = 0.40123128;
+
+    private int vanillaStage = 0;
+    private double vanillaSpeedValue = VANILLA_DEFAULT_SPEED;
+    private double vanillaDistance = 0.0;
+    private long vanillaTimer = 0L;
+
+    @Override
+    public void onDisable() {
+        super.onDisable();
+        resetVanillaState();
+    }
+
+    private void resetVanillaState() {
+        vanillaStage = 0;
+        vanillaSpeedValue = VANILLA_DEFAULT_SPEED;
+        vanillaDistance = 0.0;
+        vanillaTimer = 0L;
+    }
+
     @Subscribe
     private void onTick(EventTick ignored) {
         if (mc.player == null || mc.world == null) return;
@@ -43,7 +67,79 @@ public class Speed extends Module {
             return;
         }
 
+        if (mode.is("Vanilla")) {
+            // Update distance (movement that happened in the previous tick)
+            double dx = mc.player.getX() - mc.player.prevX;
+            double dz = mc.player.getZ() - mc.player.prevZ;
+            vanillaDistance = Math.sqrt(dx * dx + dz * dz);
+
+            handleVanilla();
+            return;
+        }
+
         handleContact();
+    }
+
+    private void handleVanilla() {
+        switch (vanillaStage) {
+            case 0 -> { // Reset
+                if (MoveUtil.hasPlayerMovement()) {
+                    vanillaStage = 1;
+                    vanillaSpeedValue = 1.18f * VANILLA_DEFAULT_SPEED - 0.01;
+                }
+            }
+            case 1 -> { // Jump
+                if (!MoveUtil.hasPlayerMovement() || !mc.player.isOnGround()) break;
+
+                Vec3d v = mc.player.getVelocity();
+                mc.player.setVelocity(v.x, VANILLA_HOP, v.z);
+                vanillaSpeedValue *= vanillaSpeed.getValue();
+                vanillaStage = 2;
+            }
+            case 2 -> { // Slowdown after jump
+                vanillaSpeedValue = vanillaDistance - 0.76 * (vanillaDistance - VANILLA_DEFAULT_SPEED);
+                vanillaStage = 3;
+            }
+            case 3 -> { // Reset on collision or predict and update speed
+                Box box = mc.player.getBoundingBox().offset(0.0, mc.player.getVelocity().y, 0.0);
+                if (!mc.world.isSpaceEmpty(mc.player, box) || (mc.player.horizontalCollision && vanillaStage > 0)) {
+                    vanillaStage = 0;
+                }
+                vanillaSpeedValue = vanillaDistance - (vanillaDistance / 159.0);
+            }
+        }
+
+        vanillaSpeedValue = Math.max(vanillaSpeedValue, VANILLA_DEFAULT_SPEED);
+
+        if (vanillaSpeedLimit.getValue()) {
+            if (System.currentTimeMillis() - vanillaTimer > 2500L) {
+                vanillaTimer = System.currentTimeMillis();
+            }
+
+            vanillaSpeedValue = Math.min(vanillaSpeedValue, System.currentTimeMillis() - vanillaTimer > 1250L ? 0.44D : 0.43D);
+        }
+
+        double[] change = transformVanillaStrafe(vanillaSpeedValue);
+
+        Vec3d current = mc.player.getVelocity();
+        mc.player.setVelocity(change[0], current.y, change[1]);
+    }
+
+    private double[] transformVanillaStrafe(double speed) {
+        float forward = Math.signum(mc.player.input.movementForward);
+        float side = Math.signum(mc.player.input.movementSideways);
+        float yaw = mc.player.getYaw();
+
+        if (forward == 0.0f && side == 0.0f) return new double[]{0.0, 0.0};
+
+        float strafe = 90 * side;
+        if (forward != 0) strafe *= forward * 0.5f;
+
+        yaw = yaw - strafe;
+        if (forward < 0) yaw -= 180;
+        double yawRadians = Math.toRadians(yaw);
+
+        return new double[]{-Math.sin(yawRadians) * speed, Math.cos(yawRadians) * speed};
     }
 
     private void handleVulcan() {
