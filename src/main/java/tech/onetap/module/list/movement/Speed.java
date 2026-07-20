@@ -47,6 +47,13 @@ public class Speed extends Module {
     private final SliderSetting hvhPredictStrength = new SliderSetting("Сила предикта", 2.0f, 0.1f, 10.0f, 0.1f)
             .setVisible(() -> mode.is("Vanilla") && hvhTarget.getValue());
 
+    // Leave — Vanilla: отход на дистанцию пока удар не готов, иначе сближение к радиусу атаки
+    private final BooleanSetting leave = new BooleanSetting("Leave", false).setVisible(() -> mode.is("Vanilla") && hvhTarget.getValue());
+    private final SliderSetting leaveDistance = new SliderSetting("Дистанция отхода", ValueUnit.countable("блок", "блока", "блоков"), 8, 4, 20, 0.5f)
+            .setVisible(() -> mode.is("Vanilla") && hvhTarget.getValue() && leave.getValue());
+    private final SliderSetting attackDistance = new SliderSetting("Радиус удара", ValueUnit.countable("блок", "блока", "блоков"), 4, 1, 6, 0.1f)
+            .setVisible(() -> mode.is("Vanilla") && hvhTarget.getValue() && leave.getValue());
+
     private static final double VANILLA_DEFAULT_SPEED = 0.2873;
 
     @Override
@@ -100,6 +107,28 @@ public class Speed extends Module {
                                 0.0,
                                 targetMotion.z * hvhPredictStrength.getValue()
                         );
+                    }
+
+                    // Leave: пока идёт задержка удара (ticksToAttack > 0) — отходим,
+                    // иначе сближаемся к радиусу атаки
+                    double desiredDist;
+                    if (leave.getValue() && aura.ticksToAttack > 0) {
+                        desiredDist = leaveDistance.getValue();
+                        if (horizontalDistSq < desiredDist * desiredDist) {
+                            Vec3d fromTarget = mc.player.getPos().subtract(targetPos);
+                            double[] dir = getDirectionToPoint(Vec3d.ZERO, new Vec3d(fromTarget.x, 0.0, fromTarget.z), speed);
+                            Vec3d current = mc.player.getVelocity();
+                            mc.player.setVelocity(dir[0], current.y, dir[1]);
+                            return;
+                        }
+                    } else if (leave.getValue()) {
+                        desiredDist = attackDistance.getValue();
+                        if (horizontalDistSq > desiredDist * desiredDist) {
+                            double[] dir = getDirectionToPoint(mc.player.getPos(), targetPos, speed);
+                            Vec3d current = mc.player.getVelocity();
+                            mc.player.setVelocity(dir[0], current.y, dir[1]);
+                            return;
+                        }
                     }
 
                     double[] dir = getDirectionToPoint(mc.player.getPos(), targetPos, speed);
