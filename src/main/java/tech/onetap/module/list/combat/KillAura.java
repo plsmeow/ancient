@@ -498,7 +498,7 @@ public class KillAura extends Module {
 
         // HvH Target: если в Speed (Vanilla) включён HvH Target — ищем цель на любой дистанции (100 блоков)
         tech.onetap.module.list.movement.Speed speed = Onetap.getInstance().getModuleStorage().get(tech.onetap.module.list.movement.Speed.class);
-        if (speed != null && speed.isHvhTargetEnabled()) {
+        if (speed != null && speed.isEnabled() && speed.isHvhTargetEnabled()) {
             searchDistance = Math.max(searchDistance, 100.0);
         }
 

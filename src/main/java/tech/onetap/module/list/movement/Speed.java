@@ -62,7 +62,7 @@ public class Speed extends Module {
     private static final double VANILLA_DEFAULT_SPEED = 0.2873;
 
     public boolean isHvhTargetEnabled() {
-        return hvhTarget.getValue();
+        return mode.is("Vanilla") && hvhTarget.getValue();
     }
 
     @Override
