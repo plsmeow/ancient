@@ -302,7 +302,7 @@ public class Speed extends Module {
         if (aura == null || !aura.isEnabled() || aura.getTarget() == null) return;
 
         LivingEntity target = aura.getTarget();
-        Vec3d predicted = HvhTargetPredict.predict(target, hvhPredictStrength.getValue());
+        Vec3d predicted = HvhTargetPredict.predict(target, hvhPredictStrength.getValue(), event.getTickDelta());
 
         // Точка предикта (центр по Y сущности, как у цели)
         Vec3d point = new Vec3d(predicted.x, target.getBoundingBox().getCenter().y, predicted.z);

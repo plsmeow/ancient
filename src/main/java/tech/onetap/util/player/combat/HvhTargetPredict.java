@@ -30,6 +30,8 @@ import java.util.Map;
 public final class HvhTargetPredict {
 
     private static final double DRAG = 0.98;
+    // максимальное удаление предикта от РЕАЛЬНОЙ позиции цели (блоки)
+    private static final double MAX_PREDICT_DIST = 8.0;
     // порог "стоит ли игрок" в блоках за тик (ходьба ~0.1-0.13, бег ~0.17-0.22)
     private static final double STAND_THRESHOLD = 0.06;
     private static final int HISTORY_SIZE = 8;
@@ -49,11 +51,22 @@ public final class HvhTargetPredict {
      * @return предсказанная позиция (только X/Z, Y не меняется)
      */
     public static Vec3d predict(LivingEntity target, double ticks) {
+        return predict(target, ticks, 0.0f);
+    }
+
+    /**
+     * То же, что {@link #predict(LivingEntity, double)}, но с учётом partial-тика
+     * ({@code tickDelta}) — интерполирует предсказанную точку между тиками, чтобы
+     * рендер-маркер совпадал с позицией цели на экране (цель рендерится с интерполяцией).
+     * ВНИМАНИЕ: этот метод не двигает историю — это должен делать вызов на тике.
+     */
+    public static Vec3d predict(LivingEntity target, double ticks, float tickDelta) {
         int id = target.getId();
         TargetHistory history = HISTORIES.computeIfAbsent(id, k -> new TargetHistory());
 
-        Vec3d current = target.getPos();
-        history.push(current);
+        Vec3d current = getInterpolatedPos(target, tickDelta);
+        // на тике (tickDelta == 0) обновляем историю, иначе только читаем
+        if (tickDelta <= 0.0f) history.push(current);
 
         // Стоит ли игрок? Проверяем по регрессионной скорости (самый устойчивый
         // источник) и по мгновенной Δпозиции (на случай резкой остановки).
@@ -102,7 +115,30 @@ public final class HvhTargetPredict {
             predicted = predicted.add(vx * partial, 0.0, vz * partial);
         }
 
+        // Жёсткий лимит: предикт не может улететь дальше 8 блоков от РЕАЛЬНОЙ
+        // позиции цели, иначе на высокой скорости цели он сильно "перепрыгивает".
+        Vec3d real = getInterpolatedPos(target, 0.0f);
+        double dxL = predicted.x - real.x;
+        double dzL = predicted.z - real.z;
+        double distL = Math.hypot(dxL, dzL);
+        if (distL > MAX_PREDICT_DIST) {
+            double scale = MAX_PREDICT_DIST / distL;
+            predicted = new Vec3d(real.x + dxL * scale, predicted.y, real.z + dzL * scale);
+        }
+
         return predicted;
+    }
+
+    /**
+     * Интерполированная позиция цели между тиками (как рендерит клиент).
+     * При tickDelta == 0 возвращает текущую позицию.
+     */
+    private static Vec3d getInterpolatedPos(LivingEntity target, float tickDelta) {
+        if (tickDelta <= 0.0f) return target.getPos();
+        double x = target.prevX + (target.getX() - target.prevX) * tickDelta;
+        double y = target.prevY + (target.getY() - target.prevY) * tickDelta;
+        double z = target.prevZ + (target.getZ() - target.prevZ) * tickDelta;
+        return new Vec3d(x, y, z);
     }
 
     /**
