@@ -44,7 +44,11 @@ public class Speed extends Module {
     private final BooleanSetting hvhTarget = new BooleanSetting("HvH Target", false).setVisible(() -> mode.is("Vanilla"));
     private final SliderSetting hvhTargetRange = new SliderSetting("Радиус цели", ValueUnit.countable("блок", "блока", "блоков"), 25, 1, 50, 0.5f)
             .setVisible(() -> mode.is("Vanilla") && hvhTarget.getValue());
-    private final SliderSetting hvhPredictStrength = new SliderSetting("Сила предикта", 2.0f, 0.1f, 10.0f, 0.1f)
+    // Сила предикта теперь интерпретируется как количество тиков вперёд (при высокой скорости цели)
+    private final SliderSetting hvhPredictStrength = new SliderSetting("Сила предикта", 4.0f, 0.5f, 20.0f, 0.1f)
+            .setVisible(() -> mode.is("Vanilla") && hvhTarget.getValue());
+    // BPS-порог: ниже — не предиктим (ходьба ~4.3, бег ~5.6, бег+Speed II ~7.0)
+    private final SliderSetting hvhPredictSpeedThreshold = new SliderSetting("Порог предикта", 7.0f, 4.0f, 15.0f, 0.1f)
             .setVisible(() -> mode.is("Vanilla") && hvhTarget.getValue());
 
     // Leave — Vanilla: отход на дистанцию пока удар не готов, иначе сближение к радиусу атаки
@@ -52,6 +56,9 @@ public class Speed extends Module {
     private final SliderSetting leaveDistance = new SliderSetting("Дистанция отхода", ValueUnit.countable("блок", "блока", "блоков"), 8, 4, 20, 0.5f)
             .setVisible(() -> mode.is("Vanilla") && hvhTarget.getValue() && leave.getValue());
     private final SliderSetting attackDistance = new SliderSetting("Радиус удара", ValueUnit.countable("блок", "блока", "блоков"), 4, 1, 6, 0.1f)
+            .setVisible(() -> mode.is("Vanilla") && hvhTarget.getValue() && leave.getValue());
+    // Пре дистанция — расширяет радиус удара в режиме Leave, чтобы KillAura могла бить издалека
+    private final SliderSetting preDistance = new SliderSetting("Пре дистанция", ValueUnit.countable("блок", "блока", "блоков"), 1.5f, 0, 3, 0.1f)
             .setVisible(() -> mode.is("Vanilla") && hvhTarget.getValue() && leave.getValue());
 
     private static final double VANILLA_DEFAULT_SPEED = 0.2873;
@@ -97,23 +104,16 @@ public class Speed extends Module {
                 double horizontalDistSq = toTarget.x * toTarget.x + toTarget.z * toTarget.z;
                 double range = hvhTargetRange.getValue();
                 if (horizontalDistSq <= range * range) {
-                    // Предикт позиции цели по X/Z с учётом её velocity и направления движения
-                    Vec3d targetPos = target.getPos();
-                    Vec3d targetMotion = target.getVelocity();
-                    double horizontalMotionSq = targetMotion.x * targetMotion.x + targetMotion.z * targetMotion.z;
-                    if (horizontalMotionSq > 1.0E-4) {
-                        targetPos = targetPos.add(
-                                targetMotion.x * hvhPredictStrength.getValue(),
-                                0.0,
-                                targetMotion.z * hvhPredictStrength.getValue()
-                        );
-                    }
+                    // Умный предикт по X/Z:
+                    //   - BPS = горизонтальная скорость цели в блоках/сек
+                    //   - если BPS <= порога — предикт = 0 (легит-движение)
+                    //   - если BPS > порога — предикт = motion * ticks, с учётом yaw-дельты
+                    Vec3d targetPos = computePredictedPos(target);
 
                     // Leave: пока идёт задержка удара (ticksToAttack > 0) — отходим,
-                    // иначе сближаемся к радиусу атаки
-                    double desiredDist;
+                    // иначе сближаемся к радиусу атаки (+ Пре дистанция для расширения)
                     if (leave.getValue() && aura.ticksToAttack > 0) {
-                        desiredDist = leaveDistance.getValue();
+                        double desiredDist = leaveDistance.getValue();
                         if (horizontalDistSq < desiredDist * desiredDist) {
                             Vec3d fromTarget = mc.player.getPos().subtract(targetPos);
                             double[] dir = getDirectionToPoint(Vec3d.ZERO, new Vec3d(fromTarget.x, 0.0, fromTarget.z), speed);
@@ -122,7 +122,9 @@ public class Speed extends Module {
                             return;
                         }
                     } else if (leave.getValue()) {
-                        desiredDist = attackDistance.getValue();
+                        // Расширяем радиус сближения на «Пре дистанция» — чтобы к моменту
+                        // когда ticksToAttack обнулится, игрок уже в зоне досягаемости KillAura
+                        double desiredDist = attackDistance.getValue() + preDistance.getValue();
                         if (horizontalDistSq > desiredDist * desiredDist) {
                             double[] dir = getDirectionToPoint(mc.player.getPos(), targetPos, speed);
                             Vec3d current = mc.player.getVelocity();
@@ -243,5 +245,43 @@ public class Speed extends Module {
         double length = Math.sqrt(dx * dx + dz * dz);
         if (length < 1.0E-6) return new double[]{0.0, 0.0};
         return new double[]{dx / length * speedValue, dz / length * speedValue};
+    }
+
+    /**
+     * Умный предикт позиции цели по X/Z.
+     * <p>
+     * Сравнивает BPS (blocks per second) цели с {@link #hvhPredictStrength} — если BPS <= порога,
+     * предикт отключён (легит-движение: ходьба ~4.3, бег ~5.6, бег+Speed II ~7.0).
+     * Иначе — линейный предикт по velocity на {@code hvhPredictStrength} тиков вперёд,
+     * с учётом изменения yaw (если цель поворачивает, вектор velocity ротируется).
+     */
+    private Vec3d computePredictedPos(LivingEntity target) {
+        Vec3d pos = target.getPos();
+        Vec3d motion = target.getVelocity();
+
+        double horizontalMotionSq = motion.x * motion.x + motion.z * motion.z;
+        if (horizontalMotionSq < 1.0E-4) return pos;
+
+        double bps = Math.sqrt(horizontalMotionSq) * 20.0;
+        double threshold = hvhPredictSpeedThreshold.getValue();
+        if (bps <= threshold) return pos;
+
+        double ticks = hvhPredictStrength.getValue();
+
+        // Ротация вектора velocity по дельте yaw (если цель поворачивает — её motion не совпадает с направлением)
+        float prevYaw = target.prevYaw;
+        float yaw = target.getYaw();
+        float deltaYaw = yaw - prevYaw;
+
+        if (Math.abs(deltaYaw) > 0.001f) {
+            double rad = Math.toRadians(deltaYaw);
+            double cos = Math.cos(rad);
+            double sin = Math.sin(rad);
+            double mx = motion.x * cos - motion.z * sin;
+            double mz = motion.x * sin + motion.z * cos;
+            motion = new Vec3d(mx, motion.y, mz);
+        }
+
+        return pos.add(motion.x * ticks, 0.0, motion.z * ticks);
     }
 }
