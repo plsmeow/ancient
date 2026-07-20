@@ -18,6 +18,7 @@ import tech.onetap.module.settings.BooleanSetting;
 import tech.onetap.module.settings.ModeSetting;
 import tech.onetap.module.settings.SliderSetting;
 import tech.onetap.util.player.move.MoveUtil;
+import tech.onetap.util.text.ValueUnit;
 
 @ModuleInformation(moduleName = "Speed", moduleCategory = ModuleCategory.MOVEMENT)
 public class Speed extends Module {
@@ -38,6 +39,13 @@ public class Speed extends Module {
     private final BooleanSetting vulcanOnlyWhileMoving = new BooleanSetting("Только в движении", true).setVisible(() -> mode.is("Vulcan"));
 
     private final SliderSetting vanillaSpeed = new SliderSetting("Скорость", 1.18f, 1.05f, 10.0f, 0.01f).setVisible(() -> mode.is("Vanilla"));
+
+    // HvH Target — Vanilla: автоматически идём к цели KillAura с предиктом по X/Z
+    private final BooleanSetting hvhTarget = new BooleanSetting("HvH Target", false).setVisible(() -> mode.is("Vanilla"));
+    private final SliderSetting hvhTargetRange = new SliderSetting("Радиус цели", ValueUnit.countable("блок", "блока", "блоков"), 25, 1, 50, 0.5f)
+            .setVisible(() -> mode.is("Vanilla") && hvhTarget.getValue());
+    private final SliderSetting hvhPredictStrength = new SliderSetting("Сила предикта", 2.0f, 0.1f, 10.0f, 0.1f)
+            .setVisible(() -> mode.is("Vanilla") && hvhTarget.getValue());
 
     private static final double VANILLA_DEFAULT_SPEED = 0.2873;
 
@@ -71,6 +79,35 @@ public class Speed extends Module {
         if (mc.player.hasStatusEffect(StatusEffects.SPEED)) {
             double value = (mc.player.getStatusEffect(StatusEffects.SPEED).getAmplifier() + 1) * 0.205;
             speed += speed * value;
+        }
+
+        // HvH Target: если включён и есть валидная цель KillAura в радиусе — идём к предсказанной точке
+        if (hvhTarget.getValue()) {
+            KillAura aura = Onetap.getInstance().getModuleStorage().get(KillAura.class);
+            if (aura != null && aura.isEnabled() && aura.getTarget() != null) {
+                LivingEntity target = aura.getTarget();
+                Vec3d toTarget = target.getPos().subtract(mc.player.getPos());
+                double horizontalDistSq = toTarget.x * toTarget.x + toTarget.z * toTarget.z;
+                double range = hvhTargetRange.getValue();
+                if (horizontalDistSq <= range * range) {
+                    // Предикт позиции цели по X/Z с учётом её velocity и направления движения
+                    Vec3d targetPos = target.getPos();
+                    Vec3d targetMotion = target.getVelocity();
+                    double horizontalMotionSq = targetMotion.x * targetMotion.x + targetMotion.z * targetMotion.z;
+                    if (horizontalMotionSq > 1.0E-4) {
+                        targetPos = targetPos.add(
+                                targetMotion.x * hvhPredictStrength.getValue(),
+                                0.0,
+                                targetMotion.z * hvhPredictStrength.getValue()
+                        );
+                    }
+
+                    double[] dir = getDirectionToPoint(mc.player.getPos(), targetPos, speed);
+                    Vec3d current = mc.player.getVelocity();
+                    mc.player.setVelocity(dir[0], current.y, dir[1]);
+                    return;
+                }
+            }
         }
 
         double[] change = transformVanillaStrafe(speed);
