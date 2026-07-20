@@ -1,6 +1,10 @@
 package tech.onetap.module.list.movement;
 
 import com.google.common.eventbus.Subscribe;
+import net.minecraft.client.render.*;
+import net.minecraft.client.util.math.MatrixStack;
+import com.mojang.blaze3d.systems.RenderSystem;
+import net.minecraft.client.gl.ShaderProgramKeys;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.effect.StatusEffects;
@@ -8,6 +12,8 @@ import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.entity.vehicle.BoatEntity;
 import net.minecraft.util.math.Box;
 import net.minecraft.util.math.Vec3d;
+import org.joml.Matrix4f;
+import org.lwjgl.opengl.GL11;
 import tech.onetap.Onetap;
 import tech.onetap.event.list.*;
 import tech.onetap.module.Module;
@@ -18,6 +24,7 @@ import tech.onetap.module.list.combat.TpAura;
 import tech.onetap.module.settings.BooleanSetting;
 import tech.onetap.module.settings.ModeSetting;
 import tech.onetap.module.settings.SliderSetting;
+import tech.onetap.util.player.combat.HvhTargetPredict;
 import tech.onetap.util.player.move.MoveUtil;
 import tech.onetap.util.text.ValueUnit;
 
@@ -39,17 +46,16 @@ public class Speed extends Module {
 
     private final BooleanSetting vulcanOnlyWhileMoving = new BooleanSetting("Только в движении", true).setVisible(() -> mode.is("Vulcan"));
 
-    private final SliderSetting vanillaSpeed = new SliderSetting("Скорость", 1.18f, 1.05f, 10.0f, 0.01f).setVisible(() -> mode.is("Vanilla"));
+    private final SliderSetting vanillaSpeed = new SliderSetting("Скорость", 1.18f, 1.05f, 20.0f, 0.5f).setVisible(() -> mode.is("Vanilla"));
 
     // HvH Target — Vanilla: автоматически идём к цели KillAura с предиктом по X/Z
     private final BooleanSetting hvhTarget = new BooleanSetting("HvH Target", false).setVisible(() -> mode.is("Vanilla"));
     private final SliderSetting hvhTargetRange = new SliderSetting("Радиус цели", ValueUnit.countable("блок", "блока", "блоков"), 50, 1, 50, 0.5f)
             .setVisible(() -> mode.is("Vanilla") && hvhTarget.getValue());
-    // Сила предикта теперь интерпретируется как количество тиков вперёд (при высокой скорости цели)
+    // Сила предикта = количество тиков вперёд для HvhTargetPredict
     private final SliderSetting hvhPredictStrength = new SliderSetting("Сила предикта", 4.0f, 0.5f, 20.0f, 0.1f)
             .setVisible(() -> mode.is("Vanilla") && hvhTarget.getValue());
-    // BPS-порог: ниже — не предиктим (ходьба ~4.3, бег ~5.6, бег+Speed II ~7.0)
-    private final SliderSetting hvhPredictSpeedThreshold = new SliderSetting("Порог предикта", 7.0f, 4.0f, 15.0f, 0.1f)
+    private final BooleanSetting hvhRender = new BooleanSetting("Рендер предикта", true)
             .setVisible(() -> mode.is("Vanilla") && hvhTarget.getValue());
 
     // Leave — Vanilla: отход на дистанцию пока удар не готов, иначе сближение к радиусу атаки
@@ -60,6 +66,10 @@ public class Speed extends Module {
             .setVisible(() -> mode.is("Vanilla") && hvhTarget.getValue() && leave.getValue());
 
     private static final double VANILLA_DEFAULT_SPEED = 0.2873;
+    // Зона допуска у цели (блоки) — резкая остановка, чтобы избежать дёрганья
+    private static final double HVH_TARGET_ZONE = 0.6;
+
+    private LivingEntity lastHvhTarget = null;
 
     public boolean isHvhTargetEnabled() {
         return mode.is("Vanilla") && hvhTarget.getValue();
@@ -67,6 +77,8 @@ public class Speed extends Module {
 
     @Override
     public void onDisable() {
+        if (lastHvhTarget != null) HvhTargetPredict.reset(lastHvhTarget);
+        lastHvhTarget = null;
         super.onDisable();
     }
 
@@ -102,6 +114,10 @@ public class Speed extends Module {
             KillAura aura = Onetap.getInstance().getModuleStorage().get(KillAura.class);
             if (aura != null && aura.isEnabled() && aura.getTarget() != null) {
                 LivingEntity target = aura.getTarget();
+                if (lastHvhTarget != null && lastHvhTarget != target) {
+                    HvhTargetPredict.reset(lastHvhTarget);
+                }
+                lastHvhTarget = target;
                 Vec3d toTarget = target.getPos().subtract(mc.player.getPos());
                 double horizontalDistSq = toTarget.x * toTarget.x + toTarget.z * toTarget.z;
                 double range = hvhTargetRange.getValue();
@@ -116,7 +132,7 @@ public class Speed extends Module {
                     //   - BPS = горизонтальная скорость цели в блоках/сек
                     //   - если BPS <= порога — предикт = 0 (легит-движение)
                     //   - если BPS > порога — предикт = motion * ticks, с учётом yaw-дельты
-                    Vec3d targetPos = computePredictedPos(target);
+                    Vec3d targetPos = HvhTargetPredict.predict(target, hvhPredictStrength.getValue());
 
                     // Leave: пока идёт задержка удара (ticksToAttack > 0) — отходим,
                     // иначе сближаемся к радиусу атаки (+ Пре дистанция для расширения)
@@ -143,11 +159,29 @@ public class Speed extends Module {
                             mc.player.setVelocity(dir[0], current.y, dir[1]);
                             return;
                         }
+                        // Внутри зоны удара — резкая остановка, чтобы не перелетать цель
+                        Vec3d current = mc.player.getVelocity();
+                        mc.player.setVelocity(0.0, current.y, 0.0);
+                        return;
                     }
 
-                    double[] dir = getDirectionToPoint(mc.player.getPos(), targetPos, speed);
-                    Vec3d current = mc.player.getVelocity();
-                    mc.player.setVelocity(dir[0], current.y, dir[1]);
+                    // Дистанция по горизонтали до точки предикта
+                    double dx = targetPos.x - mc.player.getX();
+                    double dz = targetPos.z - mc.player.getZ();
+                    double distToPoint = Math.sqrt(dx * dx + dz * dz);
+
+                    if (distToPoint <= HVH_TARGET_ZONE) {
+                        // Достигли цели/предикта — резкая остановка, без дёрганья
+                        Vec3d current = mc.player.getVelocity();
+                        mc.player.setVelocity(0.0, current.y, 0.0);
+                    } else {
+                        // Движемся к точке, но ограничиваем скорость остатком
+                        // дистанции, чтобы не перелетать цель на высокой скорости
+                        double moveSpeed = Math.min(speed, distToPoint);
+                        double[] dir = getDirectionToPoint(mc.player.getPos(), targetPos, moveSpeed);
+                        Vec3d current = mc.player.getVelocity();
+                        mc.player.setVelocity(dir[0], current.y, dir[1]);
+                    }
                     return;
                 }
             }
@@ -259,41 +293,82 @@ public class Speed extends Module {
         return new double[]{dx / length * speedValue, dz / length * speedValue};
     }
 
-    /**
-     * Умный предикт позиции цели по X/Z.
-     * <p>
-     * Сравнивает BPS (blocks per second) цели с {@link #hvhPredictStrength} — если BPS <= порога,
-     * предикт отключён (легит-движение: ходьба ~4.3, бег ~5.6, бег+Speed II ~7.0).
-     * Иначе — линейный предикт по velocity на {@code hvhPredictStrength} тиков вперёд,
-     * с учётом изменения yaw (если цель поворачивает, вектор velocity ротируется).
-     */
-    private Vec3d computePredictedPos(LivingEntity target) {
-        Vec3d pos = target.getPos();
-        Vec3d motion = target.getVelocity();
+    @Subscribe
+    private void onWorldRender(EventWorldRender event) {
+        if (!mode.is("Vanilla") || !hvhTarget.getValue() || !hvhRender.getValue()) return;
+        if (mc.player == null || mc.world == null) return;
 
-        double horizontalMotionSq = motion.x * motion.x + motion.z * motion.z;
-        if (horizontalMotionSq < 1.0E-4) return pos;
+        KillAura aura = Onetap.getInstance().getModuleStorage().get(KillAura.class);
+        if (aura == null || !aura.isEnabled() || aura.getTarget() == null) return;
 
-        double bps = Math.sqrt(horizontalMotionSq) * 20.0;
-        double threshold = hvhPredictSpeedThreshold.getValue();
-        if (bps <= threshold) return pos;
+        LivingEntity target = aura.getTarget();
+        Vec3d predicted = HvhTargetPredict.predict(target, hvhPredictStrength.getValue());
 
-        double ticks = hvhPredictStrength.getValue();
+        // Точка предикта (центр по Y сущности, как у цели)
+        Vec3d point = new Vec3d(predicted.x, target.getBoundingBox().getCenter().y, predicted.z);
 
-        // Ротация вектора velocity по дельте yaw (если цель поворачивает — её motion не совпадает с направлением)
-        float prevYaw = target.prevYaw;
-        float yaw = target.getYaw();
-        float deltaYaw = yaw - prevYaw;
+        // Стартовая точка — ноги localPlayer
+        Vec3d camPos = mc.gameRenderer.getCamera().getPos();
+        Vec3d feet = mc.player.getPos();
+        Vec3d start = new Vec3d(feet.x, feet.y, feet.z);
 
-        if (Math.abs(deltaYaw) > 0.001f) {
-            double rad = Math.toRadians(deltaYaw);
-            double cos = Math.cos(rad);
-            double sin = Math.sin(rad);
-            double mx = motion.x * cos - motion.z * sin;
-            double mz = motion.x * sin + motion.z * cos;
-            motion = new Vec3d(mx, motion.y, mz);
-        }
+        MatrixStack stack = event.getMatrixStack();
 
-        return pos.add(motion.x * ticks, 0.0, motion.z * ticks);
+        double startX = start.x - camPos.x;
+        double startY = start.y - camPos.y;
+        double startZ = start.z - camPos.z;
+        double pointX = point.x - camPos.x;
+        double pointY = point.y - camPos.y;
+        double pointZ = point.z - camPos.z;
+
+        stack.push();
+        RenderSystem.enableBlend();
+        GL11.glEnable(GL11.GL_LINE_SMOOTH);
+        RenderSystem.defaultBlendFunc();
+        RenderSystem.disableDepthTest();
+        RenderSystem.disableCull();
+        RenderSystem.setShader(ShaderProgramKeys.POSITION_COLOR);
+
+        // Линия от ног localPlayer к точке предикта
+        Matrix4f matrix = stack.peek().getPositionMatrix();
+        BufferBuilder lineBuffer = Tessellator.getInstance().begin(VertexFormat.DrawMode.DEBUG_LINES, VertexFormats.POSITION_COLOR);
+        float lr = 0.0f, lg = 1.0f, lb = 0.0f;
+        line(lineBuffer, matrix, startX, startY, startZ, pointX, pointY, pointZ, lr, lg, lb, 1.0f);
+        BufferRenderer.drawWithGlobalProgram(lineBuffer.end());
+
+        // Бокс-маркер в точке предикта (0.3 блока)
+        double s = 0.3;
+        BufferBuilder boxBuffer = Tessellator.getInstance().begin(VertexFormat.DrawMode.DEBUG_LINES, VertexFormats.POSITION_COLOR);
+        drawPointBox(boxBuffer, matrix, pointX, pointY, pointZ, s, 1.0f, 0.0f, 1.0f, 1.0f);
+        BufferRenderer.drawWithGlobalProgram(boxBuffer.end());
+
+        RenderSystem.enableCull();
+        RenderSystem.enableDepthTest();
+        GL11.glDisable(GL11.GL_LINE_SMOOTH);
+        RenderSystem.disableBlend();
+        stack.pop();
     }
+
+    private void drawPointBox(BufferBuilder buffer, Matrix4f matrix, double cx, double cy, double cz, double s, float r, float g, float b, float a) {
+        double minX = cx - s, minY = cy - s, minZ = cz - s;
+        double maxX = cx + s, maxY = cy + s, maxZ = cz + s;
+        line(buffer, matrix, minX, minY, minZ, maxX, minY, minZ, r, g, b, a);
+        line(buffer, matrix, maxX, minY, minZ, maxX, minY, maxZ, r, g, b, a);
+        line(buffer, matrix, maxX, minY, maxZ, minX, minY, maxZ, r, g, b, a);
+        line(buffer, matrix, minX, minY, maxZ, minX, minY, minZ, r, g, b, a);
+        line(buffer, matrix, minX, maxY, minZ, maxX, maxY, minZ, r, g, b, a);
+        line(buffer, matrix, maxX, maxY, minZ, maxX, maxY, maxZ, r, g, b, a);
+        line(buffer, matrix, maxX, maxY, maxZ, minX, maxY, maxZ, r, g, b, a);
+        line(buffer, matrix, minX, maxY, maxZ, minX, maxY, minZ, r, g, b, a);
+        line(buffer, matrix, minX, minY, minZ, minX, maxY, minZ, r, g, b, a);
+        line(buffer, matrix, maxX, minY, minZ, maxX, maxY, minZ, r, g, b, a);
+        line(buffer, matrix, maxX, minY, maxZ, maxX, maxY, maxZ, r, g, b, a);
+        line(buffer, matrix, minX, minY, maxZ, minX, maxY, maxZ, r, g, b, a);
+    }
+
+    private void line(BufferBuilder buffer, Matrix4f matrix, double x1, double y1, double z1, double x2, double y2, double z2, float r, float g, float b, float a) {
+        buffer.vertex(matrix, (float) x1, (float) y1, (float) z1).color(r, g, b, a);
+        buffer.vertex(matrix, (float) x2, (float) y2, (float) z2).color(r, g, b, a);
+    }
+
 }
