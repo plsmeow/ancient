@@ -60,9 +60,10 @@ public class Speed extends Module {
             .setVisible(() -> mode.is("Vanilla") && hvhTarget.getValue() && leave.getValue());
 
     private static final double VANILLA_DEFAULT_SPEED = 0.2873;
-    // Буфер дистанции для HvH Target: в этих 50 блоках KillAura всегда видит цель
-    // и не теряет её при отходе на дистанцию, указанную в KillAura
-    private static final double HVH_BUFFER = 50.0;
+
+    public boolean isHvhTargetEnabled() {
+        return hvhTarget.getValue();
+    }
 
     @Override
     public void onDisable() {
@@ -103,9 +104,7 @@ public class Speed extends Module {
                 LivingEntity target = aura.getTarget();
                 Vec3d toTarget = target.getPos().subtract(mc.player.getPos());
                 double horizontalDistSq = toTarget.x * toTarget.x + toTarget.z * toTarget.z;
-                // Радиус обнаружения = hvhTargetRange + фиксированный буфер 50 блоков:
-                // в этих 50 блоках KillAura всегда видит цель и не теряет её при отходе
-                double range = hvhTargetRange.getValue() + HVH_BUFFER;
+                double range = hvhTargetRange.getValue();
                 // Если TpAura активен — расширяем радиус обнаружения на его макс. дистанцию,
                 // чтобы Speed преследовал цель, пока TpAura не телепортнёт её для удара
                 TpAura tpAura = Onetap.getInstance().getModuleStorage().get(TpAura.class);
@@ -122,8 +121,7 @@ public class Speed extends Module {
                     // Leave: пока идёт задержка удара (ticksToAttack > 0) — отходим,
                     // иначе сближаемся к радиусу атаки (+ Пре дистанция для расширения)
                     if (leave.getValue() && aura.ticksToAttack > 0) {
-                        // Отход ограничен буфером (50 блоков), чтобы KillAura не теряла цель
-                        double desiredDist = Math.min(leaveDistance.getValue(), HVH_BUFFER);
+                        double desiredDist = leaveDistance.getValue();
                         if (horizontalDistSq < desiredDist * desiredDist) {
                             Vec3d fromTarget = mc.player.getPos().subtract(targetPos);
                             double[] dir = getDirectionToPoint(Vec3d.ZERO, new Vec3d(fromTarget.x, 0.0, fromTarget.z), speed);
@@ -134,8 +132,7 @@ public class Speed extends Module {
                     } else if (leave.getValue()) {
                         // Сближение к радиусу удара + TpAura.getMaxDistance() —
                         // если TpAura включён, он телепортирует игрока к цели перед ударом,
-                        // поэтому можем сближаться на его максимальную дистанцию.
-                        // Пре дистанция удалена: буфер 50 блоков фиксирован и добавлен к радиусу обнаружения
+                        // поэтому можем сближаться на его максимальную дистанцию
                         double desiredDist = attackDistance.getValue();
                         if (tpAura != null && tpAura.isEnabled()) {
                             desiredDist += tpAura.getMaxDistance();
