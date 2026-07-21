@@ -1,7 +1,9 @@
 package tech.onetap.module.list.movement;
 
 import com.google.common.eventbus.Subscribe;
+import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents;
 import net.minecraft.client.render.*;
+import net.minecraft.client.render.Camera;
 import net.minecraft.client.util.math.MatrixStack;
 import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.client.gl.ShaderProgramKeys;
@@ -13,7 +15,6 @@ import net.minecraft.entity.vehicle.BoatEntity;
 import net.minecraft.util.math.Box;
 import net.minecraft.util.math.Vec3d;
 import org.joml.Matrix4f;
-import org.lwjgl.opengl.GL11;
 import tech.onetap.Onetap;
 import tech.onetap.event.list.*;
 import tech.onetap.module.Module;
@@ -26,6 +27,7 @@ import tech.onetap.module.settings.ModeSetting;
 import tech.onetap.module.settings.SliderSetting;
 import tech.onetap.util.player.combat.HvhTargetPredict;
 import tech.onetap.util.player.move.MoveUtil;
+import tech.onetap.util.render.providers.ColorProvider;
 import tech.onetap.util.text.ValueUnit;
 
 @ModuleInformation(moduleName = "Speed", moduleCategory = ModuleCategory.MOVEMENT)
@@ -71,6 +73,12 @@ public class Speed extends Module {
 
     private LivingEntity lastHvhTarget = null;
 
+    // Данные для рендера предикта (обновляются на тике в handleVanilla)
+    private Vec3d renderPredicted = null;
+    private Vec3d renderLeaveTarget = null; // null если leave не активен
+    private boolean renderIsLeaving = false; // true = отход, false = сближение, null бездействие
+    private LivingEntity renderTarget = null;
+
     public boolean isHvhTargetEnabled() {
         return mode.is("Vanilla") && hvhTarget.getValue();
     }
@@ -79,6 +87,9 @@ public class Speed extends Module {
     public void onDisable() {
         if (lastHvhTarget != null) HvhTargetPredict.reset(lastHvhTarget);
         lastHvhTarget = null;
+        renderTarget = null;
+        renderPredicted = null;
+        renderLeaveTarget = null;
         super.onDisable();
     }
 
@@ -121,21 +132,15 @@ public class Speed extends Module {
                 Vec3d toTarget = target.getPos().subtract(mc.player.getPos());
                 double horizontalDistSq = toTarget.x * toTarget.x + toTarget.z * toTarget.z;
                 double range = hvhTargetRange.getValue();
-                // Если TpAura активен — расширяем радиус обнаружения на его макс. дистанцию,
-                // чтобы Speed преследовал цель, пока TpAura не телепортнёт её для удара
                 TpAura tpAura = Onetap.getInstance().getModuleStorage().get(TpAura.class);
                 if (tpAura != null && tpAura.isEnabled()) {
                     range += tpAura.getMaxDistance();
                 }
                 if (horizontalDistSq <= range * range) {
-                    // Умный предикт по X/Z:
-                    //   - BPS = горизонтальная скорость цели в блоках/сек
-                    //   - если BPS <= порога — предикт = 0 (легит-движение)
-                    //   - если BPS > порога — предикт = motion * ticks, с учётом yaw-дельты
                     Vec3d targetPos = HvhTargetPredict.predict(target, hvhPredictStrength.getValue());
 
                     // Leave: пока идёт задержка удара (ticksToAttack > 0) — отходим,
-                    // иначе сближаемся к радиусу атаки (+ Пре дистанция для расширения)
+                    // иначе сближаемся к радиусу атаки
                     if (leave.getValue() && aura.ticksToAttack > 0) {
                         double desiredDist = leaveDistance.getValue();
                         if (horizontalDistSq < desiredDist * desiredDist) {
@@ -143,12 +148,26 @@ public class Speed extends Module {
                             double[] dir = getDirectionToPoint(Vec3d.ZERO, new Vec3d(fromTarget.x, 0.0, fromTarget.z), speed);
                             Vec3d current = mc.player.getVelocity();
                             mc.player.setVelocity(dir[0], current.y, dir[1]);
+                            // Рендер: предикт-цель + точка направления (отход)
+                            renderTarget = target;
+                            renderPredicted = targetPos;
+                            // Точка отхода: дистанция desiredDist от targetPos по нормализованному вектору "от цели"
+                            double len = Math.hypot(fromTarget.x, fromTarget.z);
+                            if (len < 1.0E-6) {
+                                renderLeaveTarget = targetPos;
+                            } else {
+                                double k = desiredDist / len;
+                                renderLeaveTarget = new Vec3d(
+                                        targetPos.x - fromTarget.x * k,
+                                        targetPos.y,
+                                        targetPos.z - fromTarget.z * k
+                                );
+                            }
+                            renderIsLeaving = true;
                             return;
                         }
                     } else if (leave.getValue()) {
-                        // Сближение к радиусу удара + TpAura.getMaxDistance() —
-                        // если TpAura включён, он телепортирует игрока к цели перед ударом,
-                        // поэтому можем сближаться на его максимальную дистанцию
+                        // Сближение к радиусу удара
                         double desiredDist = attackDistance.getValue();
                         if (tpAura != null && tpAura.isEnabled()) {
                             desiredDist += tpAura.getMaxDistance();
@@ -157,11 +176,31 @@ public class Speed extends Module {
                             double[] dir = getDirectionToPoint(mc.player.getPos(), targetPos, speed);
                             Vec3d current = mc.player.getVelocity();
                             mc.player.setVelocity(dir[0], current.y, dir[1]);
+                            // Рендер: предикт-цель + точка сближения (desiredDist от игрока к цели)
+                            renderTarget = target;
+                            renderPredicted = targetPos;
+                            double pdx = targetPos.x - mc.player.getX();
+                            double pdz = targetPos.z - mc.player.getZ();
+                            double plen = Math.hypot(pdx, pdz);
+                            if (plen < 1.0E-6) {
+                                renderLeaveTarget = mc.player.getPos();
+                            } else {
+                                double k = desiredDist / plen;
+                                renderLeaveTarget = new Vec3d(
+                                        mc.player.getX() + pdx * k,
+                                        mc.player.getY(),
+                                        mc.player.getZ() + pdz * k
+                                );
+                            }
+                            renderIsLeaving = false;
                             return;
                         }
                         // Внутри зоны удара — резкая остановка, чтобы не перелетать цель
                         Vec3d current = mc.player.getVelocity();
                         mc.player.setVelocity(0.0, current.y, 0.0);
+                        renderTarget = target;
+                        renderPredicted = targetPos;
+                        renderLeaveTarget = null;
                         return;
                     }
 
@@ -182,6 +221,10 @@ public class Speed extends Module {
                         Vec3d current = mc.player.getVelocity();
                         mc.player.setVelocity(dir[0], current.y, dir[1]);
                     }
+                    // Рендер: только предикт-цель (без leave)
+                    renderTarget = target;
+                    renderPredicted = targetPos;
+                    renderLeaveTarget = null;
                     return;
                 }
             }
@@ -191,6 +234,10 @@ public class Speed extends Module {
 
         Vec3d current = mc.player.getVelocity();
         mc.player.setVelocity(change[0], current.y, change[1]);
+        // Вне HvH Target — рендер не рисуем
+        renderTarget = null;
+        renderPredicted = null;
+        renderLeaveTarget = null;
     }
 
     private double[] transformVanillaStrafe(double speed) {
@@ -293,60 +340,103 @@ public class Speed extends Module {
         return new double[]{dx / length * speedValue, dz / length * speedValue};
     }
 
-    @Subscribe
-    private void onWorldRender(EventWorldRender event) {
-        if (!mode.is("Vanilla") || !hvhTarget.getValue() || !hvhRender.getValue()) return;
+    private boolean renderRegistered = false;
+
+    @Override
+    public void onEnable() {
+        super.onEnable();
+        if (!renderRegistered) {
+            WorldRenderEvents.LAST.register((context) -> onWorldRender(context.matrixStack(), context.camera(), context.tickCounter().getTickDelta(true)));
+            renderRegistered = true;
+        }
+    }
+
+    private void onWorldRender(MatrixStack matrices, Camera camera, float tickDelta) {
+        if (!isEnabled() || !mode.is("Vanilla") || !hvhTarget.getValue() || !hvhRender.getValue()) return;
         if (mc.player == null || mc.world == null) return;
+        if (renderTarget == null || !renderTarget.isAlive() || renderPredicted == null) return;
 
-        KillAura aura = Onetap.getInstance().getModuleStorage().get(KillAura.class);
-        if (aura == null || !aura.isEnabled() || aura.getTarget() == null) return;
+        LivingEntity target = renderTarget;
+        Vec3d predicted = renderPredicted;
 
-        LivingEntity target = aura.getTarget();
-        Vec3d predicted = HvhTargetPredict.predict(target, hvhPredictStrength.getValue(), event.getTickDelta());
+        // Бокс вокруг предсказанной позиции цели (как у TpAura — по ширине/высоте цели)
+        float halfWidth = target.getWidth() / 2f;
+        Box hitbox = new Box(
+                predicted.x - halfWidth, predicted.y, predicted.z - halfWidth,
+                predicted.x + halfWidth, predicted.y + target.getHeight(), predicted.z + halfWidth
+        );
 
-        // Точка предикта (центр по Y сущности, как у цели)
-        Vec3d point = new Vec3d(predicted.x, target.getBoundingBox().getCenter().y, predicted.z);
+        Vec3d camPos = camera.getPos();
 
-        // Стартовая точка — ноги localPlayer
-        Vec3d camPos = mc.gameRenderer.getCamera().getPos();
-        Vec3d feet = mc.player.getPos();
-        Vec3d start = new Vec3d(feet.x, feet.y, feet.z);
+        int colorMain = ColorProvider.getThemeColor();
+        int colorTwo = ColorProvider.getThemeColorTwo();
+        float mr = ((colorMain >> 16) & 0xFF) / 255f;
+        float mg = ((colorMain >> 8) & 0xFF) / 255f;
+        float mb = (colorMain & 0xFF) / 255f;
+        float tr = ((colorTwo >> 16) & 0xFF) / 255f;
+        float tg = ((colorTwo >> 8) & 0xFF) / 255f;
+        float tb = (colorTwo & 0xFF) / 255f;
 
-        MatrixStack stack = event.getMatrixStack();
+        com.mojang.blaze3d.systems.RenderSystem.enableBlend();
+        com.mojang.blaze3d.systems.RenderSystem.defaultBlendFunc();
+        com.mojang.blaze3d.systems.RenderSystem.disableDepthTest();
+        com.mojang.blaze3d.systems.RenderSystem.setShader(ShaderProgramKeys.POSITION_COLOR);
+        com.mojang.blaze3d.systems.RenderSystem.lineWidth(2.0f);
+        com.mojang.blaze3d.systems.RenderSystem.disableCull();
 
-        double startX = start.x - camPos.x;
-        double startY = start.y - camPos.y;
-        double startZ = start.z - camPos.z;
-        double pointX = point.x - camPos.x;
-        double pointY = point.y - camPos.y;
-        double pointZ = point.z - camPos.z;
+        Matrix4f matrix = matrices.peek().getPositionMatrix();
 
-        stack.push();
-        RenderSystem.enableBlend();
-        GL11.glEnable(GL11.GL_LINE_SMOOTH);
-        RenderSystem.defaultBlendFunc();
-        RenderSystem.disableDepthTest();
-        RenderSystem.disableCull();
-        RenderSystem.setShader(ShaderProgramKeys.POSITION_COLOR);
-
-        // Линия от ног localPlayer к точке предикта
-        Matrix4f matrix = stack.peek().getPositionMatrix();
-        BufferBuilder lineBuffer = Tessellator.getInstance().begin(VertexFormat.DrawMode.DEBUG_LINES, VertexFormats.POSITION_COLOR);
-        float lr = 0.0f, lg = 1.0f, lb = 0.0f;
-        line(lineBuffer, matrix, startX, startY, startZ, pointX, pointY, pointZ, lr, lg, lb, 1.0f);
-        BufferRenderer.drawWithGlobalProgram(lineBuffer.end());
-
-        // Бокс-маркер в точке предикта (0.3 блока)
-        double s = 0.3;
+        // 1) Бокс предикта (основной цвет темы)
         BufferBuilder boxBuffer = Tessellator.getInstance().begin(VertexFormat.DrawMode.DEBUG_LINES, VertexFormats.POSITION_COLOR);
-        drawPointBox(boxBuffer, matrix, pointX, pointY, pointZ, s, 1.0f, 0.0f, 1.0f, 1.0f);
+        drawLineBox(boxBuffer, matrix,
+                hitbox.minX - camPos.x, hitbox.minY - camPos.y, hitbox.minZ - camPos.z,
+                hitbox.maxX - camPos.x, hitbox.maxY - camPos.y, hitbox.maxZ - camPos.z,
+                mr, mg, mb, 0.8f);
         BufferRenderer.drawWithGlobalProgram(boxBuffer.end());
 
-        RenderSystem.enableCull();
-        RenderSystem.enableDepthTest();
-        GL11.glDisable(GL11.GL_LINE_SMOOTH);
-        RenderSystem.disableBlend();
-        stack.pop();
+        // 2) Линия от ног игрока к ногам предикта (к низу бокса), основной цвет
+        BufferBuilder lineBuffer = Tessellator.getInstance().begin(VertexFormat.DrawMode.DEBUG_LINES, VertexFormats.POSITION_COLOR);
+        double startX = mc.player.getX() - camPos.x;
+        double startY = mc.player.getY() - camPos.y;
+        double startZ = mc.player.getZ() - camPos.z;
+        double endX = predicted.x - camPos.x;
+        double endY = predicted.y - camPos.y;
+        double endZ = predicted.z - camPos.z;
+        line(lineBuffer, matrix, startX, startY, startZ, endX, endY, endZ, mr, mg, mb, 0.8f);
+
+        // 3) При активном leave — точка направления (второй цвет темы):
+        //    маленький бокс на земле + линия от ног игрока к этой точке
+        if (renderLeaveTarget != null) {
+            double lx = renderLeaveTarget.x - camPos.x;
+            double ly = renderLeaveTarget.y - camPos.y;
+            double lz = renderLeaveTarget.z - camPos.z;
+            double s = 0.3;
+            // Бокс-точка направления
+            drawPointBox(lineBuffer, matrix, lx, ly, lz, s, tr, tg, tb, 0.9f);
+            // Линия от ног игрока к точке направления
+            line(lineBuffer, matrix, startX, startY, startZ, lx, ly, lz, tr, tg, tb, 0.9f);
+        }
+        BufferRenderer.drawWithGlobalProgram(lineBuffer.end());
+
+        com.mojang.blaze3d.systems.RenderSystem.enableDepthTest();
+        com.mojang.blaze3d.systems.RenderSystem.disableBlend();
+        com.mojang.blaze3d.systems.RenderSystem.enableCull();
+        com.mojang.blaze3d.systems.RenderSystem.lineWidth(1.0f);
+    }
+
+    private void drawLineBox(BufferBuilder buffer, Matrix4f matrix, double minX, double minY, double minZ, double maxX, double maxY, double maxZ, float r, float g, float b, float a) {
+        line(buffer, matrix, minX, minY, minZ, maxX, minY, minZ, r, g, b, a);
+        line(buffer, matrix, maxX, minY, minZ, maxX, minY, maxZ, r, g, b, a);
+        line(buffer, matrix, maxX, minY, maxZ, minX, minY, maxZ, r, g, b, a);
+        line(buffer, matrix, minX, minY, maxZ, minX, minY, minZ, r, g, b, a);
+        line(buffer, matrix, minX, maxY, minZ, maxX, maxY, minZ, r, g, b, a);
+        line(buffer, matrix, maxX, maxY, minZ, maxX, maxY, maxZ, r, g, b, a);
+        line(buffer, matrix, maxX, maxY, maxZ, minX, maxY, maxZ, r, g, b, a);
+        line(buffer, matrix, minX, maxY, maxZ, minX, maxY, minZ, r, g, b, a);
+        line(buffer, matrix, minX, minY, minZ, minX, maxY, minZ, r, g, b, a);
+        line(buffer, matrix, maxX, minY, minZ, maxX, maxY, minZ, r, g, b, a);
+        line(buffer, matrix, maxX, minY, maxZ, maxX, maxY, maxZ, r, g, b, a);
+        line(buffer, matrix, minX, minY, maxZ, minX, maxY, maxZ, r, g, b, a);
     }
 
     private void drawPointBox(BufferBuilder buffer, Matrix4f matrix, double cx, double cy, double cz, double s, float r, float g, float b, float a) {
@@ -370,5 +460,4 @@ public class Speed extends Module {
         buffer.vertex(matrix, (float) x1, (float) y1, (float) z1).color(r, g, b, a);
         buffer.vertex(matrix, (float) x2, (float) y2, (float) z2).color(r, g, b, a);
     }
-
 }
