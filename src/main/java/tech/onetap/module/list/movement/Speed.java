@@ -49,6 +49,7 @@ public class Speed extends Module {
     private final BooleanSetting vulcanOnlyWhileMoving = new BooleanSetting("Только в движении", true).setVisible(() -> mode.is("Vulcan"));
 
     private final SliderSetting vanillaSpeed = new SliderSetting("Скорость", 1.18f, 1.05f, 20.0f, 0.5f).setVisible(() -> mode.is("Vanilla"));
+    private final BooleanSetting clownHvhWaterfix = new BooleanSetting("ClownHVH waterfix", false).setVisible(() -> mode.is("Vanilla"));
 
     // HvH Target — Vanilla: автоматически идём к цели KillAura с предиктом по X/Z
     private final BooleanSetting hvhTarget = new BooleanSetting("HvH Target", false).setVisible(() -> mode.is("Vanilla"));
@@ -118,6 +119,10 @@ public class Speed extends Module {
         if (mc.player.hasStatusEffect(StatusEffects.SPEED)) {
             double value = (mc.player.getStatusEffect(StatusEffects.SPEED).getAmplifier() + 1) * 0.205;
             speed += speed * value;
+        }
+
+        if (clownHvhWaterfix.getValue() && mc.player.isTouchingWater()) {
+            speed = 4.5;
         }
 
         // HvH Target: если включён и есть валидная цель KillAura в радиусе — идём к предсказанной точке

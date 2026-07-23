@@ -33,6 +33,8 @@ public class Panel implements IMinecraft {
     float maxScroll;
 
     private final ClickGuiFrame parent;
+    private boolean headerVisible = true;
+    private boolean backgroundVisible = true;
 
     public Panel(ModuleCategory category, ClickGuiFrame parent) {
         this.category = category;
@@ -51,6 +53,27 @@ public class Panel implements IMinecraft {
         }
     }
 
+    public void setCompactMode(boolean compactMode) {
+        this.headerVisible = !compactMode;
+        this.backgroundVisible = !compactMode;
+    }
+
+    public void setHeaderVisible(boolean headerVisible) {
+        this.headerVisible = headerVisible;
+    }
+
+    public void setBackgroundVisible(boolean backgroundVisible) {
+        this.backgroundVisible = backgroundVisible;
+    }
+
+    public float getContentTop() {
+        return headerVisible ? y + 20 : y;
+    }
+
+    public float getContentBottom() {
+        return headerVisible ? y + height - 4 : y + height - 4;
+    }
+
     public void render(MatrixStack matrixStack, int mouseX, int mouseY, float partialTicks) {
         animationAlpha.setValue(1);
         float alpha = Math.min(255 * animationAlpha.getValue(), 255);
@@ -58,32 +81,32 @@ public class Panel implements IMinecraft {
         float cornerRadius = 8f;
         float headerHeight = 20f;
 
-        // ==========================================================
-        // ИЗМЕНЕНИЕ: Проверка на Optimization и применение цвета 15, 15, 15
-        // ==========================================================
-        if (tech.onetap.module.list.render.Optimization.shouldDisableClickGuiBlur()) {
-            // Если включена оптимизация — рисуем чистый сплошной фон 15, 15, 15 без блюра
-            int optColor = ColorProvider.rgba(15, 15, 15, (int)(255 * alphaRatio));
-            DrawUtil.drawRound(x, y, width, height, cornerRadius, optColor);
-        } else {
-            // Если оптимизация выключена — оставляем ваш дефолтный блюр панели
-            DrawUtil.drawRoundBlur(x, y, width, height, cornerRadius, ColorProvider.rgba(75, 75, 75, (int)(255 * alphaRatio)), 20f);
-            int panelColor = ColorProvider.rgba(14, 14, 16, (int)(130 * alphaRatio));
-            DrawUtil.drawRound(x, y, width, height, cornerRadius, panelColor);
+        if (backgroundVisible) {
+            if (tech.onetap.module.list.render.Optimization.shouldDisableClickGuiBlur()) {
+                int optColor = ColorProvider.rgba(15, 15, 15, (int) (255 * alphaRatio));
+                DrawUtil.drawRound(x, y, width, height, cornerRadius, optColor);
+            } else {
+                DrawUtil.drawRoundBlur(x, y, width, height, cornerRadius, ColorProvider.rgba(75, 75, 75, (int) (255 * alphaRatio)), 20f);
+                int panelColor = ColorProvider.rgba(14, 14, 16, (int) (130 * alphaRatio));
+                DrawUtil.drawRound(x, y, width, height, cornerRadius, panelColor);
+            }
         }
 
-        // Заголовок категории
-        String title = category.name();
-        String capitalizedTitle = title.substring(0, 1).toUpperCase() + title.substring(1).toLowerCase();
-        float titleWidth = Fonts.SFREGULAR.get().getWidth(capitalizedTitle, 8.5f);
-        DrawUtil.drawText(Fonts.SFREGULAR.get(), capitalizedTitle, x + width / 2f - titleWidth / 2f, y + 6f, ColorProvider.rgba(255, 255, 255, alpha), 8.5f);
+        if (headerVisible) {
+            String title = category.name();
+            String capitalizedTitle = title.substring(0, 1).toUpperCase() + title.substring(1).toLowerCase();
+            float titleWidth = Fonts.SFREGULAR.get().getWidth(capitalizedTitle, 8.5f);
+            DrawUtil.drawText(Fonts.SFREGULAR.get(), capitalizedTitle, x + width / 2f - titleWidth / 2f, y + 6f, ColorProvider.rgba(255, 255, 255, alpha), 8.5f);
+        }
 
         float offset = 0;
         clampScroll();
         animation.run(scroll);
 
         Scissor.push();
-        Scissor.setFromComponentCoordinates(x, y + headerHeight, width, height - headerHeight - 4);
+        float contentTop = getContentTop();
+        float contentHeight = headerVisible ? height - headerHeight - 4 : height - 4;
+        Scissor.setFromComponentCoordinates(x, contentTop, width, contentHeight);
 
         for (ModuleComponent component : moduleComponents) {
             if (parent.searchCheck(component.getModule().getName())) {
@@ -91,7 +114,7 @@ public class Panel implements IMinecraft {
             }
 
             component.setX(x + 5.2f);
-            component.setY((float) (y + headerHeight + offset + animation.getValue()));
+            component.setY((float) (contentTop + offset + animation.getValue()));
             component.setWidth(width - 10.4f);
 
             float baseHeight = 15f;
@@ -106,22 +129,22 @@ public class Panel implements IMinecraft {
             }
             component.setHeight(baseHeight + (extraHeight * (float) component.getAnimation().getValue()));
 
-            Scissor.setFromComponentCoordinates(x, y + headerHeight, width, height - headerHeight - 4);
+            Scissor.setFromComponentCoordinates(x, contentTop, width, contentHeight);
             component.render(matrixStack, mouseX, mouseY, partialTicks);
-            Scissor.setFromComponentCoordinates(x, y + headerHeight, width, height - headerHeight - 4);
+            Scissor.setFromComponentCoordinates(x, contentTop, width, contentHeight);
 
             offset += component.getHeight() + 0.75f;
         }
-        maxScroll = Math.max(0, offset - (height - headerHeight - 8));
+        maxScroll = Math.max(0, offset - (contentHeight - 4));
         scrollbarAnim.run(maxScroll > 0f);
 
         if (maxScroll > 0 || scrollbarAnim.getValue() > 0.01f) {
-            float viewportHeight = height - headerHeight - 8;
+            float viewportHeight = contentHeight - 4;
             float safeOffset = Math.max(offset, viewportHeight);
             float scrollbarHeight = MathHelper.clamp((viewportHeight / safeOffset) * viewportHeight, 10, viewportHeight);
-            float scrollbarY = y + headerHeight;
+            float scrollbarY = contentTop;
             if (maxScroll > 0) {
-                scrollbarY += (-animation.getValue() / maxScroll) * (height - headerHeight - scrollbarHeight - 8);
+                scrollbarY += (-animation.getValue() / maxScroll) * (contentHeight - scrollbarHeight - 4);
             }
             float scrollAnim = scrollbarAnim.getValue();
             float barWidth = 2f * scrollAnim;
@@ -136,7 +159,9 @@ public class Panel implements IMinecraft {
     }
 
     public void mouseClicked(double mouseX, double mouseY, int button) {
-        if (HoverUtil.isHovered(mouseX, mouseY, x, y + 20, width, height - 20)) {
+        float contentTop = getContentTop();
+        float contentHeight = headerVisible ? height - 20 : height;
+        if (HoverUtil.isHovered(mouseX, mouseY, x, contentTop, width, contentHeight)) {
             for (ModuleComponent moduleComponent : moduleComponents) {
                 if (!parent.searchCheck(moduleComponent.getModule().getName())) {
                     moduleComponent.mouseClicked(mouseX, mouseY, button);

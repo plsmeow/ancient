@@ -93,8 +93,8 @@ public class ModuleComponent extends Component {
 
         if (animation.getValue() > 0.01f) {
             float compY = y + 13.5f;
-            float panelTop = panel.getY() + 20;
-            float panelBottom = panel.getY() + panel.getHeight() - 4;
+            float panelTop = panel.getContentTop();
+            float panelBottom = panel.getContentBottom();
             float settingsY = y + 15;
             float settingsBottom = y + currentHeight;
 
