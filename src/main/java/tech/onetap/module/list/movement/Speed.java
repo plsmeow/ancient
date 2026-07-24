@@ -30,6 +30,7 @@ import tech.onetap.util.player.move.MoveUtil;
 import tech.onetap.util.render.providers.ColorProvider;
 import tech.onetap.util.text.ValueUnit;
 
+
 @ModuleInformation(moduleName = "Speed", moduleCategory = ModuleCategory.MOVEMENT)
 public class Speed extends Module {
 
@@ -49,8 +50,7 @@ public class Speed extends Module {
     private final BooleanSetting vulcanOnlyWhileMoving = new BooleanSetting("Только в движении", true).setVisible(() -> mode.is("Vulcan"));
 
     private final SliderSetting vanillaSpeed = new SliderSetting("Скорость", 1.18f, 1.05f, 20.0f, 0.5f).setVisible(() -> mode.is("Vanilla"));
-    private final BooleanSetting clownHvhWaterfix = new BooleanSetting("ClownHVH waterfix", false).setVisible(() -> mode.is("Vanilla"));
-
+    private final BooleanSetting waterFix = new BooleanSetting("Water Fix", false).setVisible(() -> mode.is("Vanilla"));
     // HvH Target — Vanilla: автоматически идём к цели KillAura с предиктом по X/Z
     private final BooleanSetting hvhTarget = new BooleanSetting("HvH Target", false).setVisible(() -> mode.is("Vanilla"));
     private final SliderSetting hvhTargetRange = new SliderSetting("Радиус цели", ValueUnit.countable("блок", "блока", "блоков"), 50, 1, 50, 0.5f)
@@ -121,8 +121,8 @@ public class Speed extends Module {
             speed += speed * value;
         }
 
-        if (clownHvhWaterfix.getValue() && mc.player.isTouchingWater()) {
-            speed = 4.5;
+        if (waterFix.getValue() && mc.player.isTouchingWater()) {
+            speed = 4.5 * VANILLA_DEFAULT_SPEED;
         }
 
         // HvH Target: если включён и есть валидная цель KillAura в радиусе — идём к предсказанной точке
