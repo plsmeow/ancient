@@ -55,8 +55,8 @@ public class Speed extends Module {
     private final BooleanSetting hvhTarget = new BooleanSetting("HvH Target", false).setVisible(() -> mode.is("Vanilla"));
     private final SliderSetting hvhTargetRange = new SliderSetting("Радиус цели", ValueUnit.countable("блок", "блока", "блоков"), 50, 1, 50, 0.5f)
             .setVisible(() -> mode.is("Vanilla") && hvhTarget.getValue());
-    // Сила предикта = количество тиков вперёд для HvhTargetPredict
-    private final SliderSetting hvhPredictStrength = new SliderSetting("Сила предикта", 4.0f, 0.5f, 20.0f, 0.1f)
+    // Множитель предикта: 1.0 = базовый предикт на 4 тика, 0.5 = половина, 2.0 = вдвое больше
+    private final SliderSetting hvhPredictStrength = new SliderSetting("Сила предикта", 1.0f, 0.5f, 2.0f, 0.1f)
             .setVisible(() -> mode.is("Vanilla") && hvhTarget.getValue());
     private final BooleanSetting hvhRender = new BooleanSetting("Рендер предикта", true)
             .setVisible(() -> mode.is("Vanilla") && hvhTarget.getValue());
@@ -142,7 +142,16 @@ public class Speed extends Module {
                     range += tpAura.getMaxDistance();
                 }
                 if (horizontalDistSq <= range * range) {
-                    Vec3d targetPos = HvhTargetPredict.predict(target, hvhPredictStrength.getValue());
+                    Vec3d basePredicted = HvhTargetPredict.predict(target, 4.0);
+                    Vec3d currentTargetPos = target.getPos();
+                    double dx = basePredicted.x - currentTargetPos.x;
+                    double dz = basePredicted.z - currentTargetPos.z;
+                    double multiplier = hvhPredictStrength.getValue();
+                    Vec3d targetPos = new Vec3d(
+                            currentTargetPos.x + dx * multiplier,
+                            basePredicted.y,
+                            currentTargetPos.z + dz * multiplier
+                    );
 
                     // Leave: пока идёт задержка удара (ticksToAttack > 0) — отходим,
                     // иначе сближаемся к радиусу атаки
