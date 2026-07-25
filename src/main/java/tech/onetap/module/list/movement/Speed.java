@@ -21,7 +21,6 @@ import tech.onetap.module.Module;
 import tech.onetap.module.ModuleCategory;
 import tech.onetap.module.ModuleInformation;
 import tech.onetap.module.list.combat.KillAura;
-import tech.onetap.module.list.combat.TpAura;
 import tech.onetap.module.settings.BooleanSetting;
 import tech.onetap.module.settings.ModeSetting;
 import tech.onetap.module.settings.SliderSetting;
@@ -53,10 +52,8 @@ public class Speed extends Module {
     private final BooleanSetting waterFix = new BooleanSetting("Water Fix", false).setVisible(() -> mode.is("Vanilla"));
     // HvH Target — Vanilla: автоматически идём к цели KillAura с предиктом по X/Z
     private final BooleanSetting hvhTarget = new BooleanSetting("HvH Target", false).setVisible(() -> mode.is("Vanilla"));
-    private final SliderSetting hvhTargetRange = new SliderSetting("Радиус цели", ValueUnit.countable("блок", "блока", "блоков"), 50, 1, 50, 0.5f)
-            .setVisible(() -> mode.is("Vanilla") && hvhTarget.getValue());
-    // Множитель предикта: 1.0 = базовый предикт на 4 тика, 0.5 = половина, 2.0 = вдвое больше
-    private final SliderSetting hvhPredictStrength = new SliderSetting("Сила предикта", 1.0f, 0.5f, 2.0f, 0.1f)
+    // Сила предикта = количество тиков вперёд для HvhTargetPredict
+    private final SliderSetting hvhPredictStrength = new SliderSetting("Сила предикта", 4.0f, 0.5f, 20.0f, 0.1f)
             .setVisible(() -> mode.is("Vanilla") && hvhTarget.getValue());
     private final BooleanSetting hvhRender = new BooleanSetting("Рендер предикта", true)
             .setVisible(() -> mode.is("Vanilla") && hvhTarget.getValue());
@@ -136,111 +133,82 @@ public class Speed extends Module {
                 lastHvhTarget = target;
                 Vec3d toTarget = target.getPos().subtract(mc.player.getPos());
                 double horizontalDistSq = toTarget.x * toTarget.x + toTarget.z * toTarget.z;
-                double range = hvhTargetRange.getValue();
-                TpAura tpAura = Onetap.getInstance().getModuleStorage().get(TpAura.class);
-                if (tpAura != null && tpAura.isEnabled()) {
-                    range += tpAura.getMaxDistance();
-                }
-                if (horizontalDistSq <= range * range) {
-                    Vec3d basePredicted = HvhTargetPredict.predict(target, 4.0);
-                    Vec3d currentTargetPos = target.getPos();
-                    double dx = basePredicted.x - currentTargetPos.x;
-                    double dz = basePredicted.z - currentTargetPos.z;
-                    double multiplier = hvhPredictStrength.getValue();
-                    Vec3d targetPos = new Vec3d(
-                            currentTargetPos.x + dx * multiplier,
-                            basePredicted.y,
-                            currentTargetPos.z + dz * multiplier
-                    );
+                Vec3d targetPos = HvhTargetPredict.predict(target, hvhPredictStrength.getValue());
 
-                    // Leave: пока идёт задержка удара (ticksToAttack > 0) — отходим,
-                    // иначе сближаемся к радиусу атаки
-                    if (leave.getValue() && aura.ticksToAttack > 0) {
-                        double desiredDist = leaveDistance.getValue();
-                        if (horizontalDistSq < desiredDist * desiredDist) {
-                            Vec3d fromTarget = mc.player.getPos().subtract(targetPos);
-                            double[] dir = getDirectionToPoint(Vec3d.ZERO, new Vec3d(fromTarget.x, 0.0, fromTarget.z), speed);
-                            Vec3d current = mc.player.getVelocity();
-                            mc.player.setVelocity(dir[0], current.y, dir[1]);
-                            // Рендер: предикт-цель + точка направления (отход)
-                            renderTarget = target;
-                            renderPredicted = targetPos;
-                            // Точка отхода: дистанция desiredDist от targetPos по нормализованному вектору "от цели"
-                            double len = Math.hypot(fromTarget.x, fromTarget.z);
-                            if (len < 1.0E-6) {
-                                renderLeaveTarget = targetPos;
-                            } else {
-                                double k = desiredDist / len;
-                                renderLeaveTarget = new Vec3d(
-                                        targetPos.x - fromTarget.x * k,
-                                        targetPos.y,
-                                        targetPos.z - fromTarget.z * k
-                                );
-                            }
-                            renderIsLeaving = true;
-                            return;
-                        }
-                    } else if (leave.getValue()) {
-                        // Сближение к радиусу удара
-                        double desiredDist = attackDistance.getValue();
-                        if (tpAura != null && tpAura.isEnabled()) {
-                            desiredDist += tpAura.getMaxDistance();
-                        }
-                        if (horizontalDistSq > desiredDist * desiredDist) {
-                            double[] dir = getDirectionToPoint(mc.player.getPos(), targetPos, speed);
-                            Vec3d current = mc.player.getVelocity();
-                            mc.player.setVelocity(dir[0], current.y, dir[1]);
-                            // Рендер: предикт-цель + точка сближения (desiredDist от игрока к цели)
-                            renderTarget = target;
-                            renderPredicted = targetPos;
-                            double pdx = targetPos.x - mc.player.getX();
-                            double pdz = targetPos.z - mc.player.getZ();
-                            double plen = Math.hypot(pdx, pdz);
-                            if (plen < 1.0E-6) {
-                                renderLeaveTarget = mc.player.getPos();
-                            } else {
-                                double k = desiredDist / plen;
-                                renderLeaveTarget = new Vec3d(
-                                        mc.player.getX() + pdx * k,
-                                        mc.player.getY(),
-                                        mc.player.getZ() + pdz * k
-                                );
-                            }
-                            renderIsLeaving = false;
-                            return;
-                        }
-                        // Внутри зоны удара — резкая остановка, чтобы не перелетать цель
-                        Vec3d current = mc.player.getVelocity();
-                        mc.player.setVelocity(0.0, current.y, 0.0);
-                        renderTarget = target;
-                        renderPredicted = targetPos;
-                        renderLeaveTarget = null;
-                        return;
-                    }
-
-                    // Дистанция по горизонтали до точки предикта
-                    double pdx = targetPos.x - mc.player.getX();
-                    double pdz = targetPos.z - mc.player.getZ();
-                    double distToPoint = Math.sqrt(pdx * pdx + pdz * pdz);
-
-                    if (distToPoint <= HVH_TARGET_ZONE) {
-                        // Достигли цели/предикта — резкая остановка, без дёрганья
-                        Vec3d current = mc.player.getVelocity();
-                        mc.player.setVelocity(0.0, current.y, 0.0);
-                    } else {
-                        // Движемся к точке, но ограничиваем скорость остатком
-                        // дистанции, чтобы не перелетать цель на высокой скорости
-                        double moveSpeed = Math.min(speed, distToPoint);
-                        double[] dir = getDirectionToPoint(mc.player.getPos(), targetPos, moveSpeed);
+                // Leave: пока идёт задержка удара (ticksToAttack > 0) — отходим,
+                // иначе сближаемся к радиусу атаки
+                if (leave.getValue() && aura.ticksToAttack > 0) {
+                    double desiredDist = leaveDistance.getValue();
+                    if (horizontalDistSq < desiredDist * desiredDist) {
+                        Vec3d fromTarget = mc.player.getPos().subtract(targetPos);
+                        double[] dir = getDirectionToPoint(Vec3d.ZERO, new Vec3d(fromTarget.x, 0.0, fromTarget.z), speed);
                         Vec3d current = mc.player.getVelocity();
                         mc.player.setVelocity(dir[0], current.y, dir[1]);
+                        renderTarget = target;
+                        renderPredicted = targetPos;
+                        double len = Math.hypot(fromTarget.x, fromTarget.z);
+                        if (len < 1.0E-6) {
+                            renderLeaveTarget = targetPos;
+                        } else {
+                            double k = desiredDist / len;
+                            renderLeaveTarget = new Vec3d(
+                                    targetPos.x - fromTarget.x * k,
+                                    targetPos.y,
+                                    targetPos.z - fromTarget.z * k
+                            );
+                        }
+                        renderIsLeaving = true;
+                        return;
                     }
-                    // Рендер: только предикт-цель (без leave)
+                } else if (leave.getValue()) {
+                    double desiredDist = attackDistance.getValue();
+                    if (horizontalDistSq > desiredDist * desiredDist) {
+                        double[] dir = getDirectionToPoint(mc.player.getPos(), targetPos, speed);
+                        Vec3d current = mc.player.getVelocity();
+                        mc.player.setVelocity(dir[0], current.y, dir[1]);
+                        renderTarget = target;
+                        renderPredicted = targetPos;
+                        double pdx = targetPos.x - mc.player.getX();
+                        double pdz = targetPos.z - mc.player.getZ();
+                        double plen = Math.hypot(pdx, pdz);
+                        if (plen < 1.0E-6) {
+                            renderLeaveTarget = mc.player.getPos();
+                        } else {
+                            double k = desiredDist / plen;
+                            renderLeaveTarget = new Vec3d(
+                                    mc.player.getX() + pdx * k,
+                                    mc.player.getY(),
+                                    mc.player.getZ() + pdz * k
+                            );
+                        }
+                        renderIsLeaving = false;
+                        return;
+                    }
+                    Vec3d current = mc.player.getVelocity();
+                    mc.player.setVelocity(0.0, current.y, 0.0);
                     renderTarget = target;
                     renderPredicted = targetPos;
                     renderLeaveTarget = null;
                     return;
                 }
+
+                double dx = targetPos.x - mc.player.getX();
+                double dz = targetPos.z - mc.player.getZ();
+                double distToPoint = Math.sqrt(dx * dx + dz * dz);
+
+                if (distToPoint <= HVH_TARGET_ZONE) {
+                    Vec3d current = mc.player.getVelocity();
+                    mc.player.setVelocity(0.0, current.y, 0.0);
+                } else {
+                    double moveSpeed = Math.min(speed, distToPoint);
+                    double[] dir = getDirectionToPoint(mc.player.getPos(), targetPos, moveSpeed);
+                    Vec3d current = mc.player.getVelocity();
+                    mc.player.setVelocity(dir[0], current.y, dir[1]);
+                }
+                renderTarget = target;
+                renderPredicted = targetPos;
+                renderLeaveTarget = null;
+                return;
             }
         }
 
@@ -373,7 +341,7 @@ public class Speed extends Module {
         LivingEntity target = renderTarget;
         Vec3d predicted = renderPredicted;
 
-        // Бокс вокруг предсказанной позиции цели (как у TpAura — по ширине/высоте цели)
+        // Бокс вокруг предсказанной позиции цели (по ширине/высоте цели)
         float halfWidth = target.getWidth() / 2f;
         Box hitbox = new Box(
                 predicted.x - halfWidth, predicted.y, predicted.z - halfWidth,

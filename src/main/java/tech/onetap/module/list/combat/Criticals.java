@@ -8,6 +8,7 @@ import net.minecraft.network.packet.c2s.play.PlayerInputC2SPacket;
 import net.minecraft.network.packet.c2s.play.PlayerMoveC2SPacket;
 import net.minecraft.util.PlayerInput;
 import tech.onetap.event.list.EventAttack;
+import tech.onetap.event.list.EventChangeSprint;
 import tech.onetap.module.Module;
 import tech.onetap.module.ModuleCategory;
 import tech.onetap.module.ModuleInformation;
@@ -18,7 +19,7 @@ import tech.onetap.util.player.other.WorldUtils;
 @ModuleInformation(moduleName = "Criticals", moduleCategory = ModuleCategory.COMBAT)
 public class Criticals extends Module {
 
-    public final ModeSetting mode = new ModeSetting("Режим", "Grim", "Grim", "Packet", "UpdatedNCP");
+    public final ModeSetting mode = new ModeSetting("Режим", "Grim", "Grim", "Packet", "UpdatedNCP", "Strict");
 
     public static boolean killAuraTriggered;
 
@@ -30,20 +31,19 @@ public class Criticals extends Module {
         doCrit();
     }
 
+    @Subscribe
+    private void onChangeSprint(EventChangeSprint e) {
+        if (mc.player == null || mc.world == null) return;
+        if (!isEnabled()) return;
+        if (killAuraTriggered) return;
+        e.setSprinting(false);
+    }
+
     public void doCrit() {
         if (mc.player == null || mc.world == null) return;
 
-        mc.getNetworkHandler().sendPacket(new PlayerInputC2SPacket(
-                new PlayerInput(
-                        mc.player.input.playerInput.forward(),
-                        mc.player.input.playerInput.backward(),
-                        mc.player.input.playerInput.left(),
-                        mc.player.input.playerInput.right(),
-                        mc.player.input.playerInput.jump(),
-                        mc.player.input.playerInput.sneak(),
-                        false
-                )
-        ));
+        mc.player.setSprinting(false);
+        mc.getNetworkHandler().sendPacket(new PlayerInputC2SPacket(new PlayerInput(false, false, false, false, false, false, false)));
 
         switch (mode.getValue()) {
             case "Grim" -> {
@@ -94,7 +94,25 @@ public class Criticals extends Module {
                         mc.player.getX(), mc.player.getY(), mc.player.getZ(), false, false
                 ));
             }
+            case "Strict" -> {
+                if (!canPacketCrit()) return;
+
+                NetworkUtils.sendSilentPacket(new PlayerMoveC2SPacket.PositionAndOnGround(
+                        mc.player.getX(), mc.player.getY() + 0.062600301692775, mc.player.getZ(), false, false
+                ));
+                NetworkUtils.sendSilentPacket(new PlayerMoveC2SPacket.PositionAndOnGround(
+                        mc.player.getX(), mc.player.getY() + 0.07260029960661, mc.player.getZ(), false, false
+                ));
+                NetworkUtils.sendSilentPacket(new PlayerMoveC2SPacket.PositionAndOnGround(
+                        mc.player.getX(), mc.player.getY(), mc.player.getZ(), false, false
+                ));
+                NetworkUtils.sendSilentPacket(new PlayerMoveC2SPacket.PositionAndOnGround(
+                        mc.player.getX(), mc.player.getY(), mc.player.getZ(), false, false
+                ));
+            }
         }
+
+        mc.getNetworkHandler().sendPacket(new PlayerInputC2SPacket(mc.player.input.playerInput));
     }
 
     private boolean canPacketCrit() {
