@@ -18,6 +18,7 @@ import org.joml.Matrix4f;
 import tech.onetap.module.Module;
 import tech.onetap.module.ModuleCategory;
 import tech.onetap.module.ModuleInformation;
+import tech.onetap.module.settings.BooleanSetting;
 import tech.onetap.module.settings.ModeSetting;
 import tech.onetap.module.settings.SliderSetting;
 import tech.onetap.util.render.providers.ColorProvider;
@@ -27,10 +28,16 @@ import java.util.List;
 
 @ModuleInformation(moduleName = "TpAura", moduleDesc = "Телепортирует игрока к цели перед ударом KillAura и возвращает обратно", moduleCategory = ModuleCategory.COMBAT)
 public class TpAura extends Module {
-    private final ModeSetting mode = new ModeSetting("Режим", "TP", "TP", "Steps");
+    private final ModeSetting tpMode = new ModeSetting("TP Mode", "Simple", "Simple", "Bypass", "Vault");
+    private final ModeSetting simpleMode = new ModeSetting("Режим", "TP", "TP", "Steps")
+            .setVisible(() -> tpMode.is("Simple"));
     private final SliderSetting maxDistance = new SliderSetting("Макс дистанция", 200.0, 1.0, 200.0, 1.0);
     private final SliderSetting stepSize = new SliderSetting("Шаг", 9.9, 0.5, 10.0, 0.1)
-            .setVisible(() -> mode.is("Steps"));
+            .setVisible(() -> tpMode.is("Simple") && simpleMode.is("Steps"));
+    private final SliderSetting packets = new SliderSetting("Packets", 10, 1, 50, 1)
+            .setVisible(() -> tpMode.is("Bypass"));
+    private final BooleanSetting bypassOnGround = new BooleanSetting("Bypass OnGround", true)
+            .setVisible(() -> tpMode.is("Bypass"));
 
     private Vec3d origin;
     private float originYaw;
@@ -76,18 +83,12 @@ public class TpAura extends Module {
                 destination.x + halfWidth, destination.y + living.getHeight(), destination.z + halfWidth
         );
 
-        if (mode.is("Steps")) {
-            Vec3d from = origin;
-            double distance = from.distanceTo(destination);
-            int packets = Math.max(1, (int) Math.ceil(distance / stepSize.getValue()));
-            for (int i = 1; i <= packets; i++) {
-                Vec3d pos = from.lerp(destination, i / (double) packets);
-                sendPlayerPosition(pos, mc.player.getYaw(), mc.player.getPitch());
-                renderSteps.add(pos);
-                from = pos;
-            }
+        if (tpMode.is("Bypass")) {
+            teleportBypass(destination);
+        } else if (tpMode.is("Vault")) {
+            teleportVault(origin, destination);
         } else {
-            sendPlayerPosition(destination, mc.player.getYaw(), mc.player.getPitch());
+            teleportSimple(origin, destination, mc.player.getYaw(), mc.player.getPitch(), true);
         }
 
         return true;
@@ -99,20 +100,63 @@ public class TpAura extends Module {
             return;
         }
 
-        if (mode.is("Steps")) {
-            Vec3d from = mc.player.getPos();
-            double distance = from.distanceTo(origin);
-            int packets = Math.max(1, (int) Math.ceil(distance / stepSize.getValue()));
-            for (int i = 1; i <= packets; i++) {
-                Vec3d pos = from.lerp(origin, i / (double) packets);
-                sendPlayerPosition(pos, originYaw, originPitch);
-                from = pos;
-            }
+        if (tpMode.is("Bypass")) {
+            teleportBypass(origin);
+        } else if (tpMode.is("Vault")) {
+            teleportVault(renderDestination, origin);
         } else {
-            sendPlayerPosition(origin, originYaw, originPitch);
+            teleportSimple(mc.player.getPos(), origin, originYaw, originPitch, false);
         }
 
         resetState(true);
+    }
+
+    private void teleportSimple(Vec3d from, Vec3d destination, float yaw, float pitch, boolean toTarget) {
+        if (simpleMode.is("Steps")) {
+            double distance = from.distanceTo(destination);
+            int packetCount = Math.max(1, (int) Math.ceil(distance / stepSize.getValue()));
+            for (int i = 1; i <= packetCount; i++) {
+                Vec3d pos = from.lerp(destination, i / (double) packetCount);
+                sendPlayerPosition(pos, yaw, pitch);
+                if (toTarget) renderSteps.add(pos);
+            }
+        } else {
+            sendPlayerPosition(destination, yaw, pitch);
+            if (toTarget) renderSteps.add(destination);
+        }
+    }
+
+    private void teleportBypass(Vec3d pos) {
+        mc.player.setPosition(pos.x, pos.y, pos.z);
+        for (int i = 0; i < packets.getIntValue(); i++) {
+            mc.getNetworkHandler().sendPacket(new PlayerMoveC2SPacket.PositionAndOnGround(
+                    pos.x, pos.y, pos.z,
+                    bypassOnGround.getValue(),
+                    mc.player.horizontalCollision
+            ));
+        }
+    }
+
+    private void teleportVault(Vec3d from, Vec3d destination) {
+        Vec3d upPos = from.add(0, 129.0, 0);
+        Vec3d aboveTarget = new Vec3d(destination.x, upPos.y, destination.z);
+        Vec3d downPos = new Vec3d(destination.x, destination.y, destination.z);
+        Vec3d finalPos = downPos.add(0, 0.01, 0);
+
+        for (int i = 0; i < 13; i++) {
+            mc.getNetworkHandler().sendPacket(new PlayerMoveC2SPacket.OnGroundOnly(false, mc.player.horizontalCollision));
+        }
+
+        sendVaultMove(upPos);
+        sendVaultMove(aboveTarget);
+        sendVaultMove(downPos);
+        sendVaultMove(finalPos);
+    }
+
+    private void sendVaultMove(Vec3d pos) {
+        mc.getNetworkHandler().sendPacket(new PlayerMoveC2SPacket.PositionAndOnGround(
+                pos.x, pos.y, pos.z, false, mc.player.horizontalCollision
+        ));
     }
 
     private void sendPlayerPosition(Vec3d pos, float yaw, float pitch) {

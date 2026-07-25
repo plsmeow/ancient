@@ -20,6 +20,7 @@ import net.minecraft.entity.passive.FishEntity;
 import net.minecraft.entity.passive.PassiveEntity;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.item.Items;
+import net.minecraft.network.packet.c2s.play.ClientCommandC2SPacket;
 import net.minecraft.network.packet.c2s.play.PlayerInputC2SPacket;
 import net.minecraft.util.Hand;
 import net.minecraft.util.PlayerInput;
@@ -311,7 +312,10 @@ public class KillAura extends Module {
             lastTarget = target;
             isSlowdownActive = false;
 
-            if (canStopSprinting()) mc.player.setSprinting(false);
+            if (canStopSprinting()) {
+                mc.player.setSprinting(false);
+                mc.getNetworkHandler().sendPacket(new ClientCommandC2SPacket(mc.player, ClientCommandC2SPacket.Mode.STOP_SPRINTING));
+            }
 
             if (canAttack()) {
                 if (useResolver.getValue() && mc.player.isGliding()) {

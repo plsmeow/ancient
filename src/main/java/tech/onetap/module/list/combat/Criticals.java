@@ -4,6 +4,7 @@ import com.google.common.eventbus.Subscribe;
 import net.minecraft.block.Blocks;
 import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.effect.StatusEffects;
+import net.minecraft.network.packet.c2s.play.ClientCommandC2SPacket;
 import net.minecraft.network.packet.c2s.play.PlayerInputC2SPacket;
 import net.minecraft.network.packet.c2s.play.PlayerMoveC2SPacket;
 import net.minecraft.util.PlayerInput;
@@ -43,6 +44,7 @@ public class Criticals extends Module {
         if (mc.player == null || mc.world == null) return;
 
         mc.player.setSprinting(false);
+        mc.getNetworkHandler().sendPacket(new ClientCommandC2SPacket(mc.player, ClientCommandC2SPacket.Mode.STOP_SPRINTING));
         mc.getNetworkHandler().sendPacket(new PlayerInputC2SPacket(new PlayerInput(false, false, false, false, false, false, false)));
 
         switch (mode.getValue()) {
@@ -112,7 +114,9 @@ public class Criticals extends Module {
             }
         }
 
-        mc.getNetworkHandler().sendPacket(new PlayerInputC2SPacket(mc.player.input.playerInput));
+        if (!killAuraTriggered) {
+            mc.getNetworkHandler().sendPacket(new PlayerInputC2SPacket(mc.player.input.playerInput));
+        }
     }
 
     private boolean canPacketCrit() {
