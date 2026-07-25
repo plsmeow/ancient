@@ -219,9 +219,9 @@ public class Speed extends Module {
                     }
 
                     // Дистанция по горизонтали до точки предикта
-                    double dx = targetPos.x - mc.player.getX();
-                    double dz = targetPos.z - mc.player.getZ();
-                    double distToPoint = Math.sqrt(dx * dx + dz * dz);
+                    double pdx = targetPos.x - mc.player.getX();
+                    double pdz = targetPos.z - mc.player.getZ();
+                    double distToPoint = Math.sqrt(pdx * pdx + pdz * pdz);
 
                     if (distToPoint <= HVH_TARGET_ZONE) {
                         // Достигли цели/предикта — резкая остановка, без дёрганья
