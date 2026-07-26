@@ -40,6 +40,7 @@ import tech.onetap.util.render.providers.ColorProvider;
 import tech.onetap.util.rotation.MoveFixMode;
 import tech.onetap.util.rotation.Rotation;
 import tech.onetap.util.rotation.RotationComponent;
+import tech.onetap.util.target.TargetRepository;
 
 @ModuleInformation(moduleName = "CrystalAura", moduleCategory = ModuleCategory.COMBAT)
 public class CrystalAura extends Module {
@@ -122,6 +123,9 @@ public class CrystalAura extends Module {
         bestTarget = null;
         double bestDistance = targetRange.getValue();
 
+        PlayerEntity bestTargetList = null;
+        double bestTargetListDistance = Double.MAX_VALUE;
+
         for (PlayerEntity player : mc.world.getPlayers()) {
             if (player == mc.player) continue;
             if (!player.isAlive() || player.isSpectator()) continue;
@@ -130,10 +134,23 @@ public class CrystalAura extends Module {
             double distance = mc.player.squaredDistanceTo(player);
             if (distance > targetRange.getValue() * targetRange.getValue()) continue;
 
+            double realDist = Math.sqrt(distance);
+
+            if (TargetRepository.isTarget(player.getNameForScoreboard())) {
+                if (realDist < bestTargetListDistance) {
+                    bestTargetList = player;
+                    bestTargetListDistance = realDist;
+                }
+            }
+
             if (bestTarget == null || distance < bestDistance * bestDistance) {
                 bestTarget = player;
-                bestDistance = Math.sqrt(distance);
+                bestDistance = realDist;
             }
+        }
+
+        if (bestTargetList != null) {
+            bestTarget = bestTargetList;
         }
     }
 

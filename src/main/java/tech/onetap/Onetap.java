@@ -22,6 +22,7 @@ import tech.onetap.util.player.other.ServerManager;
 import tech.onetap.util.rotation.ComponentManager;
 import tech.onetap.util.script.ScriptManager;
 import tech.onetap.util.staff.StaffManager;
+import tech.onetap.util.target.TargetRepository;
 
 import java.io.File;
 
@@ -84,6 +85,7 @@ public class Onetap implements ModInitializer {
             getDragManager().saveDraggables();
             getMacroRepository().save();
             FriendRepository.save();
+            TargetRepository.save();
             staffManager.save();
         }));
         File dir = new File(".options/configs/");
@@ -103,6 +105,7 @@ public class Onetap implements ModInitializer {
         dragManager.load();
         macroRepository.load();
         FriendRepository.load();
+        TargetRepository.load();
         configManager.load("autocfg");
     }
 

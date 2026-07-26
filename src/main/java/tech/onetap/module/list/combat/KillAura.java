@@ -49,6 +49,7 @@ import tech.onetap.module.settings.SliderSetting;
 import tech.onetap.util.base.Instance;
 import tech.onetap.util.friend.FriendRepository;
 import tech.onetap.util.math.BestPoint;
+import tech.onetap.util.target.TargetRepository;
 import tech.onetap.util.math.RotationUtil;
 import tech.onetap.util.math.StopWatch;
 import tech.onetap.util.player.combat.PredictUtils;
@@ -700,6 +701,9 @@ public class KillAura extends Module {
         LivingEntity best = null;
         double bestScore = Double.NEGATIVE_INFINITY;
 
+        LivingEntity bestTargetList = null;
+        double bestTargetListScore = Double.NEGATIVE_INFINITY;
+
         Vec3d eyePos = mc.player.getEyePos();
         Vec3d lookVec = mc.player.getRotationVec(1.0F);
 
@@ -725,10 +729,22 @@ public class KillAura extends Module {
                     bestScore = score;
                     best = living;
                 }
+
+                if (entity instanceof PlayerEntity p && TargetRepository.isTarget(p.getNameForScoreboard())) {
+                    if (score > bestTargetListScore) {
+                        bestTargetListScore = score;
+                        bestTargetList = living;
+                    }
+                }
             }
         }
 
-        if (target == null || !isValidEntity(target)) {
+        if (bestTargetList != null) {
+            if (target == null || !isValidEntity(target)
+                    || !(target instanceof PlayerEntity cur) || !TargetRepository.isTarget(cur.getNameForScoreboard())) {
+                this.target = bestTargetList;
+            }
+        } else if (target == null || !isValidEntity(target)) {
             this.target = best;
         }
     }

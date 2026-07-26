@@ -44,6 +44,7 @@ public final class DefaultCommands {
                 new BotCommand(),
                 new BlockEspCommand(),
                 new TPLootCommand(),
+                new TargetCommand(),
                 new PrefixCommand()
         ));
         return Collections.unmodifiableList(commands);
