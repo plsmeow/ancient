@@ -229,7 +229,7 @@ public class Flight extends Module {
     private void handleVulcanXzMode() {
         // Лочим вертикаль на высоте включения
         mc.player.setVelocity(mc.player.getVelocity().x, 0, mc.player.getVelocity().z);
-        mc.player.setY(vulcanXzLockedY);
+        mc.player.setPos(mc.player.getX(), vulcanXzLockedY, mc.player.getZ());
 
         // Горизонтальное движение как в vanilla fly
         double forward = mc.player.input.movementForward;
