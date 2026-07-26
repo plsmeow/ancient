@@ -72,7 +72,7 @@ public class TargetCommand extends Command {
                 new Paginator<>(targets),
                 () -> logDirect("§7Список таргетов:", Formatting.GRAY),
                 target -> {
-                    Text nameText = Text.literal(Formatting.GRAY + "- " + Formatting.WHITE + target);
+                    Text nameText = Text.literal(Formatting.GRAY + "- " + Formatting.RED + target);
                     Text deleteText = Text.literal(Formatting.RED + " [Удалить]")
                             .styled(style -> style.withClickEvent(new ClickEvent(
                                     ClickEvent.Action.RUN_COMMAND,

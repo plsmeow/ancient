@@ -36,6 +36,7 @@ import tech.onetap.module.settings.BooleanSetting;
 import tech.onetap.module.settings.ModeListSetting;
 import tech.onetap.module.settings.ModeSetting;
 import tech.onetap.util.friend.FriendRepository;
+import tech.onetap.util.target.TargetRepository;
 import tech.onetap.util.party.PartyPlayerPos;
 import tech.onetap.util.party.connection.PartyApiClient;
 import tech.onetap.util.parse.ParseTextUtil;
@@ -300,7 +301,15 @@ public class Tags extends Module {
             float bgX = nursultanStyle ? centerX - totalWidth / 2.0f : centerX - (defaultTextWidth / 2.0f) - paddingX;
             float bgY = nursultanStyle ? tagY : tagY;
 
-            DrawUtil.drawRound(bgX, bgY, totalWidth, tagHeight, 0, FriendRepository.isFriend(entity.getNameForScoreboard()) ? ColorProvider.rgba(35, 166, 0, 144) : ColorProvider.rgba(0, 0, 0, 125));
+            int bgColor;
+            if (TargetRepository.isTarget(entity.getNameForScoreboard())) {
+                bgColor = ColorProvider.rgba(166, 0, 0, 144);
+            } else if (FriendRepository.isFriend(entity.getNameForScoreboard())) {
+                bgColor = ColorProvider.rgba(35, 166, 0, 144);
+            } else {
+                bgColor = ColorProvider.rgba(0, 0, 0, 125);
+            }
+            DrawUtil.drawRound(bgX, bgY, totalWidth, tagHeight, 0, bgColor);
 
             if (nursultanStyle) {
                 boolean isSpeaking = false;
