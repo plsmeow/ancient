@@ -37,12 +37,14 @@ public final class DefaultCommands {
                 new FriendCommand(Onetap.getInstance()),
                 new StaffCommand(Onetap.getInstance()),
                 new VClipCommand(),
+                new HClipCommand(),
                 new PartyCommand(),
                 new GpsCommand(),
                 new AICommand(),
                 new BotCommand(),
                 new BlockEspCommand(),
-                new TPLootCommand()
+                new TPLootCommand(),
+                new PrefixCommand()
         ));
         return Collections.unmodifiableList(commands);
     }

@@ -119,7 +119,7 @@ public class TPLoot extends Module {
         root.add("items", arr);
 
         try {
-            Path dir = Paths.get(".options/configs");
+            Path dir = Paths.get(".options");
             Files.createDirectories(dir);
             Files.write(dir.resolve("tploot.json"), new GsonBuilder().setPrettyPrinting().create().toJson(root).getBytes());
         } catch (Exception e) {
@@ -131,7 +131,7 @@ public class TPLoot extends Module {
         itemsLoaded = true;
         targetItems.clear();
 
-        Path file = Paths.get(".options/configs/tploot.json");
+        Path file = Paths.get(".options/tploot.json");
         if (!Files.exists(file)) {
             loadDefaultItems();
             saveItems();

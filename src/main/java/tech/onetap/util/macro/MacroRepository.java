@@ -98,8 +98,9 @@ public class MacroRepository implements IMinecraft, QuickLogger {
         for (Macro macro : macroList) {
             if (macro.key() != key) continue;
             String msg = macro.message();
-            if (msg.startsWith(".")) {
-                msg = msg.substring(1);
+            String commandPrefix = Onetap.getInstance().getCommandDispatcher().getCommandPrefix();
+            if (msg.startsWith(commandPrefix)) {
+                msg = msg.substring(commandPrefix.length());
                 Onetap.getInstance().getCommandDispatcher().runCommand(msg);
             } else {
                 if (msg.startsWith("/")) mc.getNetworkHandler().sendChatCommand(msg.replaceFirst("/", ""));

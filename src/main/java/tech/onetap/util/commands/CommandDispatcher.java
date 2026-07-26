@@ -39,17 +39,28 @@ import static tech.onetap.util.commands.api.IBaritoneChatControl.FORCE_COMMAND_P
 
 public class CommandDispatcher {
 
+    public static final String DEFAULT_PREFIX = ".";
+
     private final ICommandManager manager;
+    private String commandPrefix = DEFAULT_PREFIX;
 
     public CommandDispatcher() {
         this.manager = Onetap.getInstance().getCommandRepository();
         Onetap.getInstance().getEventBus().register(this);
     }
 
+    public String getCommandPrefix() {
+        return this.commandPrefix;
+    }
+
+    public void setCommandPrefix(String prefix) {
+        this.commandPrefix = prefix;
+    }
+
     @Subscribe
     public void onSendChatMessage(ChatEvent event) {
         String msg = event.getMessage();
-        String prefix = ".";
+        String prefix = this.commandPrefix;
         boolean forceRun = msg.startsWith(FORCE_COMMAND_PREFIX);
         if ((msg.startsWith(prefix)) || forceRun) {
             if (Hide.isActive) return;
@@ -72,7 +83,7 @@ public class CommandDispatcher {
     @Subscribe
     public void onPreTabComplete(TabCompleteEvent event) {
         String prefix = event.getPrefix();
-        String commandPrefix = ".";
+        String commandPrefix = this.commandPrefix;
         if (!prefix.startsWith(commandPrefix)) {
             return;
         }

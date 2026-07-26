@@ -45,18 +45,25 @@ public class VClipCommand extends Command {
             return;
         }
 
+        // Необязательный второй аргумент — тип байпаса (pos/bypass/vault)
+        String bypass = null;
+        if (args.hasAny()) {
+            bypass = args.getString().toLowerCase();
+            if (!ClipBypass.BYPASS_TYPES.contains(bypass)) {
+                logDirect(Formatting.RED + "Неизвестный тип байпаса: " + bypass);
+                logDirect(Formatting.GRAY + "Доступные: " + String.join(", ", ClipBypass.BYPASS_TYPES));
+                return;
+            }
+        }
+
         double x = player.getX();
         double y = player.getY();
         double z = player.getZ();
 
-        for (int i = 0; i < 3; i++) {
-            player.networkHandler.sendPacket(new PlayerMoveC2SPacket.OnGroundOnly(player.isOnGround(), player.horizontalCollision));
-        }
+        ClipBypass.teleport(x, y + yOffset, z, bypass);
 
-        player.networkHandler.sendPacket(new PlayerMoveC2SPacket.PositionAndOnGround(x, y + yOffset, z, false, player.horizontalCollision));
-        player.setPosition(x, y + yOffset, z);
-
-        logDirect("Телепортировано на " + (int) yOffset + " блоков по вертикали");
+        logDirect("Телепортировано на " + (int) yOffset + " блоков по вертикали"
+                + (bypass != null ? " [" + bypass + "]" : ""));
     }
 
     private double findOffset(BlockPos pos, boolean toUp, ClientWorld world) {
@@ -102,14 +109,23 @@ public class VClipCommand extends Command {
                 "",
                 "> vclip <расстояние> — телепорт на определенное количество блоков",
                 "> vclip up — вверх до свободного блока",
-                "> vclip down — вниз до свободного блока"
+                "> vclip down — вниз до свободного блока",
+                "",
+                "Необязательный второй аргумент — тип байпаса:",
+                "> vclip <расстояние|up|down> [pos|bypass|vault]",
+                "",
+                "Без указания типа используется дефолтная логика (pos)."
         );
     }
 
     @Override
-    public Stream<String> tabComplete(String label, IArgConsumer args) {
+    public Stream<String> tabComplete(String label, IArgConsumer args) throws CommandException {
         if (args.hasExactlyOne()) {
             return Stream.of("up", "down");
+        }
+        if (args.hasExactly(2)) {
+            String prefix = args.peekString().toLowerCase();
+            return ClipBypass.BYPASS_TYPES.stream().filter(s -> s.startsWith(prefix));
         }
         return Stream.empty();
     }

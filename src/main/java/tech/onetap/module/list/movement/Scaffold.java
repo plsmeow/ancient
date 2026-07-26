@@ -23,6 +23,7 @@ import tech.onetap.util.rotation.RotationComponent;
 public class Scaffold extends Module {
 
     private final BooleanSetting clientLook = new BooleanSetting("Клиент лук", true);
+    private final BooleanSetting rotation = new BooleanSetting("Rotation", true);
 
     private BlockData currentBlock;
     private BlockData lastRotationBlock;
@@ -91,7 +92,7 @@ public class Scaffold extends Module {
         BlockHitResult hitResult = createHitResult(currentBlock);
 
         updateRotation(currentBlock);
-        if (new Rotation(mc.player).getDelta(lastRotation) > 2.0f) {
+        if (rotation.getValue() && lastRotation != null && new Rotation(mc.player).getDelta(lastRotation) > 2.0f) {
             return;
         }
 
@@ -119,13 +120,21 @@ public class Scaffold extends Module {
     }
 
     private void updateRotation(BlockData blockData) {
+        if (!rotation.getValue()) {
+            // Если ротация выключена — снимаем задачу Scaffold с RotationComponent,
+            // чтобы не блокировать другие модули (например KillAura).
+            RotationComponent.getInstance().clearMoveFixMode("Scaffold");
+            return;
+        }
+
         if (lastRotation == null || !blockData.equals(lastRotationBlock)) {
             lastRotation = createRotation(blockData);
             lastRotationBlock = blockData;
         }
 
         // Держим ротацию, чтобы Scaffold не отводил взгляд между постановками.
-        RotationComponent.update(lastRotation, 45, 45, 180, 180, 999999, 1, clientLook.getValue(), MoveFixMode.FREE, "Scaffold");
+        // Приоритет 2 — выше чем у KillAura (1), чтобы Scaffold мог перехватить ротацию.
+        RotationComponent.update(lastRotation, 45, 45, 180, 180, 999999, 2, clientLook.getValue(), MoveFixMode.FREE, "Scaffold");
     }
 
     private Rotation createRotation(BlockData blockData) {

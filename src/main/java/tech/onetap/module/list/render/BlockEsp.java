@@ -99,7 +99,7 @@ public class BlockEsp extends Module {
         com.google.gson.JsonObject root = new com.google.gson.JsonObject();
         root.add("blocks", arr);
         try {
-            java.nio.file.Path dir = java.nio.file.Paths.get(".options/configs");
+            java.nio.file.Path dir = java.nio.file.Paths.get(".options");
             java.nio.file.Files.createDirectories(dir);
             java.nio.file.Files.write(dir.resolve("blockesp.json"),
                     new com.google.gson.GsonBuilder().setPrettyPrinting().create().toJson(root).getBytes());
@@ -110,7 +110,7 @@ public class BlockEsp extends Module {
 
     public void loadBlocks() {
         blocksLoaded = true;
-        java.nio.file.Path file = java.nio.file.Paths.get(".options/configs/blockesp.json");
+        java.nio.file.Path file = java.nio.file.Paths.get(".options/blockesp.json");
         if (!java.nio.file.Files.exists(file)) return;
         try (java.io.Reader reader = java.nio.file.Files.newBufferedReader(file)) {
             com.google.gson.JsonObject root = new com.google.gson.Gson().fromJson(reader, com.google.gson.JsonObject.class);

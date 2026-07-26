@@ -4,12 +4,14 @@ import com.google.common.eventbus.Subscribe;
 import net.minecraft.block.BlockState;
 import net.minecraft.entity.vehicle.BoatEntity;
 import net.minecraft.network.packet.c2s.play.ClientCommandC2SPacket;
+import net.minecraft.util.Hand;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Box;
 import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.Vec3d;
 import tech.onetap.event.list.EventAttack;
 import tech.onetap.event.list.EventTick;
+import tech.onetap.event.list.MoveInputEvent;
 import tech.onetap.module.Module;
 import tech.onetap.module.ModuleCategory;
 import tech.onetap.module.ModuleInformation;
@@ -28,6 +30,9 @@ public final class BoatFly extends Module {
     private final SliderSetting bypassTicks = new SliderSetting("Тики обхода", 3.0, 1.0, 5.0, 1.0).setVisible(() -> bypass.getValue());
     private final BooleanSetting noClipMode = new BooleanSetting("NoClip", true);
     private final BooleanSetting antiKick = new BooleanSetting("Анти-кик", true);
+    private final BooleanSetting rehook = new BooleanSetting("Rehook", false);
+    private final SliderSetting rehookUnhookAfter = new SliderSetting("Отцепить через", 4.0, 1.0, 10.0, 1.0).setVisible(() -> rehook.getValue());
+    private final SliderSetting rehookHookAfter = new SliderSetting("Зацепить через", 2.0, 1.0, 10.0, 1.0).setVisible(() -> rehook.getValue());
 
     private boolean wasInsideBlock;
     private BoatEntity bypassBoat;
@@ -39,6 +44,11 @@ public final class BoatFly extends Module {
 
     private int antiKickDelayLeft;
     private int antiKickOffLeft;
+
+    private int rehookPhase = -1;
+    private int rehookTickCounter = 0;
+    private int rehookVehicleId = -1;
+    private boolean rehookForceAttempt = false;
 
     public BoatFly() {
     }
@@ -114,7 +124,13 @@ public final class BoatFly extends Module {
             this.resetBypassState();
         }
 
-        if (!this.isBypassWaiting() && !mc.player.hasVehicle()) {
+        if (this.rehook.getValue()) {
+            this.handleRehookTick(boat);
+        } else {
+            this.resetRehookState();
+        }
+
+        if (!this.isBypassWaiting() && !this.isRehookWaiting() && !mc.player.hasVehicle()) {
             mc.player.startRiding(boat, true);
         }
 
@@ -226,11 +242,103 @@ public final class BoatFly extends Module {
         if (this.bypassBoat != null && !this.bypassBoat.isRemoved()) {
             return this.bypassBoat;
         }
+        if (this.rehookVehicleId >= 0 && mc.world != null) {
+            var entity = mc.world.getEntityById(this.rehookVehicleId);
+            if (entity instanceof BoatEntity boat && !boat.isRemoved()) {
+                return boat;
+            }
+        }
         return null;
     }
 
     private boolean isBypassWaiting() {
         return this.bypass.getValue() && (this.bypassDismounted || this.bypassPendingRemount);
+    }
+
+    private boolean isRehookWaiting() {
+        return this.rehook.getValue() && (this.rehookPhase == 1 || this.rehookPhase == 2);
+    }
+
+    private void handleRehookTick(BoatEntity boat) {
+        if (this.rehookPhase == -1) {
+            this.rehookPhase = 0;
+            this.rehookTickCounter = (int) this.rehookUnhookAfter.getValue();
+            this.rehookForceAttempt = false;
+        }
+
+        if (this.rehookPhase == 0) {
+            this.rehookTickCounter--;
+            if (this.rehookTickCounter <= 0) {
+                this.rehookVehicleId = boat.getId();
+                this.dismountFromBoat();
+                this.rehookPhase = 1;
+                this.rehookTickCounter = (int) this.rehookHookAfter.getValue();
+            }
+        } else if (this.rehookPhase == 1) {
+            this.rehookTickCounter--;
+            if (this.rehookTickCounter <= 0) {
+                this.rehookPhase = 2;
+                this.rehookForceAttempt = false;
+            }
+        } else if (this.rehookPhase == 2) {
+            if (mc.player.hasVehicle()) {
+                this.rehookPhase = 0;
+                this.rehookTickCounter = (int) this.rehookUnhookAfter.getValue();
+                this.rehookForceAttempt = false;
+                return;
+            }
+
+            BoatEntity vehicle = null;
+            if (mc.world != null && this.rehookVehicleId >= 0) {
+                var entity = mc.world.getEntityById(this.rehookVehicleId);
+                if (entity instanceof BoatEntity b) {
+                    vehicle = b;
+                }
+            }
+
+            if (vehicle == null || vehicle.isRemoved()) {
+                this.resetRehookState();
+                return;
+            }
+
+            if (mc.player.distanceTo(vehicle) > 6.0D) {
+                this.resetRehookState();
+                return;
+            }
+
+            if (!this.rehookForceAttempt) {
+                mc.interactionManager.interactEntity(mc.player, vehicle, Hand.MAIN_HAND);
+                this.rehookForceAttempt = true;
+            } else {
+                mc.player.startRiding(vehicle, true);
+                this.rehookPhase = 0;
+                this.rehookTickCounter = (int) this.rehookUnhookAfter.getValue();
+                this.rehookForceAttempt = false;
+            }
+        }
+    }
+
+    private void resetRehookState() {
+        this.rehookPhase = -1;
+        this.rehookTickCounter = 0;
+        this.rehookVehicleId = -1;
+        this.rehookForceAttempt = false;
+    }
+
+    @Subscribe
+    private void onMoveInput(MoveInputEvent event) {
+        if (mc.player == null) return;
+
+        if (mc.player.hasVehicle() || this.rehookVehicleId >= 0) {
+            boolean isVehicleSafe = false;
+            if (mc.player.getVehicle() != null) {
+                isVehicleSafe = mc.player.getVehicle().isOnGround() || mc.player.getVehicle().isTouchingWater();
+            }
+            event.sneak = event.sneak && isVehicleSafe;
+            if (event.sneak) {
+                this.rehookVehicleId = -1;
+            }
+        }
     }
 
     private void resetBypassState() {
@@ -294,6 +402,7 @@ public final class BoatFly extends Module {
         super.onDisable();
         this.wasInsideBlock = false;
         this.resetBypassState();
+        this.resetRehookState();
         this.resetAntiKickState();
 
         if (mc.player != null) {
