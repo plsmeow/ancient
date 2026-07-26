@@ -1,7 +1,19 @@
 package tech.onetap.module.list.movement;
 
 import com.google.common.eventbus.Subscribe;
+import net.minecraft.item.ArmorStandItem;
+import net.minecraft.item.BlockItem;
+import net.minecraft.item.FireworkRocketItem;
+import net.minecraft.item.Item;
+import net.minecraft.item.ItemStack;
+import net.minecraft.item.SpawnEggItem;
 import net.minecraft.network.packet.c2s.play.PlayerMoveC2SPacket;
+import net.minecraft.util.ActionResult;
+import net.minecraft.util.Hand;
+import net.minecraft.util.hit.BlockHitResult;
+import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.Direction;
+import net.minecraft.util.math.Vec3d;
 import tech.onetap.event.list.EventPlayerUpdate;
 import tech.onetap.event.list.EventTick;
 import tech.onetap.module.Module;
@@ -16,8 +28,10 @@ import tech.onetap.util.player.move.MoveUtil;
 @ModuleInformation(moduleName = "Flight", moduleCategory = ModuleCategory.MOVEMENT)
 public class Flight extends Module {
 
-    public final ModeSetting mode = new ModeSetting("Режим", "Vanilla", "Vanilla", "Vulcan");
+    public final ModeSetting mode = new ModeSetting("Режим", "Vanilla", "Vanilla", "Vulcan", "Vulcan XZ");
     public SliderSetting speed = new SliderSetting("Скорость", 1.0, 0.1, 10.0, 0.1).setVisible(() -> mode.is("Vanilla"));
+    public SliderSetting vulcanXzSpeed = new SliderSetting("Скорость", 1.0, 0.1, 10.0, 0.1).setVisible(() -> mode.is("Vulcan XZ"));
+    public final SliderSetting vulcanXzBlockInterval = new SliderSetting("Блок каждые N тиков", 20.0, 10.0, 80.0, 5.0).setVisible(() -> mode.is("Vulcan XZ"));
 
     public final BooleanSetting antiKick = new BooleanSetting("Анти-кик", true);
 
@@ -32,13 +46,18 @@ public class Flight extends Module {
     private int antiKickDelayLeft;
     private int antiKickOffLeft;
 
+    private double vulcanXzLockedY;
+    private int vulcanXzBlockTickCounter;
+
     @Override
     public void onEnable() {
         super.onEnable();
         resetVulcanState();
         resetAntiKickState();
+        resetVulcanXzState();
         if (mc.player != null) {
             vulcanStartHeight = mc.player.getY();
+            vulcanXzLockedY = mc.player.getY();
         }
     }
 
@@ -47,6 +66,7 @@ public class Flight extends Module {
         super.onDisable();
         resetVulcanState();
         resetAntiKickState();
+        resetVulcanXzState();
     }
 
     @Subscribe
@@ -85,6 +105,14 @@ public class Flight extends Module {
 
         mc.player.setOnGround(false);
         mc.player.fallDistance = 0;
+    }
+
+    @Subscribe
+    public void onUpdateVulcanXz(EventTick event) {
+        if (mc.player == null || mc.getNetworkHandler() == null) return;
+        if (!mode.is("Vulcan XZ")) return;
+
+        handleVulcanXzMode();
     }
 
     @Subscribe
@@ -191,6 +219,73 @@ public class Flight extends Module {
     private void resetAntiKickState() {
         antiKickDelayLeft = 0;
         antiKickOffLeft = 0;
+    }
+
+    private void resetVulcanXzState() {
+        vulcanXzLockedY = 0.0;
+        vulcanXzBlockTickCounter = 0;
+    }
+
+    private void handleVulcanXzMode() {
+        // Лочим вертикаль на высоте включения
+        mc.player.setVelocity(mc.player.getVelocity().x, 0, mc.player.getVelocity().z);
+        mc.player.setY(vulcanXzLockedY);
+
+        // Горизонтальное движение как в vanilla fly
+        double forward = mc.player.input.movementForward;
+        double strafe = mc.player.input.movementSideways;
+        float yaw = mc.player.getYaw();
+
+        if (forward != 0 || strafe != 0) {
+            double angle = Math.atan2(-strafe, forward);
+            double finalYaw = Math.toRadians(yaw) + angle;
+            double speedVal = vulcanXzSpeed.getValue();
+
+            mc.player.setVelocity(
+                    -Math.sin(finalYaw) * speedVal,
+                    0,
+                    Math.cos(finalYaw) * speedVal
+            );
+        }
+
+        mc.player.setOnGround(false);
+        mc.player.fallDistance = 0;
+
+        // Ставим блок под себя по логике airplace каждые N тиков
+        vulcanXzBlockTickCounter++;
+        if (vulcanXzBlockTickCounter >= vulcanXzBlockInterval.getIntValue()) {
+            vulcanXzBlockTickCounter = 0;
+            placeBlockUnderSelf();
+        }
+    }
+
+    private void placeBlockUnderSelf() {
+        if (mc.player == null || mc.world == null || mc.interactionManager == null) return;
+
+        Hand hand = getPlaceableHand();
+        if (hand == null) return;
+
+        BlockPos pos = BlockPos.ofFloored(mc.player.getX(), vulcanXzLockedY - 1.0, mc.player.getZ());
+        if (!mc.world.getBlockState(pos).isReplaceable()) return;
+
+        Vec3d hitVec = Vec3d.ofCenter(pos);
+        BlockHitResult hitResult = new BlockHitResult(hitVec, Direction.UP, pos, false);
+
+        ActionResult result = mc.interactionManager.interactBlock(mc.player, hand, hitResult);
+        if (result.isAccepted()) {
+            mc.player.swingHand(hand);
+        }
+    }
+
+    private Hand getPlaceableHand() {
+        if (isPlaceable(mc.player.getMainHandStack())) return Hand.MAIN_HAND;
+        if (isPlaceable(mc.player.getOffHandStack())) return Hand.OFF_HAND;
+        return null;
+    }
+
+    private boolean isPlaceable(ItemStack stack) {
+        Item item = stack.getItem();
+        return item instanceof BlockItem || item instanceof SpawnEggItem || item instanceof FireworkRocketItem || item instanceof ArmorStandItem;
     }
 
     private boolean tickAntiKick() {
