@@ -39,6 +39,7 @@
     "PlayerEntityMixin",
     "RenderTickCounterAccessor",
     "ScreenMixin",
+    "TitleScreenMixin",
     "WorldMixin"
   ],
   "injectors": {

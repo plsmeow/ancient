@@ -22,6 +22,8 @@ import tech.onetap.util.player.other.ServerManager;
 import tech.onetap.util.rotation.ComponentManager;
 import tech.onetap.util.script.ScriptManager;
 import tech.onetap.util.staff.StaffManager;
+import tech.onetap.ui.mainmenu.AltConfig;
+import tech.onetap.ui.mainmenu.AltWidget;
 import tech.onetap.util.target.TargetRepository;
 
 import java.io.File;
@@ -57,6 +59,8 @@ public class Onetap implements ModInitializer {
     private final IdealHitUtils idealHitUtils;
     @Getter
     private final ScriptManager scriptManager;
+    @Getter
+    private final AltWidget altWidget;
 
 
     public Onetap() {
@@ -80,6 +84,11 @@ public class Onetap implements ModInitializer {
         tpsGetter = new TPSGetter();
         idealHitUtils = new IdealHitUtils();
         scriptManager = new ScriptManager();
+        altWidget = new AltWidget();
+        try {
+            new AltConfig().init();
+        } catch (Exception ignored) {
+        }
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             ConfigManager.save("autocfg");
             getDragManager().saveDraggables();

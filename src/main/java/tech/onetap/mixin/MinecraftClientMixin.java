@@ -52,7 +52,6 @@ public class MinecraftClientMixin {
         if (Instance.get(AutoExplosion.class).getTicksToDisableRightClicks() > 0) ci.cancel();
     }
 
-
     @Inject(method = "render", at = @At(value = "HEAD"))
     private void render(boolean tick, CallbackInfo ci) {
         var timeNano = Util.getMeasuringTimeNano();
