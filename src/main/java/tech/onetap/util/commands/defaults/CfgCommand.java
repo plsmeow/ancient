@@ -6,10 +6,12 @@ import net.minecraft.text.ClickEvent;
 import net.minecraft.text.HoverEvent;
 import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
+import tech.onetap.util.cloud.CloudConfigApi;
+import tech.onetap.util.cloud.CloudConfigEntry;
+import tech.onetap.util.cloud.CodeGenerator;
 import tech.onetap.util.commands.api.Command;
 import tech.onetap.util.commands.api.argument.IArgConsumer;
 import tech.onetap.util.commands.api.exception.CommandException;
-import tech.onetap.util.commands.api.exception.CommandNotEnoughArgumentsException;
 import tech.onetap.util.commands.api.helpers.Paginator;
 import tech.onetap.util.commands.api.helpers.TabCompleteHelper;
 import tech.onetap.util.config.ConfigManager;
@@ -72,8 +74,225 @@ public class CfgCommand extends Command {
                 }
             }
             case "remove" -> handleRemove(args);
-            default -> logDirect("Неизвестная подкоманда. Используй load/save/remove/list/dir.", Formatting.GRAY);
+            case "cloud" -> handleCloud(args, label);
+            default -> logDirect("Неизвестная подкоманда. Используй load/save/remove/list/dir/cloud.", Formatting.GRAY);
         }
+    }
+
+    private void handleCloud(IArgConsumer args, String label) throws CommandException {
+        if (!args.hasAny()) {
+            handleCloudList();
+            return;
+        }
+
+        String sub = args.getString().toLowerCase(Locale.US);
+        switch (sub) {
+            case "load" -> handleCloudLoad(args, label);
+            case "share" -> handleCloudShare(args);
+            case "del", "delete", "remove" -> handleCloudDelete(args, label);
+            case "save" -> handleCloudSave(args);
+            default -> logDirect("Неизвестная подкоманда cloud. Используй load/share/save/del.", Formatting.GRAY);
+        }
+    }
+
+    private void handleCloudLoad(IArgConsumer args, String label) throws CommandException {
+        args.requireExactly(1);
+        String code = args.getString().toUpperCase(Locale.US);
+
+        if (!CodeGenerator.isValid(code)) {
+            logDirect(Formatting.GRAY + "Неверный формат кода. Пример: ABCD-1234");
+            return;
+        }
+
+        logDirect(Formatting.GRAY + "Загружаю конфиг " + Formatting.WHITE + code + Formatting.GRAY + "...");
+        CloudConfigApi.fetchByCode(code,
+                result -> {
+                    try {
+                        Path target = Paths.get(".options/configs").resolve(result.name() + ".json");
+                        Files.createDirectories(target.getParent());
+                        Files.write(target, result.jsonData().getBytes());
+                        ConfigManager.load(result.name());
+                        Text clickable = Text.literal(result.name())
+                                .styled(s -> s.withClickEvent(new ClickEvent(
+                                        ClickEvent.Action.RUN_COMMAND,
+                                        FORCE_COMMAND_PREFIX + "cfg load " + result.name()
+                                )).withHoverEvent(new HoverEvent(
+                                        HoverEvent.Action.SHOW_TEXT,
+                                        Text.literal("Click to load config")
+                                )));
+                        logDirect("Конфиг загружен: ", Formatting.GRAY);
+                        logDirect(clickable);
+                    } catch (IOException e) {
+                        logDirect(Formatting.GRAY + "Ошибка при сохранении файла");
+                        e.printStackTrace();
+                    }
+                },
+                () -> logDirect(Formatting.GRAY + "Конфиг с таким кодом не найден")
+        );
+    }
+
+    private void handleCloudShare(IArgConsumer args) throws CommandException {
+        args.requireExactly(1);
+        String name = args.getString();
+
+        if (!ConfigManager.getConfigs().contains(name)) {
+            logDirect(Formatting.GRAY + "Локальный конфиг " + Formatting.WHITE + name + Formatting.GRAY + " не найден");
+            return;
+        }
+
+        Path file = Paths.get(".options/configs").resolve(name + ".json");
+        if (!Files.exists(file)) {
+            logDirect(Formatting.GRAY + "Файл конфига не найден");
+            return;
+        }
+
+        String json;
+        try {
+            json = Files.readString(file);
+        } catch (IOException e) {
+            logDirect(Formatting.GRAY + "Не удалось прочитать файл конфига");
+            return;
+        }
+
+        logDirect(Formatting.GRAY + "Загружаю на сервер...");
+        CloudConfigApi.upload(name, json,
+                result -> {
+                    Text code = Text.literal(result.code())
+                            .styled(s -> s.withClickEvent(new ClickEvent(
+                                    ClickEvent.Action.COPY_TO_CLIPBOARD,
+                                    result.code()
+                            )).withHoverEvent(new HoverEvent(
+                                    HoverEvent.Action.SHOW_TEXT,
+                                    Text.literal("Click to copy")
+                            )));
+                    logDirect("Готово! Код: ", Formatting.GRAY);
+                    logDirect(code);
+                },
+                err -> logDirect(Formatting.GRAY + err)
+        );
+    }
+
+    private void handleCloudSave(IArgConsumer args) throws CommandException {
+        args.requireExactly(1);
+        String arg = args.getString();
+        boolean isCode = CodeGenerator.isValid(arg.toUpperCase(Locale.US));
+        String code = isCode ? arg.toUpperCase(Locale.US) : null;
+        String name = isCode ? null : arg;
+
+        if (isCode) {
+            CloudConfigApi.fetchByCode(code,
+                    result -> applyLocalUpdate(result.name()),
+                    () -> logDirect(Formatting.GRAY + "Конфиг с таким кодом не найден")
+            );
+        } else {
+            applyLocalUpdate(name);
+        }
+    }
+
+    private void applyLocalUpdate(String name) {
+        if (!ConfigManager.getConfigs().contains(name)) {
+            logDirect(Formatting.GRAY + "Сначала сохрани локальный конфиг: .cfg save " + name);
+            return;
+        }
+        Path file = Paths.get(".options/configs").resolve(name + ".json");
+        if (!Files.exists(file)) {
+            logDirect(Formatting.GRAY + "Файл конфига не найден");
+            return;
+        }
+        String json;
+        try {
+            json = Files.readString(file);
+        } catch (IOException e) {
+            logDirect(Formatting.GRAY + "Не удалось прочитать файл конфига");
+            return;
+        }
+
+        logDirect(Formatting.GRAY + "Обновляю на сервере...");
+        CloudConfigApi.updateByName(name, json,
+                () -> {},
+                result -> {
+                    switch (result) {
+                        case OK -> logDirect(Formatting.GRAY + "Конфиг обновлён");
+                        case NOT_FOUND -> logDirect(Formatting.GRAY + "Сначала используй .cfg cloud share " + name);
+                        case ERROR -> logDirect(Formatting.GRAY + "Ошибка сервера");
+                    }
+                }
+        );
+    }
+
+    private void handleCloudDelete(IArgConsumer args, String label) throws CommandException {
+        args.requireExactly(1);
+        String arg = args.getString();
+        String code = arg.toUpperCase(Locale.US);
+
+        if (CodeGenerator.isValid(code)) {
+            logDirect(Formatting.GRAY + "Удаляю " + Formatting.WHITE + code + Formatting.GRAY + "...");
+            CloudConfigApi.deleteByCode(code,
+                    () -> {},
+                    result -> {
+                        switch (result) {
+                            case OK -> logDirect(Formatting.GRAY + "Удалено");
+                            case NOT_FOUND -> logDirect(Formatting.GRAY + "Конфиг не найден или принадлежит другому HWID");
+                            case ERROR -> logDirect(Formatting.GRAY + "Ошибка сервера");
+                        }
+                    }
+            );
+        } else {
+            String targetName = arg;
+            logDirect(Formatting.GRAY + "Ищу конфиг с именем " + Formatting.WHITE + targetName + Formatting.GRAY + "...");
+            CloudConfigApi.listByHwid(list -> {
+                CloudConfigEntry match = list.stream()
+                        .filter(e -> e.name().equalsIgnoreCase(targetName))
+                        .findFirst()
+                        .orElse(null);
+                if (match == null) {
+                    logDirect(Formatting.GRAY + "Конфиг с таким именем не найден среди твоих облачных");
+                    return;
+                }
+                CloudConfigApi.deleteByCode(match.code(),
+                        () -> {},
+                        result -> {
+                            switch (result) {
+                                case OK -> logDirect(Formatting.GRAY + "Удалено: " + Formatting.WHITE + match.code());
+                                case NOT_FOUND -> logDirect(Formatting.GRAY + "Конфиг не найден");
+                                case ERROR -> logDirect(Formatting.GRAY + "Ошибка сервера");
+                            }
+                        }
+                );
+            });
+        }
+    }
+
+    private void handleCloudList() {
+        logDirect(Formatting.GRAY + "Получаю список облачных конфигов...");
+        CloudConfigApi.listByHwid(list -> {
+            if (list.isEmpty()) {
+                logDirect(Formatting.GRAY + "У тебя нет облачных конфигов");
+                return;
+            }
+            logDirect("Твои облачные конфиги:", Formatting.GRAY);
+            for (CloudConfigEntry entry : list) {
+                Text line = Text.literal(Formatting.GRAY + "- " + Formatting.WHITE + entry.code()
+                                + Formatting.GRAY + " — " + Formatting.WHITE + entry.name() + " ")
+                        .append(Text.literal(Formatting.GREEN + "[Загрузить]")
+                                .styled(s -> s.withClickEvent(new ClickEvent(
+                                        ClickEvent.Action.RUN_COMMAND,
+                                        FORCE_COMMAND_PREFIX + "cfg cloud load " + entry.code()
+                                )).withHoverEvent(new HoverEvent(
+                                        HoverEvent.Action.SHOW_TEXT,
+                                        Text.literal("Click to load")
+                                ))))
+                        .append(Text.literal(Formatting.RED + " [Удалить]")
+                                .styled(s -> s.withClickEvent(new ClickEvent(
+                                        ClickEvent.Action.RUN_COMMAND,
+                                        FORCE_COMMAND_PREFIX + "cfg cloud del " + entry.code()
+                                )).withHoverEvent(new HoverEvent(
+                                        HoverEvent.Action.SHOW_TEXT,
+                                        Text.literal("Click to delete")
+                                ))));
+                logDirect(line);
+            }
+        });
     }
 
     private void handleSave(IArgConsumer args) throws CommandException {
@@ -149,23 +368,54 @@ public class CfgCommand extends Command {
 
     @Override
     public Stream<String> tabComplete(String label, IArgConsumer args) throws CommandException {
-        if (args.hasAny() && args.hasExactlyOne()) {
+        if (!args.hasAny()) {
+            return Stream.empty();
+        }
+
+        String first = args.peekString();
+
+        if (args.hasExactlyOne()) {
+            if (first.equalsIgnoreCase("cloud")) {
+                return new TabCompleteHelper()
+                        .sortAlphabetically()
+                        .prepend("load", "share", "save", "del")
+                        .filterPrefix("")
+                        .stream();
+            }
             return new TabCompleteHelper()
                     .sortAlphabetically()
-                    .prepend("load", "save", "remove", "list", "clear", "dir")
-                    .filterPrefix(args.getString())
+                    .prepend("load", "save", "remove", "list", "clear", "dir", "cloud")
+                    .filterPrefix(first)
                     .stream();
-        } else if (args.hasAny()) {
-            String arg = args.getString();
-            if (args.hasExactlyOne() && (arg.equalsIgnoreCase("load") || arg.equalsIgnoreCase("remove"))) {
+        }
+
+        if (args.hasExactly(2)) {
+            String action = args.getString().toLowerCase(Locale.US);
+            String current = args.peekString();
+            switch (action) {
+                case "load":
+                case "remove": {
+                    return ConfigManager.getConfigs().stream()
+                            .filter(cfg -> cfg.startsWith(current))
+                            .sorted();
+                }
+                case "cloud": {
+                    return new TabCompleteHelper()
+                            .sortAlphabetically()
+                            .prepend("load", "share", "save", "del")
+                            .filterPrefix(current)
+                            .stream();
+                }
+            }
+        }
+
+        if (args.hasExactly(3)) {
+            String action = args.getString().toLowerCase(Locale.US);
+            String sub = args.getString().toLowerCase(Locale.US);
+            String current = args.peekString();
+            if (action.equals("cloud") && (sub.equals("share") || sub.equals("save"))) {
                 return ConfigManager.getConfigs().stream()
-                        .filter(cfg -> {
-                            try {
-                                return cfg.startsWith(args.peekString());
-                            } catch (CommandNotEnoughArgumentsException e) {
-                                throw new RuntimeException(e);
-                            }
-                        })
+                        .filter(cfg -> cfg.startsWith(current))
                         .sorted();
             }
         }
