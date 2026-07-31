@@ -16,8 +16,10 @@ import net.minecraft.entity.vehicle.BoatEntity;
 import net.minecraft.item.Items;
 import net.minecraft.network.packet.c2s.play.ClientCommandC2SPacket;
 import net.minecraft.network.packet.c2s.play.PlayerActionC2SPacket;
+import net.minecraft.network.packet.c2s.play.PlayerInputC2SPacket;
 import net.minecraft.network.packet.c2s.play.PlayerInteractItemC2SPacket;
 import net.minecraft.util.Hand;
+import net.minecraft.util.PlayerInput;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Box;
 import net.minecraft.util.math.Direction;
@@ -36,6 +38,9 @@ import tech.onetap.util.packet.NetworkUtils;
 import tech.onetap.util.player.combat.HvhTargetPredict;
 import tech.onetap.util.player.move.MoveUtil;
 import tech.onetap.util.player.other.InventoryUtil;
+import tech.onetap.util.rotation.MoveFixMode;
+import tech.onetap.util.rotation.Rotation;
+import tech.onetap.util.rotation.RotationComponent;
 import tech.onetap.util.render.providers.ColorProvider;
 import tech.onetap.util.text.ValueUnit;
 
@@ -58,7 +63,7 @@ public class Speed extends Module {
 
     private final BooleanSetting vulcanOnlyWhileMoving = new BooleanSetting("Только в движении", true).setVisible(() -> mode.is("Vulcan"));
 
-    private final BooleanSetting polarDive = new BooleanSetting("Пикирование", false).setVisible(() -> mode.is("Polar"));
+    private final BooleanSetting polarDive = new BooleanSetting("Ротация", false).setVisible(() -> mode.is("Polar"));
 
     private int polarLastSlot = -1;
 
@@ -104,6 +109,8 @@ public class Speed extends Module {
         renderLeaveTarget = null;
         if (polarLastSlot != -1 && mc.player != null) mc.player.getInventory().selectedSlot = polarLastSlot;
         polarLastSlot = -1;
+        RotationComponent.getInstance().clearMoveFixMode("Speed");
+        RotationComponent.getInstance().stopRotation();
         super.onDisable();
     }
 
@@ -278,37 +285,41 @@ public class Speed extends Module {
         int elytraSlot = InventoryUtil.searchItem(Items.ELYTRA, 0, 9);
         if (elytraSlot == -1) return;
 
+        PlayerInput input = mc.player.input.playerInput;
+        NetworkUtils.sendSilentPacket(new PlayerInputC2SPacket(new PlayerInput(input.forward(), input.backward(), input.left(), input.right(), true, input.sneak(), input.sprint())));
+
+        if (polarDive.getValue()) {
+            float yaw = mc.gameRenderer.getCamera().getYaw();
+            if (mc.options.getPerspective().isFrontView()) yaw -= 180;
+            RotationComponent.update(new Rotation(yaw, 55), 360, 360, 360, 360, 0, 1, false, MoveFixMode.FREE, "Speed");
+        }
+
+        if (mc.player.isOnGround()
+                && !mc.player.isTouchingWater()
+                && !mc.player.isInLava()
+                && !mc.player.hasVehicle()) {
+            mc.player.jump();
+        }
+
         if (polarLastSlot == -1) polarLastSlot = mc.player.getInventory().selectedSlot;
         if (mc.player.getInventory().selectedSlot != elytraSlot) {
             mc.player.getInventory().selectedSlot = elytraSlot;
             return;
         }
 
-        if (mc.player.getEquippedStack(EquipmentSlot.CHEST).getItem() == Items.ELYTRA) return;
+        if (mc.player.getEquippedStack(EquipmentSlot.CHEST).getItem() == Items.ELYTRA) {
+            if (!mc.player.isOnGround() && !mc.player.isGliding() && !mc.player.isTouchingWater() && !mc.player.isInLava()) {
+                NetworkUtils.sendSilentPacket(new ClientCommandC2SPacket(mc.player, ClientCommandC2SPacket.Mode.START_FALL_FLYING));
+                mc.player.startGliding();
+            }
+            return;
+        }
 
         NetworkUtils.sendSilentPacket(new PlayerActionC2SPacket(PlayerActionC2SPacket.Action.SWAP_ITEM_WITH_OFFHAND, BlockPos.ORIGIN, Direction.DOWN));
         mc.interactionManager.sendSequencedPacket(mc.world, sequence -> new PlayerInteractItemC2SPacket(Hand.MAIN_HAND, sequence, mc.player.getYaw(), mc.player.getPitch()));
         NetworkUtils.sendSilentPacket(new ClientCommandC2SPacket(mc.player, ClientCommandC2SPacket.Mode.START_FALL_FLYING));
         mc.player.startGliding();
         NetworkUtils.sendSilentPacket(new PlayerActionC2SPacket(PlayerActionC2SPacket.Action.SWAP_ITEM_WITH_OFFHAND, BlockPos.ORIGIN, Direction.DOWN));
-    }
-
-    @Subscribe
-    private void onRotation(RotationEvent event) {
-        if (!mode.is("Polar") || !polarDive.getValue()) return;
-        if (mc.player == null || mc.world == null) return;
-        if (InventoryUtil.searchItem(Items.ELYTRA, 0, 9) == -1) return;
-
-        float yaw = mc.gameRenderer.getCamera().getYaw();
-        if (mc.options.getPerspective().isFrontView()) yaw -= 180;
-
-        event.setYaw(yaw);
-        event.setPitch(55);
-
-        mc.player.setYaw(yaw);
-        mc.player.setPitch(55);
-        mc.player.headYaw = yaw;
-        mc.player.bodyYaw = yaw;
     }
 
     private void handleContact() {
