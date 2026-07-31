@@ -8,11 +8,19 @@ import net.minecraft.client.util.math.MatrixStack;
 import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.client.gl.ShaderProgramKeys;
 import net.minecraft.entity.Entity;
+import net.minecraft.entity.EquipmentSlot;
 import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.effect.StatusEffects;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.entity.vehicle.BoatEntity;
+import net.minecraft.item.Items;
+import net.minecraft.network.packet.c2s.play.ClientCommandC2SPacket;
+import net.minecraft.network.packet.c2s.play.PlayerActionC2SPacket;
+import net.minecraft.network.packet.c2s.play.PlayerInteractItemC2SPacket;
+import net.minecraft.util.Hand;
+import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Box;
+import net.minecraft.util.math.Direction;
 import net.minecraft.util.math.Vec3d;
 import org.joml.Matrix4f;
 import tech.onetap.Onetap;
@@ -24,8 +32,10 @@ import tech.onetap.module.list.combat.KillAura;
 import tech.onetap.module.settings.BooleanSetting;
 import tech.onetap.module.settings.ModeSetting;
 import tech.onetap.module.settings.SliderSetting;
+import tech.onetap.util.packet.NetworkUtils;
 import tech.onetap.util.player.combat.HvhTargetPredict;
 import tech.onetap.util.player.move.MoveUtil;
+import tech.onetap.util.player.other.InventoryUtil;
 import tech.onetap.util.render.providers.ColorProvider;
 import tech.onetap.util.text.ValueUnit;
 
@@ -33,7 +43,7 @@ import tech.onetap.util.text.ValueUnit;
 @ModuleInformation(moduleName = "Speed", moduleCategory = ModuleCategory.MOVEMENT)
 public class Speed extends Module {
 
-    private final ModeSetting mode = new ModeSetting("Режим", "Contact", "Contact", "Vulcan", "Vanilla");
+    private final ModeSetting mode = new ModeSetting("Режим", "Contact", "Contact", "Vulcan", "Vanilla", "Polar");
 
     private final SliderSetting boost = new SliderSetting("Сила буста", 8.0f, 1.0f, 20.0f, 0.1f).setVisible(() -> mode.is("Contact"));
     private final SliderSetting targetRange = new SliderSetting("Радиус цели", 3.0f, 0.5f, 10.0f, 0.1f).setVisible(() -> mode.is("Contact"));
@@ -47,6 +57,10 @@ public class Speed extends Module {
     private final SliderSetting predictStrength = new SliderSetting("Сила предикта", 2.0f, 0.1f, 10.0f, 0.1f).setVisible(() -> mode.is("Contact") && predict.getValue());
 
     private final BooleanSetting vulcanOnlyWhileMoving = new BooleanSetting("Только в движении", true).setVisible(() -> mode.is("Vulcan"));
+
+    private final BooleanSetting polarDive = new BooleanSetting("Пикирование", false).setVisible(() -> mode.is("Polar"));
+
+    private int polarLastSlot = -1;
 
     private final SliderSetting vanillaSpeed = new SliderSetting("Скорость", 1.18f, 1.05f, 20.0f, 0.5f).setVisible(() -> mode.is("Vanilla"));
     private final BooleanSetting waterFix = new BooleanSetting("Water Fix", false).setVisible(() -> mode.is("Vanilla"));
@@ -88,6 +102,8 @@ public class Speed extends Module {
         renderTarget = null;
         renderPredicted = null;
         renderLeaveTarget = null;
+        if (polarLastSlot != -1 && mc.player != null) mc.player.getInventory().selectedSlot = polarLastSlot;
+        polarLastSlot = -1;
         super.onDisable();
     }
 
@@ -102,6 +118,11 @@ public class Speed extends Module {
 
         if (mode.is("Vanilla")) {
             handleVanilla();
+            return;
+        }
+
+        if (mode.is("Polar")) {
+            handlePolar();
             return;
         }
 
@@ -247,6 +268,47 @@ public class Speed extends Module {
         mc.player.jump();
         mc.player.setVelocity(mc.player.getVelocity().x, 0.1, mc.player.getVelocity().z);
         MoveUtil.setMotion(0.40f);
+    }
+
+    private void handlePolar() {
+        if (mc.player.getEquippedStack(EquipmentSlot.CHEST).getItem() != Items.ELYTRA && mc.player.isGliding()) {
+            mc.player.stopGliding();
+        }
+
+        int elytraSlot = InventoryUtil.searchItem(Items.ELYTRA, 0, 9);
+        if (elytraSlot == -1) return;
+
+        if (polarLastSlot == -1) polarLastSlot = mc.player.getInventory().selectedSlot;
+        if (mc.player.getInventory().selectedSlot != elytraSlot) {
+            mc.player.getInventory().selectedSlot = elytraSlot;
+            return;
+        }
+
+        if (mc.player.getEquippedStack(EquipmentSlot.CHEST).getItem() == Items.ELYTRA) return;
+
+        NetworkUtils.sendSilentPacket(new PlayerActionC2SPacket(PlayerActionC2SPacket.Action.SWAP_ITEM_WITH_OFFHAND, BlockPos.ORIGIN, Direction.DOWN));
+        mc.interactionManager.sendSequencedPacket(mc.world, sequence -> new PlayerInteractItemC2SPacket(Hand.MAIN_HAND, sequence, mc.player.getYaw(), mc.player.getPitch()));
+        NetworkUtils.sendSilentPacket(new ClientCommandC2SPacket(mc.player, ClientCommandC2SPacket.Mode.START_FALL_FLYING));
+        mc.player.startGliding();
+        NetworkUtils.sendSilentPacket(new PlayerActionC2SPacket(PlayerActionC2SPacket.Action.SWAP_ITEM_WITH_OFFHAND, BlockPos.ORIGIN, Direction.DOWN));
+    }
+
+    @Subscribe
+    private void onRotation(RotationEvent event) {
+        if (!mode.is("Polar") || !polarDive.getValue()) return;
+        if (mc.player == null || mc.world == null) return;
+        if (InventoryUtil.searchItem(Items.ELYTRA, 0, 9) == -1) return;
+
+        float yaw = mc.gameRenderer.getCamera().getYaw();
+        if (mc.options.getPerspective().isFrontView()) yaw -= 180;
+
+        event.setYaw(yaw);
+        event.setPitch(55);
+
+        mc.player.setYaw(yaw);
+        mc.player.setPitch(55);
+        mc.player.headYaw = yaw;
+        mc.player.bodyYaw = yaw;
     }
 
     private void handleContact() {

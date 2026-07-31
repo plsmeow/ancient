@@ -86,7 +86,8 @@ public class KillAura extends Module {
             "SpookyTime",
             "Universal",
             "GrimFun",
-            "Neuro"
+            "Neuro",
+            "AresMine"
     );
     public final ModeSetting sortBy = new ModeSetting("Сортировка", "FOV", "FOV", "Дистанция", "Здоровье");
     private final ModeListSetting targets = new ModeListSetting("Таргеты",
@@ -167,6 +168,7 @@ public class KillAura extends Module {
     private final UniversalRotation universalRotation = new UniversalRotation();
     private final GrimFunRotation grimFunRotation = new GrimFunRotation();
     private final NeuroRotation neuroRotation = new NeuroRotation();
+    private final AresMineRotation aresMineRotation = new AresMineRotation();
 
     private boolean interpolationRotationInitialized;
     private LivingEntity interpolationRotationTarget;
@@ -291,6 +293,7 @@ public class KillAura extends Module {
             case "Universal" -> universalRotation.update(this, target);
             case "GrimFun" -> grimFunRotation.update(this, target);
             case "Neuro" -> neuroRotation.update(this, target);
+            case "AresMine" -> aresMineRotation.update(this, target);
         }
     }
 
@@ -380,6 +383,10 @@ public class KillAura extends Module {
                     sloth2Rotation.onAttack();
                 }
 
+                if (rotation.is("AresMine")) {
+                    aresMineRotation.onAttack();
+                }
+
                 if (rotation.is("Snap")) {
                     snapActive = false;
                     snapTimer = 0;
@@ -397,6 +404,7 @@ public class KillAura extends Module {
             }
             grimFunRotation.reset(this);
             neuroRotation.reset(this);
+            aresMineRotation.reset(this);
         }
     }
 
@@ -943,6 +951,7 @@ public class KillAura extends Module {
         isResolving = false;
         resolverPoint = null;
         neuroRotation.reset(this);
+        aresMineRotation.reset(this);
         Onetap.getInstance().getModuleStorage().setSpeedAcceleration(0);
         Onetap.getInstance().getModuleStorage().setRandomness(1);
         RotationComponent.getInstance().clearMoveFixMode("KillAura");
