@@ -1,12 +1,14 @@
 package tech.onetap.ui.mainmenu;
 
+import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.screen.multiplayer.MultiplayerScreen;
 import net.minecraft.client.gui.screen.option.OptionsScreen;
 import net.minecraft.client.gui.screen.world.SelectWorldScreen;
 import net.minecraft.text.Text;
-import tech.onetap.Onetap;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import tech.onetap.module.settings.impl.ThemeManager;
 import tech.onetap.util.IMinecraft;
 import tech.onetap.util.render.math.Animation;
@@ -21,7 +23,10 @@ import java.util.concurrent.ThreadLocalRandom;
 
 public class MainMenuScreen extends Screen implements IMinecraft {
 
+    private static final Logger LOGGER = LoggerFactory.getLogger("Ancient/MainMenu");
+
     private final List<MenuButton> buttons = new ArrayList<>();
+    private final List<MenuButton> sideButtons = new ArrayList<>();
     private final List<Particle> particles = new ArrayList<>();
 
     private final Animation fadeIn = new Animation(Easing.QUINTIC_OUT, 700);
@@ -40,10 +45,11 @@ public class MainMenuScreen extends Screen implements IMinecraft {
         fadeIn.run(1f);
 
         buttons.clear();
+        sideButtons.clear();
 
-        float widthButton = 160f;
-        float heightButton = 24f;
-        float spacing = 6f;
+        float widthButton = 200f;
+        float heightButton = 20f;
+        float spacing = 4f;
         float totalHeight = heightButton * 4 + spacing * 3;
         float x = (mc.getWindow().getScaledWidth() - widthButton) / 2f;
         float y = (mc.getWindow().getScaledHeight() - totalHeight) / 2f + 10;
@@ -59,6 +65,16 @@ public class MainMenuScreen extends Screen implements IMinecraft {
         y += heightButton + spacing;
         buttons.add(new MenuButton(x, y, widthButton, heightButton, "Выход",
                 () -> mc.scheduleStop()));
+
+        float sideY = y;
+        if (isModLoaded("modmenu")) {
+            sideButtons.add(new MenuButton(x - 24f, sideY, 20f, 20f, "M",
+                    () -> openScreen("com.terraformersmc.modmenu.gui.ModsScreen")));
+        }
+        if (isModLoaded("ias")) {
+            sideButtons.add(new MenuButton(x + widthButton + 4f, sideY, 20f, 20f, "A",
+                    () -> openScreen("ru.vidtu.ias.screen.AccountScreen")));
+        }
 
         if (particles.isEmpty()) {
             for (int i = 0; i < 40; i++) {
@@ -101,8 +117,9 @@ public class MainMenuScreen extends Screen implements IMinecraft {
         for (MenuButton button : buttons) {
             button.render(context, mouseX, mouseY, delta);
         }
-
-        Onetap.getInstance().getAltWidget().render(context, mouseX, mouseY);
+        for (MenuButton button : sideButtons) {
+            button.render(context, mouseX, mouseY, delta);
+        }
 
         renderBottomInfo(context, width, height, fade, themeColor);
 
@@ -188,31 +205,32 @@ public class MainMenuScreen extends Screen implements IMinecraft {
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         buttons.forEach(b -> b.click((int) mouseX, (int) mouseY, button));
-        Onetap.getInstance().getAltWidget().click((int) mouseX, (int) mouseY, button);
+        sideButtons.forEach(b -> b.click((int) mouseX, (int) mouseY, button));
         return super.mouseClicked(mouseX, mouseY, button);
-    }
-
-    @Override
-    public boolean mouseScrolled(double mouseX, double mouseY, double horizontalAmount, double verticalAmount) {
-        Onetap.getInstance().getAltWidget().updateScroll((int) mouseX, (int) mouseY, (float) verticalAmount);
-        return super.mouseScrolled(mouseX, mouseY, horizontalAmount, verticalAmount);
-    }
-
-    @Override
-    public boolean charTyped(char chr, int modifiers) {
-        Onetap.getInstance().getAltWidget().onChar(chr);
-        return super.charTyped(chr, modifiers);
-    }
-
-    @Override
-    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-        Onetap.getInstance().getAltWidget().onKey(keyCode);
-        return super.keyPressed(keyCode, scanCode, modifiers);
     }
 
     @Override
     public boolean shouldPause() {
         return false;
+    }
+
+    private boolean isModLoaded(String modId) {
+        try {
+            return FabricLoader.getInstance().isModLoaded(modId);
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
+
+    private void openScreen(String screenClass) {
+        try {
+            Screen screen = (Screen) Class.forName(screenClass)
+                    .getConstructor(Screen.class)
+                    .newInstance(this);
+            mc.setScreen(screen);
+        } catch (Throwable t) {
+            LOGGER.error("Failed to open screen {}", screenClass, t);
+        }
     }
 
     @Override

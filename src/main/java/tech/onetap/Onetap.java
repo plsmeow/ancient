@@ -15,6 +15,7 @@ import tech.onetap.util.commands.manager.CommandRepository;
 import tech.onetap.util.config.ConfigManager;
 import tech.onetap.util.draggable.DragManager;
 import tech.onetap.util.friend.FriendRepository;
+import tech.onetap.util.log.ClientLogBuffer;
 import tech.onetap.util.macro.MacroRepository;
 import tech.onetap.util.math.TPSGetter;
 import tech.onetap.util.player.combat.IdealHitUtils;
@@ -22,8 +23,6 @@ import tech.onetap.util.player.other.ServerManager;
 import tech.onetap.util.rotation.ComponentManager;
 import tech.onetap.util.script.ScriptManager;
 import tech.onetap.util.staff.StaffManager;
-import tech.onetap.ui.mainmenu.AltConfig;
-import tech.onetap.ui.mainmenu.AltWidget;
 import tech.onetap.util.target.TargetRepository;
 
 import java.io.File;
@@ -59,12 +58,11 @@ public class Onetap implements ModInitializer {
     private final IdealHitUtils idealHitUtils;
     @Getter
     private final ScriptManager scriptManager;
-    @Getter
-    private final AltWidget altWidget;
-
 
     public Onetap() {
         instance = this;
+
+        ClientLogBuffer.attach();
 
         eventBus = new EventBus();
         eventBus.register(this);
@@ -84,11 +82,6 @@ public class Onetap implements ModInitializer {
         tpsGetter = new TPSGetter();
         idealHitUtils = new IdealHitUtils();
         scriptManager = new ScriptManager();
-        altWidget = new AltWidget();
-        try {
-            new AltConfig().init();
-        } catch (Exception ignored) {
-        }
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             ConfigManager.save("autocfg");
             getDragManager().saveDraggables();

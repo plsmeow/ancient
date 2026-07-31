@@ -39,6 +39,7 @@
     "PlayerEntityMixin",
     "RenderTickCounterAccessor",
     "ScreenMixin",
+    "SplashOverlayMixin",
     "TitleScreenMixin",
     "WorldMixin"
   ],
