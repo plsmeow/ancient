@@ -615,7 +615,7 @@ public class KillAura extends Module {
 
         for (int slot = 0; slot < 9; slot++) {
             ItemStack stack = mc.player.getInventory().getStack(slot);
-            if (!stack.isOf(Items.MACE)) continue;
+            if (!stack.isOf(Items.MACE) && !stack.getName().getString().contains("1.21 Mace")) continue;
 
             if (firstMaceSlot == -1) firstMaceSlot = slot;
             if (macePriority.is("Нет")) continue;
