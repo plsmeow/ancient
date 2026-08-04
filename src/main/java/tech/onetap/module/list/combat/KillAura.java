@@ -7,11 +7,9 @@ import lombok.Getter;
 import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents;
 import net.minecraft.client.gl.ShaderProgramKeys;
 import net.minecraft.client.network.ClientPlayerEntity;
-import tech.onetap.module.list.movement.NoGround;
 import net.minecraft.client.render.*;
 import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.entity.Entity;
-import net.minecraft.entity.EquipmentSlot;
 import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.decoration.ArmorStandEntity;
 import net.minecraft.entity.mob.AmbientEntity;
@@ -28,10 +26,6 @@ import net.minecraft.util.hit.HitResult;
 import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.RaycastContext;
-import net.minecraft.enchantment.EnchantmentHelper;
-import net.minecraft.enchantment.Enchantments;
-import net.minecraft.registry.RegistryKeys;
-import net.minecraft.item.ItemStack;
 import org.joml.Matrix4f;
 import tech.onetap.Onetap;
 import tech.onetap.event.EventGameUpdate;
@@ -40,7 +34,6 @@ import tech.onetap.event.list.EventTick;
 import tech.onetap.module.Module;
 import tech.onetap.module.ModuleCategory;
 import tech.onetap.module.ModuleInformation;
-import tech.onetap.module.list.player.ElytraHelper;
 import tech.onetap.module.list.player.FreeCamera;
 import tech.onetap.module.settings.BooleanSetting;
 import tech.onetap.module.settings.ModeListSetting;
@@ -126,21 +119,6 @@ public class KillAura extends Module {
 
     public static final BooleanSetting useResolver = new BooleanSetting("Резольвер (Elytra)", true);
 
-    public final BooleanSetting autoMace = new BooleanSetting("AutoMace", false);
-    public final BooleanSetting forceAutoMace = new BooleanSetting("AutoMace без задержки", true)
-            .setVisible(autoMace::getValue);
-    public final BooleanSetting syncHurtTime = new BooleanSetting("Синхронизация с HurtTime", false)
-            .setVisible(() -> autoMace.getValue() && forceAutoMace.getValue());
-    public final ModeSetting macePriority = new ModeSetting("Приоритет булавы", "Нет",
-            "Нет", "Плотность", "Пробитие", "Ветер")
-            .setVisible(autoMace::getValue);
-    public final BooleanSetting autoMaceElytra = new BooleanSetting("AutoMace (элитра)", false)
-            .setVisible(autoMace::getValue);
-    public final BooleanSetting autoMaceElytraBack = new BooleanSetting("Возврат элитры после AutoMace", false)
-            .setVisible(() -> autoMace.getValue() && autoMaceElytra.getValue());
-    public final SliderSetting autoMaceElytraBackDelay = new SliderSetting("Задержка возврата элитры", 0, 0, 10, 1)
-            .setVisible(() -> autoMace.getValue() && autoMaceElytra.getValue() && autoMaceElytraBack.getValue());
-
     public final SliderSetting neuroYawMultiplier = new SliderSetting("Yaw множитель", 1.0, 0.5, 2.0, 0.05)
             .setVisible(() -> rotation.is("Neuro"));
     public final SliderSetting neuroPitchMultiplier = new SliderSetting("Pitch множитель", 1.0, 0.5, 2.0, 0.05)
@@ -188,9 +166,6 @@ public class KillAura extends Module {
     private LivingEntity target;
     public static LivingEntity lastTarget;
     public int ticksToAttack;
-    private boolean autoMaceElytraSwapped;
-    private boolean autoMaceElytraSwappedThisAttack;
-    private int autoMaceElytraBackTicks;
 
     private int razvorotikTicks;
 
@@ -307,7 +282,6 @@ public class KillAura extends Module {
         if (mc.player == null || mc.world == null) return;
 
         if (ticksToAttack > 0) ticksToAttack--;
-        updateAutoMaceElytraBack();
         if (razvorotikTicks > 0) razvorotikTicks--;
 
         updateTarget();
@@ -331,11 +305,13 @@ public class KillAura extends Module {
                     }
                 }
                 mc.getNetworkHandler().sendPacket(new PlayerInputC2SPacket(new PlayerInput(false, false, false, false, false, false, false)));
-                autoMaceElytraSwappedThisAttack = false;
+
+                AutoMace autoMace = Onetap.getInstance().getModuleStorage().get(AutoMace.class);
+                autoMace.prepareAttack();
 
                 int previousSlot = swapToAxe();
                 if (previousSlot == -1) {
-                    previousSlot = swapToMace();
+                    previousSlot = autoMace.swapToMace();
                 }
 
                 BoatAura boatAura = Instance.get(BoatAura.class);
@@ -371,11 +347,11 @@ public class KillAura extends Module {
                 if (previousSlot != -1) {
                     swapBack(previousSlot);
                 }
-                scheduleAutoMaceElytraBack();
+                autoMace.scheduleAutoMaceElytraBack();
 
                 mc.getNetworkHandler().sendPacket(new PlayerInputC2SPacket(mc.player.input.playerInput));
 
-                if (!isForceAutoMaceReady() && !isForceBreakShieldReady()) {
+                if (!autoMace.isForceAutoMaceReady(target) && !isForceBreakShieldReady()) {
                     ticksToAttack = 10;
                 }
 
@@ -478,7 +454,7 @@ public class KillAura extends Module {
             if (!snapActive || snapTimer < snapHoldTicks.getValue()) return false;
         }
 
-        if (!isForceAutoMaceReady()) {
+        if (!Onetap.getInstance().getModuleStorage().get(AutoMace.class).isForceAutoMaceReady(target)) {
             if (mc.player.getAttackCooldownProgress(0.5f) < 0.98f) return false;
             if (ticksToAttack > 0) return false;
         }
@@ -571,130 +547,11 @@ public class KillAura extends Module {
         return previousSlot;
     }
 
-    private int swapToMace() {
-        if (!autoMace.getValue()) return -1;
-        if (mc.player.isGliding() && !autoMaceElytra.getValue()) return -1;
-
-        // Проверяем, включен ли NoGround через хранилище модулей
-        boolean isNoGroundActive = Onetap.getInstance().getModuleStorage().get(NoGround.class).isEnabled()
-                || Onetap.getInstance().getModuleStorage().get(MaceKill.class).isEnabled();
-
-        // Если NoGround/MaceKill выключены, оставляем стандартную проверку на дистанцию падения
-        if (!isNoGroundActive && mc.player.fallDistance < 1.8f) return -1;
-
-        int maceSlot = findBestMaceSlot();
-        if (maceSlot == -1) return -1;
-
-        int previousSlot = mc.player.getInventory().selectedSlot;
-        if (previousSlot == maceSlot) {
-            swapElytraForAutoMace();
-            return -1;
-        }
-
-        swapElytraForAutoMace();
-
-        mc.player.getInventory().selectedSlot = maceSlot;
-        mc.interactionManager.syncSelectedSlot();
-        return previousSlot;
-    }
-
-    private int findBestMaceSlot() {
-        int firstMaceSlot = -1;
-        int bestSlot = -1;
-        int bestPriorityLevel = -1;
-
-        var density = mc.world.getRegistryManager()
-                .getOptional(RegistryKeys.ENCHANTMENT).get()
-                .getEntry(Enchantments.DENSITY.getValue()).orElseThrow();
-        var breach = mc.world.getRegistryManager()
-                .getOptional(RegistryKeys.ENCHANTMENT).get()
-                .getEntry(Enchantments.BREACH.getValue()).orElseThrow();
-        var windBurst = mc.world.getRegistryManager()
-                .getOptional(RegistryKeys.ENCHANTMENT).get()
-                .getEntry(Enchantments.WIND_BURST.getValue()).orElseThrow();
-
-        for (int slot = 0; slot < 9; slot++) {
-            ItemStack stack = mc.player.getInventory().getStack(slot);
-            if (!stack.isOf(Items.MACE) && !stack.getName().getString().contains("1.21 Mace")) continue;
-
-            if (firstMaceSlot == -1) firstMaceSlot = slot;
-            if (macePriority.is("Нет")) continue;
-
-            int level = 0;
-            switch (macePriority.getValue()) {
-                case "Плотность" -> level = EnchantmentHelper.getLevel(density, stack);
-                case "Пробитие" -> level = EnchantmentHelper.getLevel(breach, stack);
-                case "Ветер" -> level = EnchantmentHelper.getLevel(windBurst, stack);
-            }
-
-            if (level > bestPriorityLevel) {
-                bestPriorityLevel = level;
-                bestSlot = slot;
-            }
-        }
-
-        if (macePriority.is("Нет")) return firstMaceSlot;
-        return bestSlot != -1 ? bestSlot : firstMaceSlot;
-    }
-
-    private void swapElytraForAutoMace() {
-        if (!autoMaceElytra.getValue()) return;
-        if (!mc.player.isGliding()) return;
-        if (mc.player.getEquippedStack(EquipmentSlot.CHEST).getItem() != Items.ELYTRA) return;
-
-        Instance.get(ElytraHelper.class).swap(true);
-        autoMaceElytraSwapped = true;
-        autoMaceElytraSwappedThisAttack = true;
-    }
-
-    private void scheduleAutoMaceElytraBack() {
-        if (!autoMaceElytraBack.getValue()) return;
-        if (!autoMaceElytraSwappedThisAttack) return;
-
-        autoMaceElytraBackTicks = (int) autoMaceElytraBackDelay.getValue();
-        if (autoMaceElytraBackTicks <= 0) {
-            swapBackElytraForAutoMace();
-        }
-    }
-
-    private void updateAutoMaceElytraBack() {
-        if (!autoMaceElytraSwapped) return;
-        if (autoMaceElytraBackTicks <= 0) return;
-
-        autoMaceElytraBackTicks--;
-        if (autoMaceElytraBackTicks <= 0) {
-            swapBackElytraForAutoMace();
-        }
-    }
-
-    private void swapBackElytraForAutoMace() {
-        Instance.get(ElytraHelper.class).swap(false);
-        autoMaceElytraSwapped = false;
-        autoMaceElytraSwappedThisAttack = false;
-        autoMaceElytraBackTicks = 0;
-    }
-
     private void swapBack(int previousSlot) {
         if (previousSlot == -1) return;
 
         mc.player.getInventory().selectedSlot = previousSlot;
         mc.interactionManager.syncSelectedSlot();
-    }
-
-    private boolean isMaceAttackReady() {
-        boolean isNoGroundActive = Onetap.getInstance().getModuleStorage().get(NoGround.class).isEnabled();
-
-        return autoMace.getValue()
-                && (!mc.player.isGliding() || autoMaceElytra.getValue())
-                && (isNoGroundActive || mc.player.fallDistance >= 1.8f)
-                && findBestMaceSlot() != -1;
-    }
-
-    private boolean isForceAutoMaceReady() {
-        if (!autoMace.getValue() || !forceAutoMace.getValue()) return false;
-        if (!isMaceAttackReady()) return false;
-        if (syncHurtTime.getValue() && target != null && target.hurtTime > 1) return false;
-        return true;
     }
 
     public boolean canStopSprinting() {

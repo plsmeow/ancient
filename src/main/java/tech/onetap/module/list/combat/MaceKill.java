@@ -35,7 +35,8 @@ public final class MaceKill extends Module {
         if (event.getEntity() instanceof EndCrystalEntity || cancelCrit) return;
 
         KillAura aura = Onetap.getInstance().getModuleStorage().get(KillAura.class);
-        boolean autoMaceActive = aura != null && aura.isEnabled() && aura.autoMace.getValue();
+        AutoMace autoMace = Onetap.getInstance().getModuleStorage().get(AutoMace.class);
+        boolean autoMaceActive = aura != null && aura.isEnabled() && autoMace != null && autoMace.isEnabled();
         if (!autoMaceActive) {
             ItemStack mainHand = mc.player.getMainHandStack();
             boolean isMace = mainHand.isOf(Items.MACE);
