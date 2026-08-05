@@ -38,6 +38,8 @@ public final class DefaultCommands {
                 new StaffCommand(Onetap.getInstance()),
                 new VClipCommand(),
                 new HClipCommand(),
+                new TpCommand(),
+                new GmCommand(),
                 new PartyCommand(),
                 new GpsCommand(),
                 new AICommand(),

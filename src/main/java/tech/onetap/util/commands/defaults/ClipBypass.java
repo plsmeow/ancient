@@ -5,9 +5,14 @@ import net.minecraft.client.network.ClientPlayerEntity;
 import net.minecraft.entity.Entity;
 import net.minecraft.network.packet.c2s.play.PlayerMoveC2SPacket;
 import net.minecraft.network.packet.c2s.play.VehicleMoveC2SPacket;
+import net.minecraft.util.Formatting;
 import net.minecraft.util.math.Vec3d;
+import tech.onetap.util.QuickLogger;
+import tech.onetap.util.commands.api.argument.IArgConsumer;
+import tech.onetap.util.commands.api.exception.CommandException;
 
 import java.util.List;
+import java.util.Locale;
 
 /**
  * Утилита для телепортации с разными типами байпаса.
@@ -16,8 +21,54 @@ import java.util.List;
 public final class ClipBypass {
 
     public static final List<String> BYPASS_TYPES = List.of("pos", "bypass", "vault");
+    public static final int DEFAULT_PACKETS = 10;
+    public static final int MAX_PACKETS = 1000;
+
+    /**
+     * Результат парсинга аргументов байпаса: режим (null — не указан) и количество пакетов.
+     */
+    public record BypassArgs(String mode, int packets) {}
+
+    /** Сентинел ошибки парсинга (сообщение пользователю уже выведено). */
+    public static final BypassArgs INVALID = new BypassArgs(null, -1);
 
     private ClipBypass() {}
+
+    /**
+     * Парсит необязательные аргументы байпаса: [режим] [пакеты].
+     * Пакеты можно указать только после режима, по умолчанию {@link #DEFAULT_PACKETS}.
+     *
+     * @return распарсенные аргументы или {@link #INVALID} при ошибке (сообщение уже выведено)
+     */
+    public static BypassArgs parseArgs(QuickLogger logger, IArgConsumer args) throws CommandException {
+        String mode = null;
+        int packets = DEFAULT_PACKETS;
+
+        if (args.hasAny()) {
+            mode = args.getString().toLowerCase(Locale.ROOT);
+            if (!BYPASS_TYPES.contains(mode)) {
+                logger.logDirect(Formatting.RED + "Неизвестный тип байпаса: " + mode);
+                logger.logDirect(Formatting.GRAY + "Доступные: " + String.join(", ", BYPASS_TYPES));
+                return INVALID;
+            }
+        }
+
+        if (mode != null && args.hasAny()) {
+            String input = args.getString();
+            try {
+                packets = Integer.parseInt(input);
+            } catch (NumberFormatException e) {
+                logger.logDirect(Formatting.RED + input + " не является числом.");
+                return INVALID;
+            }
+            if (packets < 1 || packets > MAX_PACKETS) {
+                logger.logDirect(Formatting.RED + "Количество пакетов должно быть от 1 до " + MAX_PACKETS + ".");
+                return INVALID;
+            }
+        }
+
+        return new BypassArgs(mode, packets);
+    }
 
     /**
      * Выполняет телепортацию на заданную позицию используя указанный тип байпаса.
@@ -28,17 +79,26 @@ public final class ClipBypass {
      * @param bypass   тип байпаса: "pos", "bypass", "vault" или null/пусто для дефолтной логики
      */
     public static void teleport(double targetX, double targetY, double targetZ, String bypass) {
+        teleport(targetX, targetY, targetZ, bypass, DEFAULT_PACKETS);
+    }
+
+    /**
+     * Выполняет телепортацию на заданную позицию используя указанный тип байпаса.
+     *
+     * @param targetX  целевая координата X
+     * @param targetY  целевая координата Y
+     * @param targetZ  целевая координата Z
+     * @param bypass   тип байпаса: "pos", "bypass", "vault" или null/пусто для дефолтной логики
+     * @param packets  количество пакетов позиции для режима "bypass"
+     */
+    public static void teleport(double targetX, double targetY, double targetZ, String bypass, int packets) {
         ClientPlayerEntity player = MinecraftClient.getInstance().player;
         if (player == null || player.networkHandler == null) return;
 
-        double startX = player.getX();
-        double startY = player.getY();
-        double startZ = player.getZ();
-
-        String mode = bypass == null ? "" : bypass.toLowerCase();
+        String mode = bypass == null ? "" : bypass.toLowerCase(Locale.ROOT);
 
         switch (mode) {
-            case "bypass" -> bypassMode(player, targetX, targetY, targetZ);
+            case "bypass" -> bypassMode(player, targetX, targetY, targetZ, packets);
             case "vault" -> vaultMode(player, targetX, targetY, targetZ);
             default -> posMode(player, targetX, targetY, targetZ);
         }
@@ -59,11 +119,11 @@ public final class ClipBypass {
     }
 
     /**
-     * Bypass — setPosition + спам пакетов позиции (10 штук).
+     * Bypass — setPosition + спам пакетов позиции.
      */
-    private static void bypassMode(ClientPlayerEntity player, double x, double y, double z) {
+    private static void bypassMode(ClientPlayerEntity player, double x, double y, double z, int packets) {
         player.setPosition(x, y, z);
-        for (int i = 0; i < 10; i++) {
+        for (int i = 0; i < packets; i++) {
             player.networkHandler.sendPacket(new PlayerMoveC2SPacket.PositionAndOnGround(
                     x, y, z, true, player.horizontalCollision));
         }

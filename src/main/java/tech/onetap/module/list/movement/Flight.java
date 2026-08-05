@@ -28,10 +28,14 @@ import tech.onetap.util.player.move.MoveUtil;
 @ModuleInformation(moduleName = "Flight", moduleCategory = ModuleCategory.MOVEMENT)
 public class Flight extends Module {
 
-    public final ModeSetting mode = new ModeSetting("Режим", "Vanilla", "Vanilla", "Vulcan", "Vulcan XZ");
+    public final ModeSetting mode = new ModeSetting("Режим", "Vanilla", "Vanilla", "Vulcan", "Vulcan XZ", "AirJump");
     public SliderSetting speed = new SliderSetting("Скорость", 1.0, 0.1, 10.0, 0.1).setVisible(() -> mode.is("Vanilla"));
     public SliderSetting vulcanXzSpeed = new SliderSetting("Скорость", 1.0, 0.1, 10.0, 0.1).setVisible(() -> mode.is("Vulcan XZ"));
     public final SliderSetting vulcanXzBlockInterval = new SliderSetting("Блок каждые N тиков", 20.0, 10.0, 80.0, 5.0).setVisible(() -> mode.is("Vulcan XZ"));
+
+    public final SliderSetting airJumpHeight = new SliderSetting("Высота", 12.0, 5.0, 20.0, 1.0).setVisible(() -> mode.is("AirJump"));
+    public final SliderSetting airJumpDelay = new SliderSetting("Задержка шага", 2.0, 1.0, 10.0, 1.0).setVisible(() -> mode.is("AirJump"));
+    public final SliderSetting airJumpSpeed = new SliderSetting("Скорость", 1.0, 0.1, 5.0, 0.1).setVisible(() -> mode.is("AirJump"));
 
     public final BooleanSetting antiKick = new BooleanSetting("Анти-кик", true);
 
@@ -49,12 +53,20 @@ public class Flight extends Module {
     private double vulcanXzLockedY;
     private int vulcanXzBlockTickCounter;
 
+    private boolean airJumping;
+    private int airJumpDelayCounter;
+    private double airJumpStartY;
+    private int airJumpSteps;
+    private int airJumpCurrentStep;
+    private boolean wasJumpPressed;
+
     @Override
     public void onEnable() {
         super.onEnable();
         resetVulcanState();
         resetAntiKickState();
         resetVulcanXzState();
+        resetAirJumpState();
         if (mc.player != null) {
             vulcanStartHeight = mc.player.getY();
             vulcanXzLockedY = mc.player.getY();
@@ -67,6 +79,7 @@ public class Flight extends Module {
         resetVulcanState();
         resetAntiKickState();
         resetVulcanXzState();
+        resetAirJumpState();
     }
 
     @Subscribe
@@ -113,6 +126,14 @@ public class Flight extends Module {
         if (!mode.is("Vulcan XZ")) return;
 
         handleVulcanXzMode();
+    }
+
+    @Subscribe
+    public void onUpdateAirJump(EventTick event) {
+        if (mc.player == null || mc.getNetworkHandler() == null) return;
+        if (!mode.is("AirJump")) return;
+
+        handleAirJumpMode();
     }
 
     @Subscribe
@@ -224,6 +245,77 @@ public class Flight extends Module {
     private void resetVulcanXzState() {
         vulcanXzLockedY = 0.0;
         vulcanXzBlockTickCounter = 0;
+    }
+
+    private void resetAirJumpState() {
+        airJumping = false;
+        airJumpDelayCounter = 0;
+        airJumpStartY = 0.0;
+        airJumpSteps = 0;
+        airJumpCurrentStep = 0;
+        wasJumpPressed = false;
+    }
+
+    private void handleAirJumpMode() {
+        boolean jumpPressed = mc.options.jumpKey.isPressed();
+
+        if (jumpPressed && !wasJumpPressed && !airJumping) {
+            airJumping = true;
+            airJumpDelayCounter = 0;
+            airJumpCurrentStep = 0;
+            airJumpStartY = mc.player.getY();
+            airJumpSteps = airJumpHeight.getIntValue();
+        }
+        wasJumpPressed = jumpPressed;
+
+        if (airJumping) {
+            airJumpDelayCounter++;
+            if (airJumpDelayCounter >= airJumpDelay.getIntValue()) {
+                airJumpDelayCounter = 0;
+
+                if (airJumpCurrentStep < airJumpSteps) {
+                    int height = airJumpHeight.getIntValue();
+                    double stepFraction = (double) (airJumpCurrentStep + 1) / airJumpSteps;
+                    double targetY = airJumpStartY + (height * stepFraction);
+
+                    NetworkUtils.sendPacket(new PlayerMoveC2SPacket.PositionAndOnGround(
+                            mc.player.getX(), mc.player.getY(), mc.player.getZ(), true, mc.player.horizontalCollision));
+
+                    NetworkUtils.sendPacket(new PlayerMoveC2SPacket.PositionAndOnGround(
+                            mc.player.getX(), targetY, mc.player.getZ(), false, mc.player.horizontalCollision));
+
+                    mc.player.setPos(mc.player.getX(), targetY, mc.player.getZ());
+                    mc.player.setVelocity(mc.player.getVelocity().x, 0.0, mc.player.getVelocity().z);
+                    mc.player.setOnGround(false);
+
+                    airJumpCurrentStep++;
+                } else {
+                    airJumping = false;
+                    mc.player.setVelocity(mc.player.getVelocity().x, -0.04, mc.player.getVelocity().z);
+                }
+            }
+
+            if (MoveUtil.hasPlayerMovement()) {
+                double[] dir = MoveUtil.calculateDirection(airJumpSpeed.getValue());
+                mc.player.setVelocity(dir[0], mc.player.getVelocity().y, dir[1]);
+            }
+
+            if (mc.options.sneakKey.isPressed()) {
+                airJumping = false;
+                mc.player.setVelocity(mc.player.getVelocity().x, -airJumpSpeed.getValue(), mc.player.getVelocity().z);
+            }
+        } else {
+            if (!mc.player.isOnGround()) {
+                mc.player.setVelocity(mc.player.getVelocity().x, -0.04, mc.player.getVelocity().z);
+            }
+            if (MoveUtil.hasPlayerMovement()) {
+                double[] dir = MoveUtil.calculateDirection(airJumpSpeed.getValue());
+                mc.player.setVelocity(dir[0], mc.player.getVelocity().y, dir[1]);
+            }
+            if (mc.options.sneakKey.isPressed()) {
+                mc.player.setVelocity(mc.player.getVelocity().x, -airJumpSpeed.getValue(), mc.player.getVelocity().z);
+            }
+        }
     }
 
     private void handleVulcanXzMode() {

@@ -45,25 +45,18 @@ public class VClipCommand extends Command {
             return;
         }
 
-        // Необязательный второй аргумент — тип байпаса (pos/bypass/vault)
-        String bypass = null;
-        if (args.hasAny()) {
-            bypass = args.getString().toLowerCase();
-            if (!ClipBypass.BYPASS_TYPES.contains(bypass)) {
-                logDirect(Formatting.RED + "Неизвестный тип байпаса: " + bypass);
-                logDirect(Formatting.GRAY + "Доступные: " + String.join(", ", ClipBypass.BYPASS_TYPES));
-                return;
-            }
-        }
+        // Необязательные аргументы — тип байпаса и количество пакетов
+        ClipBypass.BypassArgs bypassArgs = ClipBypass.parseArgs(this, args);
+        if (bypassArgs == ClipBypass.INVALID) return;
 
         double x = player.getX();
         double y = player.getY();
         double z = player.getZ();
 
-        ClipBypass.teleport(x, y + yOffset, z, bypass);
+        ClipBypass.teleport(x, y + yOffset, z, bypassArgs.mode(), bypassArgs.packets());
 
         logDirect("Телепортировано на " + (int) yOffset + " блоков по вертикали"
-                + (bypass != null ? " [" + bypass + "]" : ""));
+                + (bypassArgs.mode() != null ? " [" + bypassArgs.mode() + "]" : ""));
     }
 
     private double findOffset(BlockPos pos, boolean toUp, ClientWorld world) {
@@ -114,6 +107,9 @@ public class VClipCommand extends Command {
                 "Необязательный второй аргумент — тип байпаса:",
                 "> vclip <расстояние|up|down> [pos|bypass|vault]",
                 "",
+                "После режима bypass можно указать количество пакетов:",
+                "> vclip <расстояние|up|down> bypass [пакеты]",
+                "",
                 "Без указания типа используется дефолтная логика (pos)."
         );
     }
@@ -126,6 +122,9 @@ public class VClipCommand extends Command {
         if (args.hasExactly(2)) {
             String prefix = args.peekString().toLowerCase();
             return ClipBypass.BYPASS_TYPES.stream().filter(s -> s.startsWith(prefix));
+        }
+        if (args.hasExactly(3) && ClipBypass.BYPASS_TYPES.contains(args.peekString(1).toLowerCase())) {
+            return Stream.of("10", "20", "50");
         }
         return Stream.empty();
     }

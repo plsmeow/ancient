@@ -290,6 +290,9 @@ public class KillAura extends Module {
             lastTarget = target;
             isSlowdownActive = false;
 
+            MaceKill maceKill = Onetap.getInstance().getModuleStorage().get(MaceKill.class);
+            maceKill.updateFunskyState(target);
+
             if (canStopSprinting()) {
                 mc.player.setSprinting(false);
                 mc.getNetworkHandler().sendPacket(new ClientCommandC2SPacket(mc.player, ClientCommandC2SPacket.Mode.STOP_SPRINTING));
@@ -309,8 +312,11 @@ public class KillAura extends Module {
                 AutoMace autoMace = Onetap.getInstance().getModuleStorage().get(AutoMace.class);
                 autoMace.prepareAttack();
 
+                // Funsky Auto: простые удары бьём текущим предметом, не триггеря AutoMace
+                boolean funskySimpleHit = maceKill.isFunskyActive() && !maceKill.isFunskyWaitingSmash();
+
                 int previousSlot = swapToAxe();
-                if (previousSlot == -1) {
+                if (previousSlot == -1 && !funskySimpleHit) {
                     previousSlot = autoMace.swapToMace();
                 }
 
@@ -320,11 +326,15 @@ public class KillAura extends Module {
                 boolean tpAuraMoved = !boatAuraMoved && tpAura != null && tpAura.beforeAttack(target);
 
                 Criticals crits = Onetap.getInstance().getModuleStorage().get(Criticals.class);
-                MaceKill maceKill = Onetap.getInstance().getModuleStorage().get(MaceKill.class);
 
-                if (maceKill.isEnabled()) {
+                // Блокируем onAttack-обработчик MaceKill на любом ударе KillAura:
+                // его крит добавляется только явно ниже (иначе простые удары Funsky
+                // всегда шли бы с критом MaceKill через EventAttack)
+                maceKill.killAuraTriggered = true;
+
+                // Funsky Auto: на простых ударах используем криты из Criticals, смэш — MaceKill
+                if (maceKill.isEnabled() && !funskySimpleHit) {
                     crits.killAuraTriggered = true;
-                    maceKill.killAuraTriggered = true;
                     maceKill.doCrit();
                 } else if (crits.isEnabled()) {
                     crits.killAuraTriggered = true;
@@ -351,7 +361,15 @@ public class KillAura extends Module {
 
                 mc.getNetworkHandler().sendPacket(new PlayerInputC2SPacket(mc.player.input.playerInput));
 
-                if (!autoMace.isForceAutoMaceReady(target) && !isForceBreakShieldReady()) {
+                if (maceKill.isEnabled() && maceKill.isFunskyActive() && maceKill.isFunskyWaitingSmash()) {
+                    // Funsky Auto: смэш автомейса выполнен — цикл заново (простые удары)
+                    maceKill.onFunskySmash();
+                }
+
+                if (maceKill.isEnabled() && maceKill.isCustomDelayEnabled()) {
+                    // MaceKill: после удара ждём кастомную задержку, а не 10 тиков/кулдаун предмета
+                    maceKill.resetAttackDelay();
+                } else if (!autoMace.isForceAutoMaceReady(target) && !isForceBreakShieldReady()) {
                     ticksToAttack = 10;
                 }
 
@@ -369,6 +387,7 @@ public class KillAura extends Module {
                 }
             }
         } else {
+            Onetap.getInstance().getModuleStorage().get(MaceKill.class).updateFunskyState(null);
             speedAcceleration = 0;
             razvorotikTicks = 0;
             snapActive = false;
@@ -409,6 +428,11 @@ public class KillAura extends Module {
 
     public boolean canAttack() {
         if (target == null) return false;
+
+        // Ждём возврата TpAura из Vault-режима, чтобы не бить, пока игрок не на исходной точке
+        TpAura tpAura = Instance.get(TpAura.class);
+        if (tpAura != null && tpAura.isPendingVaultReturn()) return false;
+
         boolean eating = mc.player.isUsingItem();
 
         if (eating && stopWhileEating.getValue()) return false;
@@ -454,7 +478,14 @@ public class KillAura extends Module {
             if (!snapActive || snapTimer < snapHoldTicks.getValue()) return false;
         }
 
-        if (!Onetap.getInstance().getModuleStorage().get(AutoMace.class).isForceAutoMaceReady(target)) {
+        MaceKill maceKill = Onetap.getInstance().getModuleStorage().get(MaceKill.class);
+        if (maceKill != null && maceKill.isEnabled() && maceKill.isFunskyActive() && maceKill.isFunskyWaitingSmash()) {
+            // Funsky Auto: ждём конца i-frames цели (hurtTime == 0) и сразу бьём автомейсом
+            if (target.hurtTime > 0) return false;
+        } else if (maceKill != null && maceKill.isEnabled() && maceKill.isCustomDelayEnabled()) {
+            // MaceKill: бьём по кастомной задержке в тиках, игнорируя кулдаун предмета
+            if (maceKill.getAttackTicks() > 0) return false;
+        } else if (!Onetap.getInstance().getModuleStorage().get(AutoMace.class).isForceAutoMaceReady(target)) {
             if (mc.player.getAttackCooldownProgress(0.5f) < 0.98f) return false;
             if (ticksToAttack > 0) return false;
         }

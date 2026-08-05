@@ -13,6 +13,7 @@ import net.minecraft.entity.Entity;
 import net.minecraft.entity.EquipmentSlot;
 import net.minecraft.entity.ItemEntity;
 import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.network.packet.s2c.play.EntityStatusS2CPacket;
 import net.minecraft.scoreboard.ReadableScoreboardScore;
 import net.minecraft.scoreboard.Scoreboard;
 import net.minecraft.scoreboard.ScoreboardDisplaySlot;
@@ -27,6 +28,7 @@ import net.minecraft.util.math.MathHelper;
 import org.joml.Matrix4f;
 import tech.onetap.Onetap;
 import tech.onetap.event.list.EventHUD;
+import tech.onetap.event.list.EventPacket;
 import tech.onetap.module.Module;
 import tech.onetap.module.ModuleCategory;
 import tech.onetap.module.ModuleInformation;
@@ -63,9 +65,11 @@ public class Tags extends Module {
     );
 
     private final BooleanSetting displayPartyFriends = new BooleanSetting("Участники пати", false);
+    private final BooleanSetting totemCounter = new BooleanSetting("Счетчик тотемов", false);
     private final ModeSetting style = new ModeSetting("Стиль", "Дефолт", "Дефолт", "Nursultan");
 
     private final Map<UUID, Text> normalizedNames = new ConcurrentHashMap<>();
+    private final Map<UUID, Integer> totemPops = new ConcurrentHashMap<>();
     private int clearCacheTicker = 0;
 
     private final List<ItemStack> equipmentCache = new ArrayList<>();
@@ -237,6 +241,22 @@ public class Tags extends Module {
         }
     }
 
+    @Subscribe
+    private void onPacket(EventPacket event) {
+        if (mc.world == null || event.getType() != EventPacket.Type.RECEIVE) return;
+        if (!(event.getPacket() instanceof EntityStatusS2CPacket packet)) return;
+
+        if (packet.getStatus() == 35) { // Активация тотема
+            if (packet.getEntity(mc.world) instanceof PlayerEntity player) {
+                totemPops.merge(player.getUuid(), 1, Integer::sum);
+            }
+        } else if (packet.getStatus() == 3) { // Смерть сущности
+            if (packet.getEntity(mc.world) instanceof PlayerEntity player) {
+                totemPops.remove(player.getUuid());
+            }
+        }
+    }
+
     private void renderPlayerTags(MsdfFont font, float tickDelta, EventHUD e) {
         List<AbstractClientPlayerEntity> worldPlayers = mc.world.getPlayers();
 
@@ -288,6 +308,15 @@ public class Tags extends Module {
             name.append(Text.literal(" [").setStyle(Style.EMPTY.withColor(Formatting.GRAY)))
                     .append(Text.literal(String.valueOf(currentHp)).setStyle(Style.EMPTY.withColor(hpColor)))
                     .append(Text.literal("]").setStyle(Style.EMPTY.withColor(Formatting.GRAY)));
+
+            if (totemCounter.getValue()) {
+                int pops = totemPops.getOrDefault(entity.getUuid(), 0);
+                if (pops > 0) {
+                    name.append(Text.literal(" [").setStyle(Style.EMPTY.withColor(Formatting.GRAY)))
+                            .append(Text.literal("-" + pops).setStyle(Style.EMPTY.withColor(0xFF5555)))
+                            .append(Text.literal("]").setStyle(Style.EMPTY.withColor(Formatting.GRAY)));
+                }
+            }
 
 
             float textWidth = nursultanStyle ? font.getWidth(name.getString(), 8.3f) : mc.textRenderer.getWidth(name);
@@ -452,5 +481,17 @@ public class Tags extends Module {
             DrawUtil.drawRoundBlur(bgX, pos.getY() - 2f, totalWidth, 12.5f, 0, ColorProvider.rgba(0, 0, 0, 144), 8f);
             DrawUtil.drawText(sfBold, normalized, bgX + 2, pos.getY() + 0.5f, 8, 255);
         }
+    }
+
+    @Override
+    public void onEnable() {
+        super.onEnable();
+        totemPops.clear();
+    }
+
+    @Override
+    public void onDisable() {
+        super.onDisable();
+        totemPops.clear();
     }
 }

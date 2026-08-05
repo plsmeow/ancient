@@ -1,5 +1,6 @@
 package tech.onetap.module.list.combat;
 
+import com.google.common.eventbus.Subscribe;
 import lombok.Getter;
 import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents;
 import net.minecraft.client.render.BufferBuilder;
@@ -15,12 +16,14 @@ import net.minecraft.network.packet.c2s.play.PlayerMoveC2SPacket;
 import net.minecraft.util.math.Box;
 import net.minecraft.util.math.Vec3d;
 import org.joml.Matrix4f;
+import tech.onetap.event.list.EventTick;
 import tech.onetap.module.Module;
 import tech.onetap.module.ModuleCategory;
 import tech.onetap.module.ModuleInformation;
 import tech.onetap.module.settings.BooleanSetting;
 import tech.onetap.module.settings.ModeSetting;
 import tech.onetap.module.settings.SliderSetting;
+import tech.onetap.util.block.AStarPathFinder;
 import tech.onetap.util.render.providers.ColorProvider;
 
 import java.util.ArrayList;
@@ -32,17 +35,29 @@ public class TpAura extends Module {
     private final ModeSetting simpleMode = new ModeSetting("Режим", "TP", "TP", "Steps")
             .setVisible(() -> tpMode.is("Simple"));
     private final SliderSetting maxDistance = new SliderSetting("Макс дистанция", 200.0, 1.0, 200.0, 1.0);
+    private final ModeSetting bypassStepsMode = new ModeSetting("Режим Bypass", "TP", "TP", "Steps")
+            .setVisible(() -> tpMode.is("Bypass"));
     private final SliderSetting stepSize = new SliderSetting("Шаг", 9.9, 0.5, 10.0, 0.1)
-            .setVisible(() -> tpMode.is("Simple") && simpleMode.is("Steps"));
+            .setVisible(() -> (tpMode.is("Simple") && simpleMode.is("Steps"))
+                    || (tpMode.is("Bypass") && bypassStepsMode.is("Steps")));
+    private final BooleanSetting pathfinder = new BooleanSetting("Pathfinder", false)
+            .setVisible(() -> tpMode.is("Bypass") && bypassStepsMode.is("Steps"));
     private final SliderSetting packets = new SliderSetting("Packets", 10, 1, 50, 1)
             .setVisible(() -> tpMode.is("Bypass"));
     private final BooleanSetting bypassOnGround = new BooleanSetting("Bypass OnGround", true)
             .setVisible(() -> tpMode.is("Bypass"));
+    private final SliderSetting vaultDelay = new SliderSetting("Задержка", 0, 0, 2000, 50)
+            .setVisible(() -> tpMode.is("Vault"));
 
     private Vec3d origin;
     private float originYaw;
     private float originPitch;
     private boolean renderRegistered = false;
+
+    private boolean pendingVaultReturn = false;
+    private long vaultReturnAt = 0L;
+    private Vec3d vaultReturnFrom;
+    private Vec3d vaultReturnTo;
 
     @Getter
     private LivingEntity target;
@@ -53,6 +68,10 @@ public class TpAura extends Module {
 
     public double getMaxDistance() {
         return maxDistance.getValue();
+    }
+
+    public boolean isPendingVaultReturn() {
+        return pendingVaultReturn;
     }
 
     public Vec3d getRenderPosition(Entity entity) {
@@ -84,7 +103,7 @@ public class TpAura extends Module {
         );
 
         if (tpMode.is("Bypass")) {
-            teleportBypass(destination);
+            teleportBypass(destination, true);
         } else if (tpMode.is("Vault")) {
             teleportVault(origin, destination);
         } else {
@@ -101,14 +120,42 @@ public class TpAura extends Module {
         }
 
         if (tpMode.is("Bypass")) {
-            teleportBypass(origin);
+            teleportBypass(origin, false);
         } else if (tpMode.is("Vault")) {
+            if (vaultDelay.getIntValue() > 0) {
+                // Откладываем возврат на заданную задержку (мс)
+                vaultReturnFrom = renderDestination;
+                vaultReturnTo = origin;
+                vaultReturnAt = System.currentTimeMillis() + vaultDelay.getIntValue();
+                pendingVaultReturn = true;
+                resetState(true);
+                return;
+            }
             teleportVault(renderDestination, origin);
         } else {
             teleportSimple(mc.player.getPos(), origin, originYaw, originPitch, false);
         }
 
         resetState(true);
+    }
+
+    @Subscribe
+    private void onTick(EventTick event) {
+        if (!pendingVaultReturn) return;
+        if (mc.player == null || mc.getNetworkHandler() == null) {
+            cancelVaultReturn();
+            return;
+        }
+        if (System.currentTimeMillis() >= vaultReturnAt) {
+            teleportVault(vaultReturnFrom, vaultReturnTo);
+            cancelVaultReturn();
+        }
+    }
+
+    private void cancelVaultReturn() {
+        pendingVaultReturn = false;
+        vaultReturnFrom = null;
+        vaultReturnTo = null;
     }
 
     private void teleportSimple(Vec3d from, Vec3d destination, float yaw, float pitch, boolean toTarget) {
@@ -126,7 +173,49 @@ public class TpAura extends Module {
         }
     }
 
-    private void teleportBypass(Vec3d pos) {
+    private void teleportBypass(Vec3d pos, boolean toTarget) {
+        if (bypassStepsMode.is("Steps")) {
+            Vec3d from = mc.player.getPos();
+            if (pathfinder.getValue()) {
+                List<Vec3d> path = AStarPathFinder.findPath(from, pos);
+                if (!path.isEmpty()) {
+                    // Схлопываем путь в максимально длинные прямые отрезки:
+                    // ломаем путь только там, где прямая невозможна.
+                    // "Шаг" — лимит на один телепорт внутри прямого отрезка.
+                    List<Vec3d> waypoints = AStarPathFinder.smoothPath(from, path, pos);
+                    Vec3d current = from;
+                    for (Vec3d node : waypoints) {
+                        sendBypassStepsAlong(current, node, toTarget);
+                        current = node;
+                    }
+                    return;
+                }
+                // Путь не найден: напрямую идём только если прямая свободна,
+                // сквозь стены не телепортируемся
+                if (AStarPathFinder.hasLineOfSight(from, pos)) {
+                    sendBypassStepsAlong(from, pos, toTarget);
+                }
+                return;
+            }
+            sendBypassStepsAlong(from, pos, toTarget);
+        } else {
+            sendBypassPackets(pos);
+            if (toTarget) renderSteps.add(pos);
+        }
+    }
+
+    private void sendBypassStepsAlong(Vec3d from, Vec3d to, boolean toTarget) {
+        double distance = from.distanceTo(to);
+        if (distance < 1.0E-4) return;
+        int stepCount = Math.max(1, (int) Math.ceil(distance / stepSize.getValue()));
+        for (int i = 1; i <= stepCount; i++) {
+            Vec3d step = from.lerp(to, i / (double) stepCount);
+            sendBypassPackets(step);
+            if (toTarget) renderSteps.add(step);
+        }
+    }
+
+    private void sendBypassPackets(Vec3d pos) {
         mc.player.setPosition(pos.x, pos.y, pos.z);
         for (int i = 0; i < packets.getIntValue(); i++) {
             mc.getNetworkHandler().sendPacket(new PlayerMoveC2SPacket.PositionAndOnGround(
@@ -151,6 +240,9 @@ public class TpAura extends Module {
         sendVaultMove(aboveTarget);
         sendVaultMove(downPos);
         sendVaultMove(finalPos);
+
+        // Физически перемещаем клиентскую позицию на финальную точку
+        mc.player.setPosition(finalPos.x, finalPos.y, finalPos.z);
     }
 
     private void sendVaultMove(Vec3d pos) {
@@ -257,6 +349,7 @@ public class TpAura extends Module {
     @Override
     public void onDisable() {
         super.onDisable();
+        cancelVaultReturn();
         resetState(false);
     }
 }

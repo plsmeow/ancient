@@ -52,21 +52,14 @@ public class HClipCommand extends Command {
         double y = player.getY();
         double z = player.getZ() + dz;
 
-        // Необязательный второй аргумент — тип байпаса (pos/bypass/vault)
-        String bypass = null;
-        if (args.hasAny()) {
-            bypass = args.getString().toLowerCase();
-            if (!ClipBypass.BYPASS_TYPES.contains(bypass)) {
-                logDirect(Formatting.RED + "Неизвестный тип байпаса: " + bypass);
-                logDirect(Formatting.GRAY + "Доступные: " + String.join(", ", ClipBypass.BYPASS_TYPES));
-                return;
-            }
-        }
+        // Необязательные аргументы — тип байпаса и количество пакетов
+        ClipBypass.BypassArgs bypassArgs = ClipBypass.parseArgs(this, args);
+        if (bypassArgs == ClipBypass.INVALID) return;
 
-        ClipBypass.teleport(x, y, z, bypass);
+        ClipBypass.teleport(x, y, z, bypassArgs.mode(), bypassArgs.packets());
 
         logDirect("Телепортировано на " + (int) distance + " блоков по горизонтали"
-                + (bypass != null ? " [" + bypass + "]" : ""));
+                + (bypassArgs.mode() != null ? " [" + bypassArgs.mode() + "]" : ""));
     }
 
     @Override
@@ -85,6 +78,9 @@ public class HClipCommand extends Command {
                 "Необязательный второй аргумент — тип байпаса:",
                 "> hclip <расстояние> [pos|bypass|vault]",
                 "",
+                "После режима bypass можно указать количество пакетов:",
+                "> hclip <расстояние> bypass [пакеты]",
+                "",
                 "Без указания типа используется дефолтная логика (pos)."
         );
     }
@@ -94,6 +90,9 @@ public class HClipCommand extends Command {
         if (args.hasExactly(2)) {
             String prefix = args.peekString().toLowerCase();
             return ClipBypass.BYPASS_TYPES.stream().filter(s -> s.startsWith(prefix));
+        }
+        if (args.hasExactly(3) && ClipBypass.BYPASS_TYPES.contains(args.peekString(1).toLowerCase())) {
+            return Stream.of("10", "20", "50");
         }
         return Stream.empty();
     }
