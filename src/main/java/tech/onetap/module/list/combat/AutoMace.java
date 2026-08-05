@@ -13,7 +13,7 @@ import tech.onetap.event.list.EventTick;
 import tech.onetap.module.Module;
 import tech.onetap.module.ModuleCategory;
 import tech.onetap.module.ModuleInformation;
-import tech.onetap.module.list.movement.NoGround;
+import tech.onetap.module.list.movement.GroundSpoof;
 import tech.onetap.module.list.player.ElytraHelper;
 import tech.onetap.module.settings.BooleanSetting;
 import tech.onetap.module.settings.ModeSetting;
@@ -52,12 +52,12 @@ public class AutoMace extends Module {
         if (!isEnabled()) return -1;
         if (mc.player.isGliding() && !autoMaceElytra.getValue()) return -1;
 
-        // Проверяем, включен ли NoGround через хранилище модулей
-        boolean isNoGroundActive = Onetap.getInstance().getModuleStorage().get(NoGround.class).isEnabled()
+        // Проверяем, включен ли GroundSpoof через хранилище модулей
+        boolean isGroundSpoofActive = Onetap.getInstance().getModuleStorage().get(GroundSpoof.class).isEnabled()
                 || Onetap.getInstance().getModuleStorage().get(MaceKill.class).isEnabled();
 
-        // Если NoGround/MaceKill выключены, оставляем стандартную проверку на дистанцию падения
-        if (!isNoGroundActive && mc.player.fallDistance < 1.8f) return -1;
+        // Если GroundSpoof/MaceKill выключены, оставляем стандартную проверку на дистанцию падения
+        if (!isGroundSpoofActive && mc.player.fallDistance < 1.8f) return -1;
 
         int maceSlot = findBestMaceSlot();
         if (maceSlot == -1) return -1;
@@ -152,11 +152,11 @@ public class AutoMace extends Module {
     }
 
     private boolean isMaceAttackReady() {
-        boolean isNoGroundActive = Onetap.getInstance().getModuleStorage().get(NoGround.class).isEnabled();
+        boolean isGroundSpoofActive = Onetap.getInstance().getModuleStorage().get(GroundSpoof.class).isEnabled();
 
         return isEnabled()
                 && (!mc.player.isGliding() || autoMaceElytra.getValue())
-                && (isNoGroundActive || mc.player.fallDistance >= 1.8f)
+                && (isGroundSpoofActive || mc.player.fallDistance >= 1.8f)
                 && findBestMaceSlot() != -1;
     }
 
