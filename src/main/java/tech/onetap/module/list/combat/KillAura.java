@@ -482,6 +482,8 @@ public class KillAura extends Module {
         if (maceKill != null && maceKill.isEnabled() && maceKill.isFunskyActive() && maceKill.isFunskyWaitingSmash()) {
             // Funsky Auto: ждём конца i-frames цели (hurtTime == 0) и сразу бьём автомейсом
             if (target.hurtTime > 0) return false;
+            // Funsky Auto (режимы 4.5s/5s): смэш не чаще заданного интервала
+            if (!maceKill.isFunskySmashReady()) return false;
         } else if (maceKill != null && maceKill.isEnabled() && maceKill.isCustomDelayEnabled()) {
             // MaceKill: бьём по кастомной задержке в тиках, игнорируя кулдаун предмета
             if (maceKill.getAttackTicks() > 0) return false;

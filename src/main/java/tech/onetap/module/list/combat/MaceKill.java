@@ -17,6 +17,7 @@ import tech.onetap.module.ModuleInformation;
 import tech.onetap.module.settings.BooleanSetting;
 import tech.onetap.module.settings.ModeSetting;
 import tech.onetap.module.settings.SliderSetting;
+import tech.onetap.util.chat.ChatUtil;
 import tech.onetap.util.packet.NetworkUtils;
 import tech.onetap.util.text.ValueUnit;
 
@@ -32,20 +33,25 @@ public final class MaceKill extends Module {
     private final SliderSetting attackDelay = new SliderSetting("Задержка удара", ValueUnit.countable("тик", "тика", "тиков"), 5, 0, 20, 1)
             .setVisible(customAttackDelay::getValue);
     public final BooleanSetting funskyAuto = new BooleanSetting("Funsky Auto", false);
+    private final ModeSetting funskyMode = new ModeSetting("Funsky режим", "Hit", "Hit", "4.5s", "5s")
+            .setVisible(() -> funskyAuto.getValue());
+    private final BooleanSetting funskyChatTimer = new BooleanSetting("Debug", false)
+            .setVisible(() -> funskyAuto.getValue() && (funskyMode.is("4.5s") || funskyMode.is("5s")));
+    private final BooleanSetting funskyForceFirst = new BooleanSetting("Force 1", true)
+            .setVisible(() -> funskyAuto.getValue() && (funskyMode.is("4.5s") || funskyMode.is("5s")));
 
     public static boolean cancelCrit;
     public static boolean killAuraTriggered;
 
-    // Funsky Auto: бьём простыми ударами (без AutoMace), пока сервер не зарегистрирует удар
-    // (hurtTime цели вырастет). После регистрации ждём hurtTime == 0 и мгновенно бьём
-    // AutoMace-смэшем, затем цикл начинается заново.
     private boolean funskyWaitingSmash;
+    private boolean funskyFirstSmash;
+    private boolean funskyHitRegistered;
     private int funskyGraceTicks;
     private int funskyPrevHurtTime;
     private LivingEntity funskyTarget;
+    private int funskySmashTicks = 1000;
+    private double lastFunskyTimerValue = -1.0;
 
-    // Свой таймер удара: при включённом MaceKill KillAura игнорирует кулдаун предмета
-    // и бьёт по этой задержке (0 = можно бить сразу после включения).
     private int attackTicks;
 
     public int getAttackTicks() {
@@ -63,6 +69,33 @@ public final class MaceKill extends Module {
     @Subscribe
     public void onTick(EventTick event) {
         if (attackTicks > 0) attackTicks--;
+        if (funskySmashTicks < 1000) funskySmashTicks++;
+
+        if (funskyChatTimer.getValue() && isFunskyActive() && !funskyMode.is("Hit")) {
+            int delay = getFunskySmashDelayTicks();
+            if (funskySmashTicks < delay) {
+                double remaining = (delay - funskySmashTicks) * 0.05;
+                double displayValue = Math.round(remaining * 10.0) / 10.0;
+                if (displayValue != lastFunskyTimerValue) {
+                    lastFunskyTimerValue = displayValue;
+                    ChatUtil.send(String.format("§e%.1f", displayValue));
+                }
+            } else if (lastFunskyTimerValue != 0.0) {
+                lastFunskyTimerValue = 0.0;
+            }
+        } else if (lastFunskyTimerValue != -1.0) {
+            lastFunskyTimerValue = -1.0;
+        }
+    }
+
+    public boolean isFunskySmashReady() {
+        return funskyFirstSmash || funskySmashTicks >= getFunskySmashDelayTicks();
+    }
+
+    private int getFunskySmashDelayTicks() {
+        if (funskyMode.is("4.5s")) return 90;
+        if (funskyMode.is("5s")) return 100;
+        return 0;
     }
 
     public boolean isFunskyActive() {
@@ -77,37 +110,64 @@ public final class MaceKill extends Module {
         if (!isFunskyActive() || target == null || !target.isAlive()) {
             funskyTarget = null;
             funskyWaitingSmash = false;
+            funskyFirstSmash = false;
+            funskyHitRegistered = false;
             funskyGraceTicks = 0;
             funskyPrevHurtTime = 0;
             return;
         }
         if (target != funskyTarget) {
             funskyTarget = target;
-            funskyWaitingSmash = false;
+            boolean timerMode = funskyMode.is("4.5s") || funskyMode.is("5s");
+            funskyFirstSmash = timerMode && funskyForceFirst.getValue();
+            funskyWaitingSmash = funskyFirstSmash;
+            funskyHitRegistered = false;
             funskyGraceTicks = 0;
             funskyPrevHurtTime = target.hurtTime;
             return;
         }
         if (funskyGraceTicks > 0) funskyGraceTicks--;
         int hurtTime = target.hurtTime;
-        // hurtTime вырос — простой удар зарегистрирован сервером, переходим к ожиданию смэша
-        if (!funskyWaitingSmash && funskyGraceTicks == 0 && hurtTime > funskyPrevHurtTime) {
-            funskyWaitingSmash = true;
+        if (!funskyWaitingSmash && funskyGraceTicks == 0) {
+            if (hurtTime > funskyPrevHurtTime) {
+                funskyHitRegistered = true;
+            }
+            boolean timerMode = funskyMode.is("4.5s") || funskyMode.is("5s");
+            if (funskyHitRegistered) {
+                if (!timerMode || funskySmashTicks >= 20) {
+                    funskyWaitingSmash = true;
+                }
+            } else if (timerMode && !funskyFirstSmash && funskySmashTicks >= getFunskySmashDelayTicks()) {
+                // Только таймерные режимы: смэш по истечении интервала без простого удара.
+                // В режиме Hit задержка равна 0, и без этой проверки смэш включался бы сразу.
+                funskyWaitingSmash = true;
+            }
         }
         funskyPrevHurtTime = hurtTime;
     }
 
     public void onFunskySmash() {
         funskyWaitingSmash = false;
-        // Игнорируем hurtTime от собственного смэша, чтобы цикл начался с простых ударов
+        funskyFirstSmash = false;
+        funskyHitRegistered = false;
         funskyGraceTicks = 10;
+        funskySmashTicks = 0;
+
+        if (funskyChatTimer.getValue() && isFunskyActive() && !funskyMode.is("Hit")) {
+            ChatUtil.send("§aReady");
+            lastFunskyTimerValue = -1.0;
+        }
     }
 
     private void resetFunskyState() {
         funskyTarget = null;
         funskyWaitingSmash = false;
+        funskyFirstSmash = false;
+        funskyHitRegistered = false;
         funskyGraceTicks = 0;
         funskyPrevHurtTime = 0;
+        funskySmashTicks = 1000;
+        lastFunskyTimerValue = -1.0;
     }
 
     @Override
@@ -132,8 +192,6 @@ public final class MaceKill extends Module {
         KillAura aura = Onetap.getInstance().getModuleStorage().get(KillAura.class);
         AutoMace autoMace = Onetap.getInstance().getModuleStorage().get(AutoMace.class);
 
-        // Funsky Auto (при активной KillAura): на простых ударах до регистрации
-        // не добавляем свой крит — он добавится только на смэше (WAIT_SMASH)
         if (isFunskyActive() && !funskyWaitingSmash && aura != null && aura.isEnabled()) return;
 
         boolean autoMaceActive = aura != null && aura.isEnabled() && autoMace != null && autoMace.isEnabled();
