@@ -14,6 +14,7 @@ import net.minecraft.util.hit.BlockHitResult;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Direction;
 import net.minecraft.util.math.Vec3d;
+import tech.onetap.event.list.EventPacket;
 import tech.onetap.event.list.EventPlayerUpdate;
 import tech.onetap.event.list.EventTick;
 import tech.onetap.module.Module;
@@ -28,14 +29,14 @@ import tech.onetap.util.player.move.MoveUtil;
 @ModuleInformation(moduleName = "Flight", moduleCategory = ModuleCategory.MOVEMENT)
 public class Flight extends Module {
 
-    public final ModeSetting mode = new ModeSetting("Режим", "Vanilla", "Vanilla", "Vulcan", "Vulcan XZ", "AirJump");
-    public SliderSetting speed = new SliderSetting("Скорость", 1.0, 0.1, 10.0, 0.1).setVisible(() -> mode.is("Vanilla"));
-    public SliderSetting vulcanXzSpeed = new SliderSetting("Скорость", 1.0, 0.1, 10.0, 0.1).setVisible(() -> mode.is("Vulcan XZ"));
+    public final ModeSetting mode = new ModeSetting("Режим", "Vanilla", "Vanilla", "Vulcan", "Vulcan XZ", "FunSky");
+    public SliderSetting speed = new SliderSetting("Скорость", 1.0, 0.1, 40.0, 0.1).setVisible(() -> mode.is("Vanilla"));
+    public SliderSetting vulcanXzSpeed = new SliderSetting("Скорость", 1.0, 0.1, 40.0, 0.1).setVisible(() -> mode.is("Vulcan XZ"));
     public final SliderSetting vulcanXzBlockInterval = new SliderSetting("Блок каждые N тиков", 20.0, 10.0, 80.0, 5.0).setVisible(() -> mode.is("Vulcan XZ"));
 
-    public final SliderSetting airJumpRiseSpeed = new SliderSetting("Скорость подъёма", 0.4, 0.05, 1.5, 0.05).setVisible(() -> mode.is("AirJump"));
-    public final SliderSetting airJumpSpeed = new SliderSetting("Скорость", 1.0, 0.1, 5.0, 0.1).setVisible(() -> mode.is("AirJump"));
-    public final SliderSetting airJumpDescendSpeed = new SliderSetting("Скорость спуска", 0.04, 0.01, 1.0, 0.01).setVisible(() -> mode.is("AirJump"));
+    public final SliderSetting airJumpRiseSpeed = new SliderSetting("Скорость подъёма", 0.4, 0.05, 1.5, 0.05).setVisible(() -> mode.is("FunSky"));
+    public final SliderSetting airJumpSpeed = new SliderSetting("Скорость", 1.0, 0.1, 40.0, 0.1).setVisible(() -> mode.is("FunSky"));
+    public final SliderSetting airJumpDescendSpeed = new SliderSetting("Скорость спуска", 0.04, 0.01, 1.0, 0.01).setVisible(() -> mode.is("FunSky"));
 
     public final BooleanSetting antiKick = new BooleanSetting("Анти-кик", true);
 
@@ -122,9 +123,43 @@ public class Flight extends Module {
     @Subscribe
     public void onUpdateAirJump(EventTick event) {
         if (mc.player == null || mc.getNetworkHandler() == null) return;
-        if (!mode.is("AirJump")) return;
+        if (!mode.is("FunSky")) return;
 
         handleAirJumpMode();
+    }
+
+    @Subscribe
+    public void onPacket(EventPacket event) {
+        if (mc.player == null || mc.getNetworkHandler() == null) return;
+        if (!mode.is("FunSky")) return;
+        if (event.getType() != EventPacket.Type.SEND) return;
+
+        if (event.getPacket() instanceof PlayerMoveC2SPacket packet) {
+            if (packet.isOnGround()) return;
+
+            event.cancelEvent();
+
+            double x = packet.getX(mc.player.getX());
+            double y = packet.getY(mc.player.getY());
+            double z = packet.getZ(mc.player.getZ());
+            float yaw = packet.getYaw(mc.player.getYaw());
+            float pitch = packet.getPitch(mc.player.getPitch());
+            boolean collision = mc.player.horizontalCollision;
+
+            PlayerMoveC2SPacket modifiedPacket;
+
+            if (packet.changesPosition() && packet.changesLook()) {
+                modifiedPacket = new PlayerMoveC2SPacket.Full(x, y, z, yaw, pitch, true, collision);
+            } else if (packet.changesPosition()) {
+                modifiedPacket = new PlayerMoveC2SPacket.PositionAndOnGround(x, y, z, true, collision);
+            } else if (packet.changesLook()) {
+                modifiedPacket = new PlayerMoveC2SPacket.LookAndOnGround(yaw, pitch, true, collision);
+            } else {
+                modifiedPacket = new PlayerMoveC2SPacket.OnGroundOnly(true, collision);
+            }
+
+            mc.getNetworkHandler().sendPacket(modifiedPacket);
+        }
     }
 
     @Subscribe
@@ -244,7 +279,7 @@ public class Flight extends Module {
             double targetY = mc.player.getY() + airJumpRiseSpeed.getValue();
 
             NetworkUtils.sendPacket(new PlayerMoveC2SPacket.PositionAndOnGround(
-                    mc.player.getX(), mc.player.getY(), mc.player.getZ(), true, mc.player.horizontalCollision));
+                    mc.player.getX(), mc.player.getY(), mc.player.getZ(), false, mc.player.horizontalCollision));
 
             NetworkUtils.sendPacket(new PlayerMoveC2SPacket.PositionAndOnGround(
                     mc.player.getX(), targetY, mc.player.getZ(), false, mc.player.horizontalCollision));
