@@ -106,6 +106,10 @@ public final class MaceKill extends Module {
         return funskyWaitingSmash;
     }
 
+    public boolean isFunskyTimerMode() {
+        return funskyMode.is("4.5s") || funskyMode.is("5s");
+    }
+
     public void updateFunskyState(LivingEntity target) {
         if (!isFunskyActive() || target == null || !target.isAlive()) {
             funskyTarget = null;
@@ -192,7 +196,9 @@ public final class MaceKill extends Module {
         KillAura aura = Onetap.getInstance().getModuleStorage().get(KillAura.class);
         AutoMace autoMace = Onetap.getInstance().getModuleStorage().get(AutoMace.class);
 
-        if (isFunskyActive() && !funskyWaitingSmash && aura != null && aura.isEnabled()) return;
+        // Funsky Auto: блокируем крит на простых ударах только пока KillAura держит цель;
+        // без таргета ручной клик должен критовать как обычно
+        if (isFunskyActive() && !funskyWaitingSmash && aura != null && aura.isEnabled() && aura.getTarget() != null) return;
 
         boolean autoMaceActive = aura != null && aura.isEnabled() && autoMace != null && autoMace.isEnabled();
         if (!autoMaceActive) {

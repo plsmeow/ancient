@@ -39,9 +39,10 @@ public class ClientPlayerInteractionManagerMixin {
     }
 
 
-    @Inject(method = "attackBlock", at = @At("HEAD"))
+    @Inject(method = "attackBlock", at = @At("HEAD"), cancellable = true)
     private void autoToolBeforeStartBreaking(BlockPos pos, Direction direction, CallbackInfoReturnable<Boolean> cir) {
         var event = new EventAttackBlock(pos, direction);
         event.post();
+        if (event.isCancelled()) cir.setReturnValue(false);
     }
 }

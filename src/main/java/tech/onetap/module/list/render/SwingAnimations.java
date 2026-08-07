@@ -22,7 +22,7 @@ public class SwingAnimations extends Module {
         var sin2 = MathHelper.sin(MathHelper.sqrt(swingProgress) * (float) Math.PI);
         switch (mode.getValue()) {
             case "Никакой" -> {
-                matrices.translate(0.56F, -0.52F + equipProgress * -0.6F, -0.72F);
+                matrices.translate(0.56F, -0.52F, -0.72F);
                 float f = -0.4F * MathHelper.sin(MathHelper.sqrt(swingProgress) * 3.1415927F);
                 float g = 0.2F * MathHelper.sin(MathHelper.sqrt(swingProgress) * 6.2831855F);
                 float h = -0.2F * MathHelper.sin(swingProgress * 3.1415927F);
