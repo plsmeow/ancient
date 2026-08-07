@@ -19,7 +19,8 @@ public class Optimization extends Module {
     }
 
     public static boolean shouldDisableClickGuiBlur() {
-        return isActive() && MinecraftClient.getInstance().currentScreen instanceof ClickGuiFrame;
+        return isActive() && (MinecraftClient.getInstance().currentScreen instanceof ClickGuiFrame
+                || MinecraftClient.getInstance().currentScreen instanceof tech.onetap.ui.NewClickGuiFrame);
     }
 
     public static boolean shouldDisableInterfaceBlur() {

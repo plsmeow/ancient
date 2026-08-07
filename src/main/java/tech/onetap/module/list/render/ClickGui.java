@@ -11,7 +11,7 @@ import tech.onetap.ui.Panel;
 @ModuleInformation(moduleName = "Click Gui", moduleCategory = ModuleCategory.RENDER, moduleKeybind = GLFW.GLFW_KEY_RIGHT_SHIFT)
 public class ClickGui extends Module {
 
-    public final ModeSetting mode = new ModeSetting("Режим", "Dropdown", "Dropdown", "Panel");
+    public final ModeSetting mode = new ModeSetting("Режим", "Dropdown", "Dropdown", "Panel", "New");
 
     private ClickGuiFrame clickGuiFrame;
 
@@ -19,8 +19,19 @@ public class ClickGui extends Module {
         return mode.is("Panel");
     }
 
+    public boolean isNewMode() {
+        return mode.is("New");
+    }
+
     @Override
     public void onEnable() {
+        if (isNewMode()) {
+            if (mc.currentScreen == null) {
+                mc.setScreen(new tech.onetap.ui.NewClickGuiFrame());
+            }
+            toggle();
+            return;
+        }
         if (clickGuiFrame == null) clickGuiFrame = new ClickGuiFrame();
         mc.setScreen(clickGuiFrame);
         for (Panel panel : clickGuiFrame.getPanels()) {
