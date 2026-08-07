@@ -11,21 +11,28 @@ import net.minecraft.sound.SoundCategory;
 import net.minecraft.sound.SoundEvents;
 import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.Vec3d;
+import net.minecraft.world.RaycastContext;
+import net.minecraft.util.hit.HitResult;
 import tech.onetap.Onetap;
 import tech.onetap.event.list.EventPacket;
 import tech.onetap.event.list.EventTick;
 import tech.onetap.module.list.combat.KillAura;
 import tech.onetap.util.IMinecraft;
-import tech.onetap.util.math.BestPoint;
-import tech.onetap.util.math.RotationUtil;
+import tech.onetap.util.player.combat.RaytraceUtil;
 import tech.onetap.util.rotation.Rotation;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
-import java.lang.reflect.Field;
 
+/**
+ * Пишет датасет для Neuro Rotation.
+ *
+ * Ключевое отличие от старой версии: фичи собираются из состояния тика t,
+ * а метка — дельта поворота между t и t+1. Строка фич держится один тик,
+ * поэтому фичи и метка описывают один и тот же интервал.
+ */
 public class AIRotationRecorder implements IMinecraft {
 
     public enum Mode {
@@ -37,94 +44,160 @@ public class AIRotationRecorder implements IMinecraft {
     private static boolean recording = false;
     @Getter
     private static Mode mode = Mode.KILLAURA;
-    private static final List<TrainingSample> samples = new ArrayList<>();
 
-    private static Rotation previousRotation = null;
-    private static Rotation currentRotation = null;
+    private static final List<TrainingSample> samples = new ArrayList<>();
+    @Getter
+    private static final DatasetBalance balance = new DatasetBalance();
+
     private static LivingEntity slimeTarget = null;
+    private static int tickCounter = 0;
+
+    // Отложенный сэмпл: фичи тика t ждут метку, которая станет известна на t+1
+    private static float[] pendingFeatures = null;
+    private static Rotation pendingRotation = null;
+    private static SampleQuality pendingQuality = SampleQuality.CLEAN;
+    private static int pendingTick = 0;
+
+    private static LivingEntity lastTarget = null;
+    private static float prevDeltaYaw = 0.0f;
+    private static float prevDeltaPitch = 0.0f;
+
+    private final NeuroFeatureCollector collector = new NeuroFeatureCollector();
+    private final AimPointController aimController = new AimPointController();
 
     @Subscribe
     public void onTick(EventTick event) {
         if (!recording || mc.player == null || mc.world == null) return;
 
+        tickCounter++;
+
         if (mode == Mode.SLIMES && (slimeTarget == null || !slimeTarget.isAlive() || slimeTarget.isRemoved())) {
             slimeTarget = spawnSlime();
-            previousRotation = null;
-            currentRotation = null;
+            discardPending();
             return;
         }
 
         LivingEntity target = resolveTarget();
-        if (target == null || !target.isAlive()) return;
-
-        KillAura killAura = Onetap.getInstance().getModuleStorage().get(KillAura.class);
-        double distance = (killAura != null && killAura.isEnabled())
-                ? killAura.distance.getValue()
-                : 3.0;
+        if (target == null || !target.isAlive()) {
+            discardPending();
+            return;
+        }
 
         Rotation nextRotation = new Rotation(
                 MathHelper.wrapDegrees(mc.player.getYaw()),
                 mc.player.getPitch()
         );
 
-        if (currentRotation == null) {
-            currentRotation = nextRotation;
-            System.out.println("AI RECORDER: Initialized with rotation " +
-                    String.format("%.2f, %.2f", nextRotation.getYaw(), nextRotation.getPitch()));
+        boolean targetChanged = target != lastTarget;
+        lastTarget = target;
+
+        // Сначала закрываем отложенный сэмпл: метка = дельта между тиком t и t+1
+        if (pendingFeatures != null && pendingRotation != null) {
+            float labelYaw = MathHelper.wrapDegrees(nextRotation.getYaw() - pendingRotation.getYaw());
+            float labelPitch = nextRotation.getPitch() - pendingRotation.getPitch();
+
+            SampleQuality quality = targetChanged ? SampleQuality.TARGET_SWITCH : pendingQuality;
+            commitSample(pendingFeatures, labelYaw, labelPitch, quality, pendingTick);
+
+            prevDeltaYaw = labelYaw;
+            prevDeltaPitch = labelPitch;
+        }
+
+        // Теперь собираем фичи текущего тика — они станут pending
+        KillAura killAura = Onetap.getInstance().getModuleStorage().get(KillAura.class);
+        Vec3d aimPoint = resolveAimPoint(killAura, target, targetChanged);
+
+        float[] features = new float[NeuroFeatureSchema.FEATURE_COUNT];
+        collector.collect(features, 0, mc.player, target, nextRotation, aimPoint, targetChanged);
+
+        // Дельты предыдущего шага заполняет рекордер, а не коллектор
+        features[NeuroFeatureSchema.PREV_DELTA_YAW] = prevDeltaYaw;
+        features[NeuroFeatureSchema.PREV_DELTA_PITCH] = prevDeltaPitch;
+
+        pendingFeatures = features;
+        pendingRotation = nextRotation;
+        pendingTick = tickCounter;
+        pendingQuality = classify(features, target, aimPoint, targetChanged);
+    }
+
+    /**
+     * Определяет качество сэмпла по §26.
+     */
+    private SampleQuality classify(float[] features, LivingEntity target, Vec3d aimPoint, boolean targetChanged) {
+        if (!isFinite(features)) {
+            return SampleQuality.INVALID;
+        }
+        if (targetChanged) {
+            return SampleQuality.TARGET_SWITCH;
+        }
+        if (aimPoint != null && isOccluded(aimPoint)) {
+            return SampleQuality.OCCLUDED;
+        }
+        if (features[NeuroFeatureSchema.LINE_OF_SIGHT] < 0.5f) {
+            return SampleQuality.TRANSITION;
+        }
+        return SampleQuality.CLEAN;
+    }
+
+    /**
+     * Проверяет перекрытие блоками — старая реализация этого не делала вообще.
+     */
+    private boolean isOccluded(Vec3d point) {
+        if (mc.player == null || mc.world == null) return false;
+        Vec3d eyePos = mc.player.getEyePos();
+        var hit = RaytraceUtil.raycast(eyePos, point, RaycastContext.ShapeType.COLLIDER, mc.player);
+        if (hit.getType() == HitResult.Type.MISS) return false;
+        return eyePos.squaredDistanceTo(hit.getPos()) < eyePos.squaredDistanceTo(point) - 1e-4;
+    }
+
+    private Vec3d resolveAimPoint(KillAura killAura, LivingEntity target, boolean targetChanged) {
+        if (killAura != null && killAura.isEnabled()) {
+            return aimController.update(killAura, target, targetChanged);
+        }
+        // KillAura выключена — берём центр верхней части хитбокса
+        return target.getPos().add(0, target.getHeight() * 0.65, 0);
+    }
+
+    private void commitSample(float[] features, float labelYaw, float labelPitch,
+                              SampleQuality quality, int tick) {
+        float[] output = new float[]{labelYaw, labelPitch};
+
+        if (quality == SampleQuality.INVALID || !isValidLabel(output)) {
             return;
         }
 
-        if (previousRotation == null) {
-            previousRotation = currentRotation;
-            currentRotation = nextRotation;
+        // Отсекаем почти нулевое движение мыши — шум не должен
+        // размывать распределение меток.
+        if (Math.abs(labelYaw) < 0.01f && Math.abs(labelPitch) < 0.01f) {
             return;
         }
 
-        float actualDeltaYaw = MathHelper.wrapDegrees(nextRotation.getYaw() - currentRotation.getYaw());
-        float actualDeltaPitch = nextRotation.getPitch() - currentRotation.getPitch();
+        samples.add(new TrainingSample(features, output, quality, SampleSource.HUMAN, tick));
+        balance.record(features);
+    }
 
-        if (mode == Mode.KILLAURA) {
-            boolean noCameraMovement = Math.abs(actualDeltaYaw) < 0.01f && Math.abs(actualDeltaPitch) < 0.01f;
-            boolean noKeyPress = mc.player.input.movementForward == 0.0f && mc.player.input.movementSideways == 0.0f;
-            if (noCameraMovement && noKeyPress) {
-                previousRotation = currentRotation;
-                currentRotation = nextRotation;
-                return;
-            }
+    private void discardPending() {
+        pendingFeatures = null;
+        pendingRotation = null;
+        pendingQuality = SampleQuality.CLEAN;
+        lastTarget = null;
+        prevDeltaYaw = 0.0f;
+        prevDeltaPitch = 0.0f;
+    }
+
+    private static boolean isFinite(float[] values) {
+        for (float value : values) {
+            if (!Float.isFinite(value)) return false;
         }
+        return true;
+    }
 
-        Vec3d targetPoint = killAura != null && killAura.isEnabled()
-                ? killAura.resolveMultipoint(target, BestPoint.getMultipoint(target, distance), distance)
-                : BestPoint.getMultipoint(target, distance);
-        Rotation targetRotation = new Rotation(RotationUtil.calculate(targetPoint));
-
-        float[] input = AIRotationFeatures.buildInput(
-                mc.player,
-                target,
-                currentRotation,
-                targetRotation,
-                previousRotation,
-                targetPoint
-        );
-
-        float[] output = new float[]{actualDeltaYaw, actualDeltaPitch};
-
-        if (!isValidSample(input, output)) {
-            previousRotation = currentRotation;
-            currentRotation = nextRotation;
-            return;
+    private static boolean isValidLabel(float[] output) {
+        if (output == null || output.length != NeuroFeatureSchema.OUTPUT_SIZE) return false;
+        for (float value : output) {
+            if (!Float.isFinite(value)) return false;
         }
-
-        samples.add(new TrainingSample(input, output));
-
-        if (samples.size() % 20 == 0) {
-            System.out.println("AI RECORDER: Sample " + samples.size() +
-                    " | Input: [" + format(input) + "] | Output: [" +
-                    String.format("%.2f, %.2f", output[0], output[1]) + "]");
-        }
-
-        previousRotation = currentRotation;
-        currentRotation = nextRotation;
+        return Math.abs(output[0]) <= 180.0f && Math.abs(output[1]) <= 90.0f;
     }
 
     @Subscribe
@@ -132,12 +205,11 @@ public class AIRotationRecorder implements IMinecraft {
         if (!recording || mode != Mode.SLIMES || event.getType() != EventPacket.Type.SEND || mc.world == null) return;
         if (!(event.getPacket() instanceof PlayerInteractEntityC2SPacket packet) || slimeTarget == null) return;
 
-        if (packetEntityId(packet) != slimeTarget.getId()) return;
+        if (packet.entityId != slimeTarget.getId()) return;
 
         mc.world.removeEntity(slimeTarget.getId(), Entity.RemovalReason.DISCARDED);
         slimeTarget = null;
         event.setCancelled(true);
-        System.out.println("AI RECORDER: Recorded " + samples.size() + " samples, spawning next slime");
     }
 
     private static LivingEntity resolveTarget() {
@@ -160,24 +232,6 @@ public class AIRotationRecorder implements IMinecraft {
         return KillAura.lastTarget;
     }
 
-    private static boolean isValidSample(float[] input, float[] output) {
-        if (!AIRotationFeatures.isValidInput(input) || !AIRotationFeatures.isValidOutput(output)) return false;
-
-        // Отсекаем почти нулевое движение мыши (шум), оставляем реальные повороты
-        if (Math.abs(output[0]) < 0.01f && Math.abs(output[1]) < 0.01f) return false;
-
-        return true;
-    }
-
-    private static String format(float[] values) {
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < values.length; i++) {
-            if (i > 0) sb.append(", ");
-            sb.append(String.format("%.2f", values[i]));
-        }
-        return sb.toString();
-    }
-
     public static void startRecording() {
         startRecording(Mode.KILLAURA);
     }
@@ -186,19 +240,24 @@ public class AIRotationRecorder implements IMinecraft {
         recording = true;
         mode = recordMode;
         samples.clear();
-        previousRotation = null;
-        currentRotation = null;
+        balance.reset();
         slimeTarget = null;
-        System.out.println("AI RECORDER: Started recording (" + recordMode.name().toLowerCase() + ")");
+        tickCounter = 0;
+        pendingFeatures = null;
+        pendingRotation = null;
+        pendingQuality = SampleQuality.CLEAN;
+        lastTarget = null;
+        prevDeltaYaw = 0.0f;
+        prevDeltaPitch = 0.0f;
     }
 
     public static int stopRecording() {
         recording = false;
         int count = samples.size();
         removeSlimeTarget();
-        previousRotation = null;
-        currentRotation = null;
-        System.out.println("AI RECORDER: Stopped recording, collected " + count + " samples");
+        pendingFeatures = null;
+        pendingRotation = null;
+        lastTarget = null;
         return count;
     }
 
@@ -212,6 +271,7 @@ public class AIRotationRecorder implements IMinecraft {
 
     public static void clearSamples() {
         samples.clear();
+        balance.reset();
     }
 
     private static LivingEntity spawnSlime() {
@@ -255,18 +315,5 @@ public class AIRotationRecorder implements IMinecraft {
                 MathHelper.sin(pitchRad),
                 MathHelper.cos(yawRad) * pitchCos
         );
-    }
-
-    private static int packetEntityId(PlayerInteractEntityC2SPacket packet) {
-        for (Field field : packet.getClass().getDeclaredFields()) {
-            if (field.getType() != int.class) continue;
-            try {
-                field.setAccessible(true);
-                return field.getInt(packet);
-            } catch (IllegalAccessException ignored) {
-            }
-        }
-
-        return -1;
     }
 }

@@ -37,19 +37,22 @@ dependencies {
     
     // OSHI for hardware info (authentication)
     implementation(include("com.github.oshi:oshi-core:6.4.8"))
-    
+
     // Gson for JSON (authentication)
     implementation(include("com.google.code.gson:gson:2.10.1"))
 
 	implementation files('libs/BareAPI_lib.jar')
 
-	include modImplementation("ai.djl:api:0.32.0")
-	include modImplementation("ai.djl.pytorch:pytorch-engine:0.32.0")
-
-
-	runtimeOnly "ai.djl.pytorch:pytorch-native-cpu:2.1.2"
-
-
+	// ONNX Runtime для AI inference.
+	// Обычная библиотека, не мод — поэтому implementation(include(...)), как oshi/gson.
+	// Нативы лежат внутри jar и распаковываются в temp при первой загрузке,
+	// поэтому вложение через Fabric JiJ работает.
+	//
+	// Jar тяжёлый (~43 МБ): туда входят нативы win/linux/macos плюс 47.8 МБ
+	// несжатых .dSYM (символы отладки macOS). Вырезать их не выходит —
+	// Loom вкладывает только полноценные module-компоненты, а не собранные
+	// вручную файлы. Итоговый jar мода ~48 МБ; это цена локального inference.
+	implementation(include("com.microsoft.onnxruntime:onnxruntime:1.28.0"))
 }
 
 processResources {
@@ -57,6 +60,15 @@ processResources {
 
 	filesMatching("fabric.mod.json") {
 		expand "version": inputs.properties.version
+	}
+
+	// Питоновский тренер уезжает внутрь jar, чтобы клиент мог распаковать его
+	// на любой машине — в игре нет папки проекта с tools/neuro.
+	from('tools/neuro') {
+		into 'onetap/neuro'
+		include '*.py'
+		include 'requirements.txt'
+		include 'README.md'
 	}
 }
 

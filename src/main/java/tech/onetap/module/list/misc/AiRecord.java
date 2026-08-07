@@ -52,6 +52,7 @@ public class AiRecord extends Module {
                 ? AIRotationRecorder.Mode.SLIMES
                 : AIRotationRecorder.Mode.KILLAURA;
 
+        // Метки — только человеческие движения мыши (источник «Ротация» удалён).
         AIRotationRecorder.startRecording(recordMode);
 
         if (recordMode == AIRotationRecorder.Mode.SLIMES) {
@@ -63,7 +64,7 @@ public class AiRecord extends Module {
     }
 
     @Subscribe
-    private void onTick(EventTick event) {
+    public void onTick(EventTick event) {
         if (!AIRotationRecorder.isRecording()) return;
 
         int samples = AIRotationRecorder.getSampleCount();
@@ -85,6 +86,8 @@ public class AiRecord extends Module {
             recorderInstance = null;
         }
 
+        reportBalance(samples);
+
         if (autoSave.getValue()) {
             if (samples >= minSamples.getIntValue()) {
                 String datasetName = "ds" + LocalDateTime.now().format(DATASET_TIME);
@@ -95,5 +98,28 @@ public class AiRecord extends Module {
         }
 
         super.onDisable();
+    }
+
+    /**
+     * Отчёт по балансу датасета (§27) — чтобы не получить 90% неподвижной цели.
+     */
+    private void reportBalance(int samples) {
+        if (samples == 0) return;
+
+        var balance = AIRotationRecorder.getBalance();
+        int moving = balance.getMovingTarget();
+        int stationary = balance.getStationaryTarget();
+        int total = moving + stationary;
+
+        if (total == 0) return;
+
+        int movingPercent = moving * 100 / total;
+        ChatUtil.send("§7Баланс: движ. цель §f" + movingPercent + "%§7, близко §f"
+                + balance.getCloseDistance() + "§7 / средне §f" + balance.getMediumDistance()
+                + "§7 / далеко §f" + balance.getLongDistance());
+
+        if (movingPercent < 20) {
+            ChatUtil.send("§eМало движущихся целей — модель будет плохо вести подвижного противника");
+        }
     }
 }

@@ -18,6 +18,7 @@ import tech.onetap.util.friend.FriendRepository;
 import tech.onetap.util.log.ClientLogBuffer;
 import tech.onetap.util.macro.MacroRepository;
 import tech.onetap.util.math.TPSGetter;
+import tech.onetap.util.neuro.rotation.TrainingLauncher;
 import tech.onetap.util.player.combat.IdealHitUtils;
 import tech.onetap.util.player.other.ServerManager;
 import tech.onetap.util.rotation.ComponentManager;
@@ -109,6 +110,8 @@ public class Onetap implements ModInitializer {
         FriendRepository.load();
         TargetRepository.load();
         configManager.load("autocfg");
+        // Скрипты тренера (.ai train / .ai improve) живут в .options/ai/neuro
+        TrainingLauncher.prepareTools();
     }
 
     @Subscribe
