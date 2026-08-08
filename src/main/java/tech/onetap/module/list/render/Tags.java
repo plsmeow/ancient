@@ -66,7 +66,7 @@ public class Tags extends Module {
 
     private final BooleanSetting displayPartyFriends = new BooleanSetting("Участники пати", false);
     private final BooleanSetting totemCounter = new BooleanSetting("Счетчик тотемов", false);
-    private final ModeSetting style = new ModeSetting("Стиль", "Дефолт", "Дефолт", "Nursultan");
+    // Стиль всегда Nursultan - настройка удалена
 
     private final Map<UUID, Text> normalizedNames = new ConcurrentHashMap<>();
     private final Map<UUID, Integer> totemPops = new ConcurrentHashMap<>();
@@ -294,7 +294,6 @@ public class Tags extends Module {
                 hpColor = 0xFF5555; // Яркий красный
             }
 
-            boolean nursultanStyle = style.is("Nursultan");
 
             MutableText name = baseName.copy();
 
@@ -319,16 +318,15 @@ public class Tags extends Module {
             }
 
 
-            float textWidth = nursultanStyle ? font.getWidth(name.getString(), 8.3f) : mc.textRenderer.getWidth(name);
-            float paddingX = nursultanStyle ? 3f : 4f;
-            float totalWidth = nursultanStyle ? textWidth + (paddingX * 2) - 4 : textWidth + (paddingX * 2) - 3;
-            float tagHeight = nursultanStyle ? 12.5f : 11.5f;
-            float tagY = nursultanStyle ? posY - 2 : posY - 1.5f;
+            float textWidth = font.getWidth(name.getString(), 8.3f);
+            float paddingX = 3f;
+            float totalWidth = textWidth + (paddingX * 2) - 4;
+            float tagHeight = 12.5f;
+            float tagY = posY - 2;
 
-            float defaultTextWidth = mc.textRenderer.getWidth(name);
             float centerX = pos.getX();
-            float bgX = nursultanStyle ? centerX - totalWidth / 2.0f : centerX - (defaultTextWidth / 2.0f) - paddingX;
-            float bgY = nursultanStyle ? tagY : tagY;
+            float bgX = centerX - totalWidth / 2.0f;
+            float bgY = tagY;
 
             int bgColor;
             if (TargetRepository.isTarget(entity.getNameForScoreboard())) {
@@ -338,35 +336,10 @@ public class Tags extends Module {
             } else {
                 bgColor = ColorProvider.rgba(0, 0, 0, 125);
             }
-            DrawUtil.drawRound(bgX, bgY, totalWidth, tagHeight, 0, bgColor);
+            DrawUtil.drawRound(bgX, bgY, totalWidth, tagHeight, 2, bgColor);
 
-            if (nursultanStyle) {
-                boolean isSpeaking = false;
 
-                List<MsdfFont.ColoredGlyph> glyphs = ParseTextUtil.parseTextToColoredGlyphs(entity.getDisplayName());
-                if (!glyphs.isEmpty()) {
-                    int firstCharColor = glyphs.get(0).color();
-                    if ((firstCharColor & 0xFFFFFF) == 0x55FF55) {
-                        isSpeaking = true;
-                    }
-                }
-                int colorSpeaking = ColorProvider.rgba(50, 215, 50, 255);
-                int colorSilent = ColorProvider.rgba(215, 50, 50, 255);
-
-                int voiceColor = isSpeaking ? colorSpeaking : colorSilent;
-                float barWidth = 1.5f;
-
-                DrawUtil.drawRound(bgX, tagY, barWidth, tagHeight, 0.5f, voiceColor);
-                DrawUtil.drawRound(bgX + totalWidth - barWidth, tagY, barWidth, tagHeight, 0.5f, voiceColor);
-
-                DrawUtil.drawText(font, name, bgX + paddingX, posY + 0.25f, 8, 255);
-            } else {
-                MatrixStack matrices = e.getDrawContext().getMatrices();
-                matrices.push();
-                matrices.translate(centerX - defaultTextWidth / 2.0f, posY + 0.5f, 0);
-                e.getDrawContext().drawText(mc.textRenderer, name, 0, 0, -1, false);
-                matrices.pop();
-            }
+            DrawUtil.drawText(font, name, bgX + paddingX, posY + 0.25f, 8, 255);
 
             equipmentCache.clear();
             equipmentCache.add(entity.getEquippedStack(EquipmentSlot.HEAD));
