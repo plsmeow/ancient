@@ -16,7 +16,7 @@ import tech.onetap.module.list.misc.*;
 import tech.onetap.module.list.movement.*;
 import tech.onetap.module.list.player.*;
 import tech.onetap.module.list.render.*;
-import tech.onetap.module.list.render.hud.Interface;
+import tech.onetap.module.list.render.Interface;
 import tech.onetap.module.settings.BooleanSetting;
 import tech.onetap.module.settings.ThemeSetting;
 import tech.onetap.util.IMinecraft;

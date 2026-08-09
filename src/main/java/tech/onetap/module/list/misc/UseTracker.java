@@ -17,7 +17,7 @@ import tech.onetap.event.list.EventPacket;
 import tech.onetap.module.Module;
 import tech.onetap.module.ModuleCategory;
 import tech.onetap.module.ModuleInformation;
-import tech.onetap.module.list.render.hud.Interface;
+import tech.onetap.module.list.render.Interface;
 import tech.onetap.util.base.Instance;
 import tech.onetap.util.friend.FriendRepository;
 import tech.onetap.util.render.math.Animation;

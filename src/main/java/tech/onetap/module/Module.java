@@ -5,7 +5,7 @@ import lombok.Setter;
 import net.minecraft.client.MinecraftClient;
 import tech.onetap.Onetap;
 import tech.onetap.module.list.render.ClientSounds;
-import tech.onetap.module.list.render.hud.Interface;
+import tech.onetap.module.list.render.Interface;
 import tech.onetap.module.settings.ModeSetting;
 import tech.onetap.module.settings.Setting;
 import tech.onetap.util.IMinecraft;
