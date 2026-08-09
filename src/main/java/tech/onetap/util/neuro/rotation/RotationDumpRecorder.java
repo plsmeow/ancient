@@ -1,6 +1,6 @@
 package tech.onetap.util.neuro.rotation;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import net.minecraft.client.network.AbstractClientPlayerEntity;
 import net.minecraft.entity.LivingEntity;
 import net.minecraft.util.hit.HitResult;
@@ -66,7 +66,7 @@ public class RotationDumpRecorder implements IMinecraft {
         int lastSeenTick = -1;
     }
 
-    @Subscribe
+    @EventHandler
     public void onTick(EventTick event) {
         if (!recording || mc.player == null || mc.world == null) return;
 
@@ -245,7 +245,7 @@ public class RotationDumpRecorder implements IMinecraft {
         tickCounter = 0;
 
         instance = new RotationDumpRecorder();
-        Onetap.getInstance().getEventBus().register(instance);
+        Onetap.getInstance().getEventBus().subscribe(instance);
         recording = true;
 
         ChatUtil.send("§aДамп ротаций начат: §f" + getNamesLine());
@@ -260,7 +260,7 @@ public class RotationDumpRecorder implements IMinecraft {
         recording = false;
 
         if (instance != null) {
-            Onetap.getInstance().getEventBus().unregister(instance);
+            Onetap.getInstance().getEventBus().unsubscribe(instance);
             instance = null;
         }
 

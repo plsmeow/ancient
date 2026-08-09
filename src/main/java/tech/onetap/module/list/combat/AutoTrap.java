@@ -1,6 +1,6 @@
 package tech.onetap.module.list.combat;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import net.minecraft.block.Blocks;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.item.Items;
@@ -31,7 +31,7 @@ public class AutoTrap extends Module {
 
     private int ticks;
 
-    @Subscribe
+    @EventHandler
     private void onTick(EventTick e) {
         if (mc.player == null || mc.world == null) return;
 

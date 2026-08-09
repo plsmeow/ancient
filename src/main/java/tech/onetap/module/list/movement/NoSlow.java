@@ -1,6 +1,6 @@
 package tech.onetap.module.list.movement;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import net.minecraft.item.consume.UseAction;
 import net.minecraft.network.packet.c2s.play.PlayerInteractItemC2SPacket;
 import net.minecraft.util.Hand;
@@ -18,7 +18,7 @@ public class NoSlow extends Module {
 
     private final ModeSetting mode = new ModeSetting("Mode", "Vanilla", "Vanilla", "Grim", "Grim2");
 
-    @Subscribe
+    @EventHandler
     private void onNoSlow(EventNoSlow e) {
         switch (mode.getValue()) {
             case "Vanilla" -> {

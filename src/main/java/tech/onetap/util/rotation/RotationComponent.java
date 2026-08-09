@@ -1,6 +1,6 @@
 package tech.onetap.util.rotation;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.experimental.Accessors;
@@ -112,7 +112,7 @@ public class RotationComponent extends Component {
         moveFixModes.remove(owner);
     }
 
-    @Subscribe
+    @EventHandler
     public void onEvent(MoveInputEvent event) {
         if (!isRotating() || mc.player == null) return;
 
@@ -143,7 +143,7 @@ public class RotationComponent extends Component {
         }
     }
 
-    @Subscribe
+    @EventHandler
     public void onEvent(EventTick event) {
         if (currentTask().equals(RotationTask.AIM) && idleTicks() > currentTimeout()) {
             currentTask(RotationTask.RESET);

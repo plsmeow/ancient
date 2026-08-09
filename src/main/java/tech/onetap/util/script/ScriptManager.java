@@ -1,6 +1,6 @@
 package tech.onetap.util.script;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import tech.onetap.Onetap;
 import tech.onetap.event.list.EventPlayerSync;
 import tech.onetap.event.list.EventPlayerUpdate;
@@ -14,7 +14,7 @@ public class ScriptManager {
     private final Queue<ScriptTask> tasks = new LinkedList<>();
 
     public ScriptManager() {
-        Onetap.getInstance().getEventBus().register(this);
+        Onetap.getInstance().getEventBus().subscribe(this);
     }
     
     public void tick(Object event) {
@@ -28,17 +28,17 @@ public class ScriptManager {
         }
     }
 
-    @Subscribe
+    @EventHandler
     public void updatePlayerTick(EventPlayerUpdate tickUpdate) {
         tick(tickUpdate);
     }
 
-    @Subscribe
+    @EventHandler
     public void updateTick(EventTick tickUpdate) {
         tick(tickUpdate);
     }
 
-    @Subscribe
+    @EventHandler
     public void onSync(EventPlayerSync tickUpdate) {
         tick(tickUpdate);
     }

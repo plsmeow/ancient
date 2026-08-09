@@ -1,6 +1,6 @@
 package tech.onetap.module.list.misc;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.render.RenderTickCounter;
@@ -60,7 +60,7 @@ public class UseTracker extends Module {
         return originalName;
     }
 
-    @Subscribe
+    @EventHandler
     public void onPacketReceive(EventPacket event) {
         if (mc.world == null || mc.player == null) return;
 

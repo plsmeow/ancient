@@ -9,7 +9,7 @@ public final class ComponentManager extends HashMap<Class<? extends Component>, 
     public void init() {
         add(new RotationComponent(), new FreeLookComponent());
 
-        values().forEach(component -> Onetap.getInstance().getEventBus().register(component));
+        values().forEach(component -> Onetap.getInstance().getEventBus().subscribe(component));
     }
 
     public void add(Component... components) {

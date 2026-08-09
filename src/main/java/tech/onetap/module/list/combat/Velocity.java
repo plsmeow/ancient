@@ -1,6 +1,6 @@
 package tech.onetap.module.list.combat;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import net.minecraft.network.packet.s2c.play.EntityVelocityUpdateS2CPacket;
 import net.minecraft.network.packet.s2c.common.CommonPingS2CPacket;
 import tech.onetap.event.list.EventPacket;
@@ -26,7 +26,7 @@ public class Velocity extends Module {
     private long lastVelocityTime = 0;
     private boolean velocityCanceled = false;
 
-    @Subscribe
+    @EventHandler
     private void onPacket(EventPacket e) {
         if (mc.player == null || mc.getNetworkHandler() == null) return;
 

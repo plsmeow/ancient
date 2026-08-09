@@ -1,6 +1,6 @@
 package tech.onetap.module.list.movement;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import net.minecraft.entity.EquipmentSlot;
 import net.minecraft.item.Items;
 import net.minecraft.util.math.Vec3d;
@@ -21,7 +21,7 @@ public class ElytraFly extends Module {
         super.onDisable();
     }
 
-    @Subscribe
+    @EventHandler
     private void onPlayerUpdate(EventPlayerUpdate event) {
         if (mc.player == null) return;
         if (!mc.player.getEquippedStack(EquipmentSlot.CHEST).isOf(Items.ELYTRA)) return;

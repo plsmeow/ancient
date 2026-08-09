@@ -75,11 +75,11 @@ public class Module implements IMinecraft, QuickLogger {
     }
 
     public void onEnable() {
-        Onetap.getInstance().getEventBus().register(this);
+        Onetap.getInstance().getEventBus().subscribe(this);
     }
 
     public void onDisable() {
-        Onetap.getInstance().getEventBus().unregister(this);
+        Onetap.getInstance().getEventBus().unsubscribe(this);
     }
 
     public void toggle() {

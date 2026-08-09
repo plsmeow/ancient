@@ -1,6 +1,6 @@
 package tech.onetap.module.list.render;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import net.minecraft.block.Blocks;
 import net.minecraft.client.util.math.Vector2f;
 import net.minecraft.entity.Entity;
@@ -51,7 +51,7 @@ public class Predictions extends Module {
 
     private final List<Point> points = new ArrayList<>();
 
-    @Subscribe
+    @EventHandler
     public void onDraw(EventHUD e) {
         for (Point point : points) {
             Vector2f vec2f = ProjectionUtil.project(point.pos);
@@ -91,7 +91,7 @@ public class Predictions extends Module {
         }
     }
 
-    @Subscribe
+    @EventHandler
     public void onWorldRender(EventWorldRender e) {
         points.clear();
         getProjectiles().forEach(entity -> {

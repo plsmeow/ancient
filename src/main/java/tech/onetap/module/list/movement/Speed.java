@@ -1,6 +1,6 @@
 package tech.onetap.module.list.movement;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents;
 import net.minecraft.client.render.*;
 import net.minecraft.client.render.Camera;
@@ -114,7 +114,7 @@ public class Speed extends Module {
         super.onDisable();
     }
 
-    @Subscribe
+    @EventHandler
     private void onTick(EventTick ignored) {
         if (mc.player == null || mc.world == null) return;
 

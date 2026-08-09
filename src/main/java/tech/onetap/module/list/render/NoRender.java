@@ -1,6 +1,6 @@
 package tech.onetap.module.list.render;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import net.minecraft.entity.effect.StatusEffectInstance;
 import net.minecraft.entity.effect.StatusEffects;
 import tech.onetap.event.list.EventTick;
@@ -24,7 +24,7 @@ public class NoRender extends Module {
             new BooleanSetting("Тошнота",true)
     );
 
-    @Subscribe
+    @EventHandler
     public void onUpdate(EventTick e) {
         if (mc.player == null) return;
 

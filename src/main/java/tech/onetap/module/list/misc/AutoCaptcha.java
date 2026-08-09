@@ -1,6 +1,6 @@
 package tech.onetap.module.list.misc;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import net.minecraft.block.MapColor;
 import net.minecraft.component.DataComponentTypes;
 import net.minecraft.component.type.MapIdComponent;
@@ -90,7 +90,7 @@ public class AutoCaptcha extends Module {
         bareApi = null;
     }
 
-    @Subscribe
+    @EventHandler
     private void onTick(EventTick e) {
         if (mc.player == null || mc.world == null) return;
         if (solving.get()) return;

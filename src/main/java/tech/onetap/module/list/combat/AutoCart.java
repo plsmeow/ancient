@@ -1,6 +1,6 @@
 package tech.onetap.module.list.combat;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import net.minecraft.component.DataComponentTypes;
 import net.minecraft.component.type.ItemEnchantmentsComponent;
 import net.minecraft.enchantment.Enchantment;
@@ -70,7 +70,7 @@ public class AutoCart extends Module {
         super.onDisable();
     }
 
-    @Subscribe
+    @EventHandler
     private void onTick(EventTick e) {
         if (mc.player == null || mc.world == null) return;
 

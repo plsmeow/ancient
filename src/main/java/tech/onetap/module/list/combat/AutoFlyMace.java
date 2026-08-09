@@ -1,6 +1,6 @@
 package tech.onetap.module.list.combat;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import lombok.Getter;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.LivingEntity;
@@ -40,7 +40,7 @@ public class AutoFlyMace extends Module {
     private boolean hasInput = false;
     private boolean aligned = false;
 
-    @Subscribe
+    @EventHandler
     private void onStrafe(MoveInputEvent e) {
         if (mc.player == null || target == null) return;
         if (!hasInput) return;
@@ -50,7 +50,7 @@ public class AutoFlyMace extends Module {
         e.strafe = 0f;
     }
 
-    @Subscribe
+    @EventHandler
     private void onUpdate(EventPlayerUpdate e) {
         if (mc.player == null || mc.world == null) return;
 

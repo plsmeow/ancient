@@ -1,6 +1,6 @@
 package tech.onetap.module.list.combat;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import net.minecraft.block.Blocks;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.effect.StatusEffects;
@@ -20,7 +20,7 @@ public class TriggerBot extends Module {
 
     private int delay;
 
-    @Subscribe
+    @EventHandler
     public void onEvent(EventTick e) {
         if (mc.player == null) return;
 

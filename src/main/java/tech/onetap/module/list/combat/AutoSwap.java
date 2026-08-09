@@ -1,6 +1,6 @@
 package tech.onetap.module.list.combat;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import net.minecraft.component.DataComponentTypes;
 import net.minecraft.item.Items;
 import net.minecraft.screen.slot.SlotActionType;
@@ -21,7 +21,7 @@ public class AutoSwap extends Module {
 
     private boolean swapped;
 
-    @Subscribe
+    @EventHandler
     private void onPlayerUpdate(EventPlayerUpdate e) {
         if (mc.player == null) return;
 
@@ -59,7 +59,7 @@ public class AutoSwap extends Module {
         }
     }
 
-    @Subscribe
+    @EventHandler
     private void onKey(EventKeyInput e) {
         if (e.getAction() == 0) return;
         if (e.getKey() == swapKey.getValue()) swapped = true;

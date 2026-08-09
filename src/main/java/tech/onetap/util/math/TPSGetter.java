@@ -1,6 +1,6 @@
 package tech.onetap.util.math;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import lombok.Getter;
 import net.minecraft.network.packet.s2c.play.WorldTimeUpdateS2CPacket;
 import net.minecraft.util.math.MathHelper;
@@ -19,10 +19,10 @@ public class TPSGetter {
     private long timestamp;
 
     public TPSGetter() {
-        Onetap.getInstance().getEventBus().register(this);
+        Onetap.getInstance().getEventBus().subscribe(this);
     }
 
-    @Subscribe
+    @EventHandler
     private void onPacket(EventPacket e) {
         if (e.getPacket() != null && e.getPacket() instanceof WorldTimeUpdateS2CPacket) {
             updateTPS();

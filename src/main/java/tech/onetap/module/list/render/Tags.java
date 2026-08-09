@@ -1,6 +1,6 @@
 package tech.onetap.module.list.render;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import com.mojang.blaze3d.systems.RenderSystem;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import net.minecraft.client.MinecraftClient;
@@ -39,8 +39,6 @@ import tech.onetap.module.settings.ModeListSetting;
 import tech.onetap.module.settings.ModeSetting;
 import tech.onetap.util.friend.FriendRepository;
 import tech.onetap.util.target.TargetRepository;
-import tech.onetap.util.party.PartyPlayerPos;
-import tech.onetap.util.party.connection.PartyApiClient;
 import tech.onetap.util.parse.ParseTextUtil;
 import tech.onetap.util.render.builders.Builder;
 import tech.onetap.util.render.builders.states.QuadColorState;
@@ -64,7 +62,6 @@ public class Tags extends Module {
             new BooleanSetting("Предметы", true)
     );
 
-    private final BooleanSetting displayPartyFriends = new BooleanSetting("Участники пати", false);
     private final BooleanSetting totemCounter = new BooleanSetting("Счетчик тотемов", false);
     // Стиль всегда Nursultan - настройка удалена
 
@@ -220,7 +217,7 @@ public class Tags extends Module {
         return normalizedNames.computeIfAbsent(entity.getUuid(), uuid -> processNameInternal(entity));
     }
 
-    @Subscribe
+    @EventHandler
     private void onRender(EventHUD e) {
         if (clearCacheTicker++ > 100) {
             normalizedNames.clear();
@@ -241,7 +238,7 @@ public class Tags extends Module {
         }
     }
 
-    @Subscribe
+    @EventHandler
     private void onPacket(EventPacket event) {
         if (mc.world == null || event.getType() != EventPacket.Type.RECEIVE) return;
         if (!(event.getPacket() instanceof EntityStatusS2CPacket packet)) return;
@@ -375,37 +372,6 @@ public class Tags extends Module {
             }
         }
 
-        if (!displayPartyFriends.getValue()) return;
-
-        for (PartyPlayerPos player : PartyApiClient.getCached()) {
-            boolean contains = false;
-            for (PlayerEntity playerEntity : worldPlayers) {
-                if (playerEntity.getNameForScoreboard().equals(player.playerId())) {
-                    contains = true;
-                    break;
-                }
-            }
-            if (contains) continue;
-            double x = player.x();
-            double y = player.y() + 3;
-            double z = player.z();
-
-            Vector2f pos = ProjectionUtil.project(x, y, z);
-            if (pos.getX() == Float.MAX_VALUE || pos.getY() == Float.MAX_VALUE) continue;
-
-            final float screenYOffset = 5.7f;
-            float posY = pos.getY() - screenYOffset;
-
-            String name = player.playerId();
-
-            float textWidth = font.getWidth(name, 8.3f);
-            float totalWidth = textWidth + 6;
-            float bgX = pos.getX() - totalWidth / 2.0f;
-
-            DrawUtil.drawRoundBlur(bgX, posY - 2, totalWidth, 12.5f, 3, ColorProvider.rgba(0, 0, 0, 90), 8f);
-
-            DrawUtil.drawText(font, name, bgX + 3, posY + 0.25f, -1, 8);
-        }
     }
     private void renderItemTags(MsdfFont font, float tickDelta, EventHUD e) {
         MsdfFont sfBold = Fonts.SFBOLD.get();

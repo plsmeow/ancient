@@ -1,6 +1,6 @@
 package tech.onetap.module.list.player;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import net.minecraft.item.Items;
 import net.minecraft.network.packet.c2s.play.PlayerInteractItemC2SPacket;
 import net.minecraft.screen.slot.SlotActionType;
@@ -32,7 +32,7 @@ public class FastCrossbow extends Module {
 
     private int timer;
 
-    @Subscribe
+    @EventHandler
     private void onUpdate(EventPlayerUpdate e) {
         if (mc.player == null || mc.world == null || mc.interactionManager == null || mc.getNetworkHandler() == null) return;
 

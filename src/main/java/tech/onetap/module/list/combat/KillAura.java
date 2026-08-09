@@ -1,6 +1,6 @@
 package tech.onetap.module.list.combat;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import com.mojang.blaze3d.systems.RenderSystem;
 import java.security.SecureRandom;
 import lombok.Getter;
@@ -261,7 +261,7 @@ public class KillAura extends Module {
     /**
      * Текстовая debug-панель Neuro: модель, inference, бюджет, aim point, запись.
      */
-    @Subscribe
+    @EventHandler
     private void onHud(EventHUD e) {
         if (!isEnabled() || !rotation.is("Neuro") || !neuroDebug.getValue()) return;
         if (mc.player == null || mc.options.hudHidden || mc.getDebugHud().shouldShowDebugHud()) return;
@@ -388,7 +388,7 @@ public class KillAura extends Module {
         resolverPoint = null;
     }
 
-    @Subscribe
+    @EventHandler
     private void onGameUpdate(EventGameUpdate e) {
         if (mc.player == null) return;
         if (target == null && !rotation.is("Universal")) return;
@@ -432,12 +432,12 @@ public class KillAura extends Module {
         }
     }
 
-    @Subscribe
+    @EventHandler
     private void onChangeSprint(EventChangeSprint e) {
         if (canStopSprinting()) e.setSprinting(false);
     }
 
-    @Subscribe
+    @EventHandler
     private void onUpdate(final EventTick ignored) {
         if (mc.player == null || mc.world == null) return;
 

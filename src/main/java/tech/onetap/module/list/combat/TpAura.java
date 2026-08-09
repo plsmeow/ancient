@@ -1,6 +1,6 @@
 package tech.onetap.module.list.combat;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import lombok.Getter;
 import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents;
 import net.minecraft.client.render.BufferBuilder;
@@ -139,7 +139,7 @@ public class TpAura extends Module {
         resetState(true);
     }
 
-    @Subscribe
+    @EventHandler
     private void onTick(EventTick event) {
         if (!pendingVaultReturn) return;
         if (mc.player == null || mc.getNetworkHandler() == null) {

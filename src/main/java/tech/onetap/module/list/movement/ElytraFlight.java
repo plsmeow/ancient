@@ -1,6 +1,6 @@
 package tech.onetap.module.list.movement;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import net.minecraft.entity.EquipmentSlot;
 import net.minecraft.item.Items;
 import net.minecraft.network.packet.c2s.play.ClientCommandC2SPacket;
@@ -32,7 +32,7 @@ public class ElytraFlight extends Module {
     private float rotationPitchOffset = Integer.MIN_VALUE;
     private boolean hasInput = false;
 
-    @Subscribe
+    @EventHandler
     private void onStrafe(MoveInputEvent e) {
         if (mc.player == null || !mc.player.isGliding()) return;
         if (!hasInput) return;
@@ -40,7 +40,7 @@ public class ElytraFlight extends Module {
         RotationComponent.fixMovement(e, rotationYawOffset);
     }
 
-    @Subscribe
+    @EventHandler
     private void onUpdate(EventPlayerUpdate e) {
         if (mc.player == null) return;
 

@@ -1,6 +1,6 @@
 package tech.onetap.module.list.movement;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import net.minecraft.block.Blocks;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Box;
@@ -19,7 +19,7 @@ public class NoWeb extends Module {
     private final SliderSetting upSpeed = new SliderSetting("Up Speed", 0.35, 0.05, 2.0, 0.05);
     private final SliderSetting downSpeed = new SliderSetting("Down Speed", 0.35, 0.05, 2.0, 0.05);
 
-    @Subscribe
+    @EventHandler
     private void onCobweb(EventCobweb e) {
         if (mc.player == null || mc.world == null) return;
         if (mc.player.isSpectator() || mc.player.getAbilities().flying) return;

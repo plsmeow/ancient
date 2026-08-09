@@ -1,6 +1,6 @@
 package tech.onetap.module.list.movement;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import net.minecraft.block.BlockState;
 import net.minecraft.entity.vehicle.BoatEntity;
 import net.minecraft.network.packet.c2s.play.ClientCommandC2SPacket;
@@ -53,7 +53,7 @@ public final class BoatFly extends Module {
     public BoatFly() {
     }
 
-    @Subscribe
+    @EventHandler
     private void onTick(EventTick event) {
         if (mc.player == null || mc.world == null) {
             return;
@@ -137,7 +137,7 @@ public final class BoatFly extends Module {
         this.wasInsideBlock = insideBlock;
     }
 
-    @Subscribe
+    @EventHandler
     private void onAttack(EventAttack event) {
         if (!this.isEnabled() || !this.bypass.getValue() || mc.player == null) {
             return;
@@ -325,7 +325,7 @@ public final class BoatFly extends Module {
         this.rehookForceAttempt = false;
     }
 
-    @Subscribe
+    @EventHandler
     private void onMoveInput(MoveInputEvent event) {
         if (mc.player == null) return;
 

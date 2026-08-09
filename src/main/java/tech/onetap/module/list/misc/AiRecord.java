@@ -1,6 +1,6 @@
 package tech.onetap.module.list.misc;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import tech.onetap.event.list.EventTick;
 import tech.onetap.module.Module;
 import tech.onetap.module.ModuleCategory;
@@ -46,7 +46,7 @@ public class AiRecord extends Module {
         lastChatSamples = 0;
 
         recorderInstance = new AIRotationRecorder();
-        Onetap.getInstance().getEventBus().register(recorderInstance);
+        Onetap.getInstance().getEventBus().subscribe(recorderInstance);
 
         AIRotationRecorder.Mode recordMode = mode.is("Слизни")
                 ? AIRotationRecorder.Mode.SLIMES
@@ -63,7 +63,7 @@ public class AiRecord extends Module {
         ChatUtil.send("§7Выключите модуль для остановки записи");
     }
 
-    @Subscribe
+    @EventHandler
     public void onTick(EventTick event) {
         if (!AIRotationRecorder.isRecording()) return;
 
@@ -82,7 +82,7 @@ public class AiRecord extends Module {
         ChatUtil.send("§eЗапись остановлена, сэмплов: §f" + samples);
 
         if (recorderInstance != null) {
-            Onetap.getInstance().getEventBus().unregister(recorderInstance);
+            Onetap.getInstance().getEventBus().unsubscribe(recorderInstance);
             recorderInstance = null;
         }
 

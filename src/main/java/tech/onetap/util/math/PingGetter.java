@@ -1,6 +1,6 @@
 package tech.onetap.util.math;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import lombok.Getter;
 import net.minecraft.network.packet.s2c.common.CommonPingS2CPacket;
 import tech.onetap.Onetap;
@@ -11,20 +11,20 @@ import tech.onetap.util.IMinecraft;
 @Getter
 public class PingGetter implements IMinecraft {
     public PingGetter() {
-        Onetap.getInstance().getEventBus().register(this);
+        Onetap.getInstance().getEventBus().subscribe(this);
     }
 
     private final StopWatch stopWatch = new StopWatch();
     private boolean lagged;
     private int ping;
 
-    @Subscribe
+    @EventHandler
     private void onUpdate(EventTick e) {
         ping = (int) stopWatch.getTime();
         if (stopWatch.getTime() > 1000) lagged = true;
     }
 
-    @Subscribe
+    @EventHandler
     private void onPacket(EventPacket e) {
         if (e.getPacket() instanceof CommonPingS2CPacket) {
             stopWatch.reset();

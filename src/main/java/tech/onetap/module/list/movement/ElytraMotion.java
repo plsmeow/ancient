@@ -1,6 +1,6 @@
 package tech.onetap.module.list.movement;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import net.minecraft.entity.LivingEntity;
 import net.minecraft.util.math.Vec3d;
 import tech.onetap.event.list.EventPlayerUpdate;
@@ -15,7 +15,7 @@ import tech.onetap.util.player.combat.PredictUtils;
 public class ElytraMotion extends Module {
     private boolean waitTarget;
 
-    @Subscribe
+    @EventHandler
     private void onPlayerTick(EventPlayerUpdate e) {
         if (mc.player == null) return;
 

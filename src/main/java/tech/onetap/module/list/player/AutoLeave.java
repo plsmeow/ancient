@@ -1,6 +1,6 @@
 package tech.onetap.module.list.player;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.text.Text;
 import tech.onetap.event.list.EventTick;
@@ -17,7 +17,7 @@ public class AutoLeave extends Module {
     private final SliderSetting distance = new SliderSetting("Дистанция", 8, 1, 64, 1);
     private final ModeSetting mode = new ModeSetting("Действие", "Hub", "Hub", "Spawn", "Disconnect");
 
-    @Subscribe
+    @EventHandler
     private void onTick(EventTick event) {
         if (mc.player == null || mc.world == null || mc.getNetworkHandler() == null) return;
 

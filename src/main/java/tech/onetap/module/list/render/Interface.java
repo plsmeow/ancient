@@ -1,6 +1,6 @@
 package tech.onetap.module.list.render;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.ChatScreen;
@@ -374,7 +374,7 @@ public class Interface extends Module {
         }
     }
 
-    @Subscribe
+    @EventHandler
     public void onEventHUD(EventHUD e) {
         if (mc.player == null || mc.options.hudHidden || mc.getDebugHud().shouldShowDebugHud()) return;
 
@@ -447,7 +447,7 @@ public class Interface extends Module {
         }
     }
 
-    @Subscribe
+    @EventHandler
     private void onUpdate(EventTick e) {
         if (mc.player == null || mc.world == null) return;
 
@@ -477,7 +477,7 @@ public class Interface extends Module {
         }
     }
 
-    @Subscribe
+    @EventHandler
     private void onPacket(EventPacket e) {
         if (!elements.isEnabled("СпекТрекер") || mc.player == null) return;
 

@@ -1,6 +1,6 @@
 package tech.onetap.util.gps;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import lombok.Setter;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.texture.AbstractTexture;
@@ -28,11 +28,11 @@ public final class GpsRenderer implements IMinecraft {
     private double targetX, targetZ;
     @Setter private boolean enabled;
 
-    private GpsRenderer() { Onetap.getInstance().getEventBus().register(this); }
+    private GpsRenderer() { Onetap.getInstance().getEventBus().subscribe(this); }
 
     public void setTarget(double x, double z) { this.targetX = x; this.targetZ = z; }
 
-    @Subscribe
+    @EventHandler
     private void onHud(EventHUD e) {
         if (!enabled) return;
         if (MinecraftClient.getInstance().player == null) return;

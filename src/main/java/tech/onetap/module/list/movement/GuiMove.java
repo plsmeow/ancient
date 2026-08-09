@@ -1,6 +1,6 @@
 package tech.onetap.module.list.movement;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import net.minecraft.client.gui.screen.ChatScreen;
 import net.minecraft.client.gui.screen.ingame.HandledScreen;
 import net.minecraft.client.gui.screen.ingame.InventoryScreen;
@@ -30,7 +30,7 @@ public class GuiMove extends Module {
 
     private final ModeSetting mode = modeCreate();
 
-    @Subscribe
+    @EventHandler
     private void onGameUpdate(EventPlayerUpdate e) {
         if (mc.player == null) return;
 
@@ -81,7 +81,7 @@ public class GuiMove extends Module {
                 || click.getActionType() == SlotActionType.QUICK_MOVE;
     }
 
-    @Subscribe
+    @EventHandler
     private void onMoveInput(MoveInputEvent e) {
         if (!mode.is("Grim") || SlownessManager.slowTasksIsEmpty()) return;
 
@@ -89,7 +89,7 @@ public class GuiMove extends Module {
         e.strafe *= 0.2f;
     }
 
-    @Subscribe
+    @EventHandler
     public void onPacket(EventPacket e) {
         if (mc.player == null) return;
         if (mode.is("Vanilla")) return;

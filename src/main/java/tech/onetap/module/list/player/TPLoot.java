@@ -1,6 +1,6 @@
 package tech.onetap.module.list.player;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
@@ -171,7 +171,7 @@ public class TPLoot extends Module {
         saveItems();
     }
 
-    @Subscribe
+    @EventHandler
     private void onTick(EventTick event) {
         if (mc.player == null || mc.world == null) return;
 

@@ -1,6 +1,6 @@
 package tech.onetap.module.list.movement;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import net.minecraft.item.BlockItem;
 import net.minecraft.network.packet.c2s.play.UpdateSelectedSlotC2SPacket;
 import net.minecraft.util.Hand;
@@ -29,7 +29,7 @@ public class Scaffold extends Module {
     private BlockData lastRotationBlock;
     private Rotation lastRotation;
 
-    @Subscribe
+    @EventHandler
     private void onTick(final EventTick event) {
         if (mc.player == null || mc.world == null || mc.interactionManager == null || mc.getNetworkHandler() == null) {
             return;

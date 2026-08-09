@@ -1,6 +1,6 @@
 package tech.onetap.module.list.misc;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import net.minecraft.item.Item;
 import net.minecraft.item.Items;
 import tech.onetap.event.list.EventKeyInput;
@@ -23,7 +23,7 @@ public class FtHelper extends Module {
     private final BindSetting disorientationKey = new BindSetting("Дезориентация", -1);
     private final BindSetting windChargeKey = new BindSetting("Заряд ветра", -1);
 
-    @Subscribe
+    @EventHandler
     public void onKeyInput(EventKeyInput e) {
         if (mc.player == null || mc.interactionManager == null) return;
         if (e.getAction() == 0) return; // Игнорируем отпускание клавиши

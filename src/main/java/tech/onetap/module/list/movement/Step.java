@@ -1,6 +1,6 @@
 package tech.onetap.module.list.movement;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import net.minecraft.entity.attribute.EntityAttributes;
 import tech.onetap.event.list.EventTick;
 import tech.onetap.module.Module;
@@ -15,7 +15,7 @@ public class Step extends Module {
 
     private double prevStepHeight = 0.5;
 
-    @Subscribe
+    @EventHandler
     private void onTick(EventTick ignored) {
         if (mc.player == null) return;
         mc.player.getAttributeInstance(EntityAttributes.STEP_HEIGHT).setBaseValue(height.getValue());

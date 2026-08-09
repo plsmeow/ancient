@@ -17,7 +17,7 @@
 
 package tech.onetap.util.commands;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import net.minecraft.util.Pair;
 import tech.onetap.Onetap;
 import tech.onetap.event.list.ChatEvent;
@@ -46,7 +46,7 @@ public class CommandDispatcher {
 
     public CommandDispatcher() {
         this.manager = Onetap.getInstance().getCommandRepository();
-        Onetap.getInstance().getEventBus().register(this);
+        Onetap.getInstance().getEventBus().subscribe(this);
     }
 
     public String getCommandPrefix() {
@@ -57,7 +57,7 @@ public class CommandDispatcher {
         this.commandPrefix = prefix;
     }
 
-    @Subscribe
+    @EventHandler
     public void onSendChatMessage(ChatEvent event) {
         String msg = event.getMessage();
         String prefix = this.commandPrefix;
@@ -80,7 +80,7 @@ public class CommandDispatcher {
         return this.manager.execute(pair);
     }
 
-    @Subscribe
+    @EventHandler
     public void onPreTabComplete(TabCompleteEvent event) {
         String prefix = event.getPrefix();
         String commandPrefix = this.commandPrefix;

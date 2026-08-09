@@ -1,6 +1,6 @@
 package tech.onetap.module.list.misc;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.network.packet.s2c.play.EntityStatusS2CPacket;
@@ -29,7 +29,7 @@ public class KillSay extends Module {
     private UUID targetUuid = null;
     private String targetName = null;
 
-    @Subscribe
+    @EventHandler
     private void onTick(EventTick ignored) {
         KillAura aura = Onetap.getInstance().getModuleStorage().get(KillAura.class);
         if (aura == null || !aura.isEnabled() || aura.getTarget() == null) {
@@ -44,7 +44,7 @@ public class KillSay extends Module {
         targetName = aura.getTarget().getName().getString();
     }
 
-    @Subscribe
+    @EventHandler
     private void onPacket(EventPacket event) {
         if (mc.player == null || mc.world == null || event.getType() != EventPacket.Type.RECEIVE) return;
         if (!(event.getPacket() instanceof EntityStatusS2CPacket packet) || packet.getStatus() != 3) return;

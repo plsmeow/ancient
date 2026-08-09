@@ -1,6 +1,6 @@
 package tech.onetap.module.list.player;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.client.gl.ShaderProgramKeys;
 import net.minecraft.client.render.BufferBuilder;
@@ -43,7 +43,7 @@ public class AirPlace extends Module {
 
     private BlockHitResult hitResult;
 
-    @Subscribe
+    @EventHandler
     private void onTick(EventTick event) {
         hitResult = null;
 
@@ -61,7 +61,7 @@ public class AirPlace extends Module {
         hitResult = new BlockHitResult(Vec3d.ofCenter(pos), mc.player.getHorizontalFacing().getOpposite(), pos, false);
     }
 
-    @Subscribe
+    @EventHandler
     private void onKey(EventKeyInput event) {
         if (event.getKey() != GLFW.GLFW_MOUSE_BUTTON_RIGHT || event.getAction() != GLFW.GLFW_PRESS) return;
         if (mc.player == null || mc.world == null || mc.interactionManager == null || hitResult == null) return;
@@ -73,7 +73,7 @@ public class AirPlace extends Module {
         mc.player.swingHand(hand);
     }
 
-    @Subscribe
+    @EventHandler
     private void onWorldRender(EventWorldRender event) {
         if (!render.getValue() || mc.player == null || mc.world == null || hitResult == null) return;
         if (mc.crosshairTarget != null && mc.crosshairTarget.getType() != HitResult.Type.MISS) return;

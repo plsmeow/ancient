@@ -1,6 +1,6 @@
 package tech.onetap.module.list.combat;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import net.minecraft.client.network.ClientPlayerEntity;
 import net.minecraft.item.EndCrystalItem;
 import net.minecraft.item.ItemStack;
@@ -22,7 +22,7 @@ public class CrystalSpammer extends Module {
 
     private boolean active;
 
-    @Subscribe
+    @EventHandler
     private void onUpdate(EventTick e) {
         if (!active || mc.player == null || mc.world == null) return;
         if (mc.currentScreen != null) active = false;
@@ -41,7 +41,7 @@ public class CrystalSpammer extends Module {
         }
     }
 
-    @Subscribe
+    @EventHandler
     private void onKey(EventKeyInput e) {
         if (e.getKey() == key.getValue()) active = e.getAction() == 1 || e.getAction() == 2;
     }

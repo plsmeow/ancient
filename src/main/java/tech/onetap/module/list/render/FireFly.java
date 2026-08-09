@@ -1,6 +1,6 @@
 package tech.onetap.module.list.render;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import com.mojang.blaze3d.systems.RenderSystem;
 import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents;
 import net.minecraft.client.gl.ShaderProgramKeys;
@@ -180,7 +180,7 @@ public class FireFly extends Module {
         particles.clear();
     }
 
-    @Subscribe
+    @EventHandler
     private void onPlayerTick(EventTick e) {
         if (mc.player == null || mc.world == null) return;
 

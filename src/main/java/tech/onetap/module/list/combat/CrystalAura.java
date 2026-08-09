@@ -1,6 +1,6 @@
 package tech.onetap.module.list.combat;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.Blocks;
@@ -67,7 +67,7 @@ public class CrystalAura extends Module {
     private int placeTimer;
     private int breakTimer;
 
-    @Subscribe
+    @EventHandler
     public void onTick(EventTick event) {
         if (mc.player == null || mc.world == null || mc.interactionManager == null || mc.getNetworkHandler() == null) return;
 
@@ -96,7 +96,7 @@ public class CrystalAura extends Module {
         }
     }
 
-    @Subscribe
+    @EventHandler
     public void onWorldRender(EventWorldRender event) {
         if (mc.player == null || mc.world == null || bestPlacePos == null) return;
 

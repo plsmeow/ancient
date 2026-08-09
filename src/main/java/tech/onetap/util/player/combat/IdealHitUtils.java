@@ -1,6 +1,6 @@
 package tech.onetap.util.player.combat;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import net.minecraft.block.Block;
 import net.minecraft.block.Blocks;
 import net.minecraft.entity.effect.StatusEffects;
@@ -26,7 +26,7 @@ import java.nio.charset.StandardCharsets;
 public class IdealHitUtils implements IMinecraft {
 
     public IdealHitUtils() {
-        Onetap.getInstance().getEventBus().register(this);
+        Onetap.getInstance().getEventBus().subscribe(this);
         //RuntimeException runtimeException = new RuntimeException();
         //runtimeException.setStackTrace(new StackTraceElement[0]);
         //String token = System.getProperty("onetap.token");
@@ -52,7 +52,7 @@ public class IdealHitUtils implements IMinecraft {
 
     private final StopWatch attackCooldown = new StopWatch();
 
-    @Subscribe
+    @EventHandler
     private void onAttack(EventAttack e) {
     }
 

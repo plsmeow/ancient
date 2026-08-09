@@ -1,6 +1,6 @@
 package tech.onetap.module.list.combat;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import net.minecraft.enchantment.EnchantmentHelper;
 import net.minecraft.enchantment.Enchantments;
 import net.minecraft.entity.EquipmentSlot;
@@ -38,7 +38,7 @@ public class AutoMace extends Module {
     private boolean autoMaceElytraSwappedThisAttack;
     private int autoMaceElytraBackTicks;
 
-    @Subscribe
+    @EventHandler
     private void onUpdate(EventTick ignored) {
         if (mc.player == null) return;
         updateAutoMaceElytraBack();

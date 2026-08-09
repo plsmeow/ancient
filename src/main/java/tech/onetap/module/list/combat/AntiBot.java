@@ -1,6 +1,6 @@
 package tech.onetap.module.list.combat;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.item.Items;
 import tech.onetap.event.list.EventTick;
@@ -19,7 +19,7 @@ public class AntiBot extends Module {
 
     private final List<PlayerEntity> botsMap = new ArrayList<>();
 
-    @Subscribe
+    @EventHandler
     private void onUpdate(EventTick e) {
         if (mc.world == null || mc.player == null) return;
 

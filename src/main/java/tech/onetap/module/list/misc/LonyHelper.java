@@ -1,6 +1,6 @@
 package tech.onetap.module.list.misc;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import net.minecraft.client.gui.screen.ingame.GenericContainerScreen;
 import net.minecraft.client.network.ClientPlayNetworkHandler;
 import net.minecraft.client.network.PlayerListEntry;
@@ -53,7 +53,7 @@ public class LonyHelper extends Module {
     private boolean throwTrap;
     private boolean throwLivalk;
 
-    @Subscribe
+    @EventHandler
     public void onKey(EventKeyInput e) {
         if (mc.currentScreen != null || e.getAction() == 0 || e.getAction() == 2) return;
         if (e.getKey() == bindTrap.getValue()) {
@@ -64,7 +64,7 @@ public class LonyHelper extends Module {
         }
     }
 
-    @Subscribe
+    @EventHandler
     public void onUpdate(EventPlayerUpdate e) {
         if (mc.player == null || mc.world == null) return;
 
@@ -109,7 +109,7 @@ public class LonyHelper extends Module {
         }
     }
 
-    @Subscribe
+    @EventHandler
     private void onPacket(EventPacket e) {
         if (mc.player == null || mc.world == null) return;
         if (e.getType() != EventPacket.Type.RECEIVE) return;

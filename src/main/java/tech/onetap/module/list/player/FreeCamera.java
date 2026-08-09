@@ -1,6 +1,6 @@
 package tech.onetap.module.list.player;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import com.mojang.authlib.GameProfile;
 import net.minecraft.client.network.OtherClientPlayerEntity;
 import net.minecraft.entity.Entity;
@@ -74,7 +74,7 @@ public class FreeCamera extends Module {
         super.onDisable();
     }
 
-    @Subscribe
+    @EventHandler
     private void onLivingUpdate(EventTick e) {
         if (mc.player == null) return;
 
@@ -101,7 +101,7 @@ public class FreeCamera extends Module {
         frozenPitch = playerPosition2.pitch();
     }
 
-    @Subscribe
+    @EventHandler
     private void onPacket(EventPacket e) {
         if (e.getPacket() instanceof PlayerPositionLookS2CPacket packet) {
             if (mc.world == null || mc.player == null || !mc.player.isAlive()) return;

@@ -1,6 +1,6 @@
 package tech.onetap.module.list.render;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.block.BlockState;
 import net.minecraft.client.gl.ShaderProgramKeys;
@@ -22,7 +22,7 @@ import tech.onetap.util.render.providers.ColorProvider;
 @ModuleInformation(moduleName = "Block Overlay", moduleDesc = "Кастомная подсветка блока", moduleCategory = ModuleCategory.RENDER)
 public class BlockOverlay extends Module {
 
-    @Subscribe
+    @EventHandler
     public void onWorldRender(EventWorldRender event) {
         if (mc.world == null || mc.player == null) return;
         if (mc.crosshairTarget == null || mc.crosshairTarget.getType() != HitResult.Type.BLOCK) return;

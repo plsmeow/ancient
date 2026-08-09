@@ -1,11 +1,13 @@
 package tech.onetap;
 
-import com.google.common.eventbus.EventBus;
-import com.google.common.eventbus.Subscribe;
 import lombok.Getter;
 import meteordevelopment.discordipc.DiscordIPC;
+import meteordevelopment.orbit.EventBus;
+import meteordevelopment.orbit.EventHandler;
+import meteordevelopment.orbit.IEventBus;
 import net.fabricmc.api.ModInitializer;
 import net.minecraft.client.MinecraftClient;
+
 import tech.onetap.event.list.EventKeyInput;
 import tech.onetap.module.Module;
 import tech.onetap.module.ModuleStorage;
@@ -33,7 +35,7 @@ public class Onetap implements ModInitializer {
     private static Onetap instance;
 
     @Getter
-    private final EventBus eventBus;
+    private final IEventBus eventBus;
 
     @Getter
     private final ModuleStorage moduleStorage;
@@ -66,7 +68,9 @@ public class Onetap implements ModInitializer {
         ClientLogBuffer.attach();
 
         eventBus = new EventBus();
-        eventBus.register(this);
+        eventBus.registerLambdaFactory("tech.onetap", (lookupInMethod, klass) ->
+            (java.lang.invoke.MethodHandles.Lookup) lookupInMethod.invoke(null, klass, java.lang.invoke.MethodHandles.lookup()));
+        eventBus.subscribe(this);
 
 
 
@@ -114,7 +118,7 @@ public class Onetap implements ModInitializer {
         TrainingLauncher.prepareTools();
     }
 
-    @Subscribe
+    @EventHandler
     private void onModuleKeyPressed(EventKeyInput event) {
         if (Hide.isActive) return;
         for (Module module : getModuleStorage().getModules()) {

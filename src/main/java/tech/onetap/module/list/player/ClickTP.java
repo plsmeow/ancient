@@ -1,6 +1,6 @@
 package tech.onetap.module.list.player;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.block.BlockState;
 import net.minecraft.client.gl.ShaderProgramKeys;
@@ -39,7 +39,7 @@ public class ClickTP extends Module {
 
     private BlockHitResult target;
 
-    @Subscribe
+    @EventHandler
     private void onTick(EventTick event) {
         target = null;
 
@@ -54,7 +54,7 @@ public class ClickTP extends Module {
         target = blockHit;
     }
 
-    @Subscribe
+    @EventHandler
     private void onKey(EventKeyInput event) {
         if (event.getKey() != GLFW.GLFW_MOUSE_BUTTON_LEFT || event.getAction() != GLFW.GLFW_PRESS) return;
         if (mc.player == null || mc.world == null || mc.currentScreen != null) return;
@@ -67,17 +67,17 @@ public class ClickTP extends Module {
         }
     }
 
-    @Subscribe
+    @EventHandler
     private void onAttackBlock(EventAttackBlock event) {
         event.cancelEvent();
     }
 
-    @Subscribe
+    @EventHandler
     private void onAttack(EventAttack event) {
         event.cancelEvent();
     }
 
-    @Subscribe
+    @EventHandler
     public void onWorldRender(EventWorldRender event) {
         if (mc.world == null || mc.player == null || target == null) return;
 

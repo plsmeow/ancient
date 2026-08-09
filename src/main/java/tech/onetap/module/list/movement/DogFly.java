@@ -1,6 +1,6 @@
 package tech.onetap.module.list.movement;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import net.minecraft.entity.effect.StatusEffects;
 import net.minecraft.item.Items;
 import net.minecraft.network.packet.c2s.play.ClientCommandC2SPacket;
@@ -23,7 +23,7 @@ public class DogFly extends Module {
 
     StopWatch stopWatch = new StopWatch();
 
-    @Subscribe
+    @EventHandler
     private void onUpdate(EventPlayerUpdate e) {
         if (InventoryUtil.searchItem(Items.ELYTRA) == -1) {
             logDirect(Text.literal("Нема элитр падла").formatted(Formatting.RED));

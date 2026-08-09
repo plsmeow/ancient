@@ -1,6 +1,6 @@
 package tech.onetap.module.list.render;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.network.ClientPlayerEntity;
 import net.minecraft.client.texture.AbstractTexture;
@@ -30,7 +30,7 @@ public class Arrows extends Module {
     private final SliderSetting size = new SliderSetting("Размер", 12, 4, 40, 1);
     private final BooleanSetting onlyNotVisible = new BooleanSetting("Не в поле зрения", false);
 
-    @Subscribe
+    @EventHandler
     public void onHud(EventHUD event) {
         if (mc.player == null || mc.world == null) return;
         if (mc.options.hudHidden) return;

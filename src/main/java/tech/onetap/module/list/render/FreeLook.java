@@ -1,6 +1,6 @@
 package tech.onetap.module.list.render;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.option.Perspective;
 import org.lwjgl.glfw.GLFW;
@@ -49,7 +49,7 @@ public class FreeLook extends Module {
         return GLFW.glfwGetKey(handle, keyCode) == GLFW.GLFW_PRESS;
     }
 
-    @Subscribe
+    @EventHandler
     public void onLook(LookEvent event) {
         if (mc.player == null) return;
 
@@ -76,7 +76,7 @@ public class FreeLook extends Module {
         }
     }
 
-    @Subscribe
+    @EventHandler
     public void onRotation(RotationEvent event) {
         if (mc.player == null) return;
 

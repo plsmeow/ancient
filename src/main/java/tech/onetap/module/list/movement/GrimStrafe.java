@@ -1,6 +1,6 @@
 package tech.onetap.module.list.movement;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import net.minecraft.util.math.MathHelper;
 import tech.onetap.Onetap;
 import tech.onetap.event.list.MoveInputEvent;
@@ -16,7 +16,7 @@ import tech.onetap.util.rotation.RotationComponent;
 @ModuleInformation(moduleName = "GrimStrafe", moduleDesc = "Стрейф на земле через поворот yaw", moduleCategory = ModuleCategory.MOVEMENT)
 public class GrimStrafe extends Module {
 
-    @Subscribe
+    @EventHandler
     private void onMoveInput(MoveInputEvent e) {
         if (mc.player == null) return;
 

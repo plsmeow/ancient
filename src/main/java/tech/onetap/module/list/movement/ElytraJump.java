@@ -1,6 +1,6 @@
 package tech.onetap.module.list.movement;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.EquipmentSlot;
 import net.minecraft.item.Items;
@@ -17,7 +17,7 @@ import tech.onetap.util.packet.NetworkUtils;
 @ModuleInformation(moduleName = "Elytra Jump", moduleDesc = "Fly =D", moduleCategory = ModuleCategory.MOVEMENT)
 public class ElytraJump extends Module {
 
-    @Subscribe
+    @EventHandler
     private void onPlayerUpdate(EventPlayerUpdate e) {
         if (mc.player == null) return;
 
@@ -54,7 +54,7 @@ public class ElytraJump extends Module {
         }
     }
 
-    @Subscribe
+    @EventHandler
     private void onRotation(RotationEvent event) {
         if (mc.player == null || !mc.player.isGliding()) return;
 

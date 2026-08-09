@@ -40,7 +40,6 @@ public final class DefaultCommands {
                 new HClipCommand(),
                 new TpCommand(),
                 new GmCommand(),
-                new PartyCommand(),
                 new GpsCommand(),
                 new AICommand(),
                 new BotCommand(),

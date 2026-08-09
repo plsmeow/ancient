@@ -1,6 +1,6 @@
 package tech.onetap.module.list.combat;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import net.minecraft.component.DataComponentTypes;
 import net.minecraft.component.type.PotionContentsComponent;
 import net.minecraft.entity.effect.StatusEffect;
@@ -100,7 +100,7 @@ public class AutoPot extends Module {
     /* Используем проверенное событие EventPlayerUpdate (как в вашем AutoTotem).
        Оно обрабатывает и установку ротаций пакетов, и сам бросок зелий за один такт.
     */
-    @Subscribe
+    @EventHandler
     private void onPlayerUpdate(EventPlayerUpdate e) {
         if (mc.player == null || mc.getNetworkHandler() == null) return;
 

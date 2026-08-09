@@ -1,7 +1,6 @@
 package tech.onetap.module;
 
-import com.google.common.eventbus.Subscribe;
-import com.google.gson.JsonObject;
+import meteordevelopment.orbit.EventHandler;
 import lombok.Getter;
 import lombok.Setter;
 import net.minecraft.client.option.Perspective;
@@ -21,7 +20,6 @@ import tech.onetap.module.settings.BooleanSetting;
 import tech.onetap.module.settings.ThemeSetting;
 import tech.onetap.util.IMinecraft;
 import tech.onetap.util.base.Instance;
-import tech.onetap.util.party.connection.PartyApiClient;
 import tech.onetap.util.player.other.SlownessManager;
 import tech.onetap.util.rotation.Rotation;
 import tech.onetap.util.rotation.RotationComponent;
@@ -57,7 +55,7 @@ public class ModuleStorage implements IMinecraft {
                 new AutoCaptcha(), new Step(), new Arrows(), new PrefixFixer(), new CustomCape()
         ));
 
-        Onetap.getInstance().getEventBus().register(this);
+        Onetap.getInstance().getEventBus().subscribe(this);
     }
 
     public <T extends Module> T get(final String name) {
@@ -85,7 +83,7 @@ public class ModuleStorage implements IMinecraft {
     @Setter private float speedAcceleration;
     @Setter private float randomness;
 
-    @Subscribe
+    @EventHandler
     private void onGameUpdate(EventGameUpdate e) {
         if (mc.player == null) return;
 
@@ -109,7 +107,7 @@ public class ModuleStorage implements IMinecraft {
         }
     }
 
-    @Subscribe
+    @EventHandler
     private void onRender(EventHUD ignored) {
         for (var module : getModules()) {
             module.getAnimation().run(module.isEnabled());
@@ -120,7 +118,7 @@ public class ModuleStorage implements IMinecraft {
         }
     }
 
-    @Subscribe
+    @EventHandler
     private void onKey(EventKeyInput e) {
         if (Hide.isActive) return;
         if (e.getAction() != 1) return;
@@ -135,22 +133,9 @@ public class ModuleStorage implements IMinecraft {
                 }
     }
 
-    @Subscribe
+    @EventHandler
     private void onUpdate(EventTick ignored) {
         if (!SlownessManager.timeTasksIsEmpty()) SlownessManager.updateTimeTasks(true);
-
-        if (mc.player == null || true) return;
-
-        PartyApiClient.fetchPartyStateAsync();
-        PartyApiClient.fetchInvitesAsync();
-
-        JsonObject j = new JsonObject();
-        j.addProperty("player", mc.player.getNameForScoreboard());
-        j.addProperty("x", mc.player.getX());
-        j.addProperty("y", mc.player.getY());
-        j.addProperty("z", mc.player.getZ());
-
-        PartyApiClient.postAsync("/party/pos", j, json -> {});
     }
 
     private void updateBackwardsOther() {

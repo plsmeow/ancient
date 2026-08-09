@@ -1,6 +1,6 @@
 package tech.onetap.module.list.combat;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import net.minecraft.entity.EquipmentSlot;
 import net.minecraft.entity.decoration.EndCrystalEntity;
 import net.minecraft.item.Items;
@@ -33,7 +33,7 @@ public class AutoTotem extends Module {
 
     private final StopWatch totemStopWatch = new StopWatch();
 
-    @Subscribe
+    @EventHandler
     private void onUpdate(EventPlayerUpdate e) {
         if (mc.player == null) return;
 
@@ -44,7 +44,7 @@ public class AutoTotem extends Module {
         updateSwap();
     }
 
-    @Subscribe
+    @EventHandler
     private void onPopTotem(EventPopTotem e) {
         if (mc.player == null || e.getPlayer() != mc.player) {
             return;

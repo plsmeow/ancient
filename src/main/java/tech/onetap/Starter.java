@@ -1,6 +1,6 @@
 package tech.onetap;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import tech.onetap.event.list.EventMinecraftInit;
 
 import java.io.*;
@@ -11,12 +11,12 @@ import java.security.MessageDigest;
 public class Starter {
 
     public Starter() {
-        Onetap.getInstance().getEventBus().register(this);
+        Onetap.getInstance().getEventBus().subscribe(this);
     }
 
     boolean hwidTrued = false;
 
-    @Subscribe
+    @EventHandler
     public void onStart(EventMinecraftInit evenTick) {
         if (!hwidTrued) {
             if (!isSubscriptionActive(getHWID())) {

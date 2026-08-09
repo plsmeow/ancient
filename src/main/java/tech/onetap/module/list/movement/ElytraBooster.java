@@ -1,6 +1,6 @@
 package tech.onetap.module.list.movement;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.effect.StatusEffects;
 import net.minecraft.util.math.MathHelper;
@@ -64,7 +64,7 @@ public class ElytraBooster extends Module implements QuickLogger {
         return (Math.max((float) new Vec3d(oldVelocity.x, oldVelocity.y, oldVelocity.z).length(), 1.5f));
     }
 
-    @Subscribe
+    @EventHandler
     private void onFirework(FireworkEvent event) {
         if (event.getBoostedEntity() != mc.player) return;
         event.setSpeed(Math.max(getSpeed(), 1.6f));

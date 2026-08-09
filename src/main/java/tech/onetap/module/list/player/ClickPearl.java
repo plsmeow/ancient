@@ -1,6 +1,6 @@
 package tech.onetap.module.list.player;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import net.minecraft.item.Items;
 import tech.onetap.event.list.EventKeyInput;
 import tech.onetap.event.list.EventPlayerSync;
@@ -21,7 +21,7 @@ public class ClickPearl extends Module {
     private boolean pearlUsed;
     private int ticksExisted;
 
-    @Subscribe
+    @EventHandler
     private void onKey(EventKeyInput e) {
         if (mc.player == null) return;
         if (e.getAction() == 0) return;
@@ -46,7 +46,7 @@ public class ClickPearl extends Module {
         }
     }
 
-    @Subscribe
+    @EventHandler
     private void onPlayerTick(final EventPlayerUpdate ignored) {
         if (mc.player == null) return;
 
@@ -54,7 +54,7 @@ public class ClickPearl extends Module {
         if (pearlUsed || ticksExisted > 0) mc.player.setSprinting(false);
     }
 
-    @Subscribe
+    @EventHandler
     private void onPlayerSync(final EventPlayerSync ignored) {
         if (mc.player == null || !pearlUsed) return;
 

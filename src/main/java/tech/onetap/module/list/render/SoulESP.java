@@ -1,6 +1,6 @@
 package tech.onetap.module.list.render;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.client.gl.ShaderProgramKeys;
 import net.minecraft.client.render.*;
@@ -33,7 +33,7 @@ public class SoulESP extends Module {
         super();
     }
 
-    @Subscribe
+    @EventHandler
     public void onPacket(EventPacket e) {
         if (mc.player == null || mc.world == null) return;
 
@@ -57,7 +57,7 @@ public class SoulESP extends Module {
         }
     }
 
-    @Subscribe
+    @EventHandler
     public void onRender(EventWorldRender e) {
         if (mc.player == null || mc.world == null || ghosts.isEmpty()) return;
 

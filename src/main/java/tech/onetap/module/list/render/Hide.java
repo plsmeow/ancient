@@ -1,6 +1,6 @@
 package tech.onetap.module.list.render;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
 import tech.onetap.Onetap;
@@ -66,7 +66,7 @@ public class Hide extends Module {
         savedStates.clear();
     }
 
-    @Subscribe
+    @EventHandler
     public void onChat(ChatEvent event) {
         if (!isActive) return;
 
@@ -79,7 +79,7 @@ public class Hide extends Module {
         }
     }
 
-    @Subscribe
+    @EventHandler
     public void onTick(EventTick event) {
         if (!isActive) return;
 

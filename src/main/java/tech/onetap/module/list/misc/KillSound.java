@@ -1,6 +1,6 @@
 package tech.onetap.module.list.misc;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import net.minecraft.client.sound.PositionedSoundInstance;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.player.PlayerEntity;
@@ -28,7 +28,7 @@ public class KillSound extends Module {
 
     private UUID lastTargetUuid = null;
 
-    @Subscribe
+    @EventHandler
     private void onAttack(EventAttack event) {
         if (mc.player == null || !(event.getEntity() instanceof PlayerEntity player) || player == mc.player) return;
         if (!isKillAuraTarget(player)) return;
@@ -41,7 +41,7 @@ public class KillSound extends Module {
         return aura != null && aura.isEnabled() && aura.getTarget() != null && aura.getTarget().getUuid().equals(player.getUuid());
     }
 
-    @Subscribe
+    @EventHandler
     private void onPacket(EventPacket event) {
         if (mc.player == null || mc.world == null || event.getType() != EventPacket.Type.RECEIVE) return;
         if (!(event.getPacket() instanceof EntityStatusS2CPacket packet) || packet.getStatus() != 3) return;

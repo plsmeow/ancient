@@ -1,6 +1,6 @@
 package tech.onetap.module.list.combat;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import net.minecraft.client.gui.screen.ingame.InventoryScreen;
 import net.minecraft.entity.EquipmentSlot;
 import net.minecraft.screen.slot.SlotActionType;
@@ -19,7 +19,7 @@ public class AutoArmor extends Module {
     private final StopWatch equipArmorCooldownLeggings = new StopWatch();
     private final StopWatch equipArmorCooldownBoots = new StopWatch();
 
-    @Subscribe
+    @EventHandler
     private void onUpdate(final EventPlayerUpdate ignored) {
         if (mc.player == null) return;
 

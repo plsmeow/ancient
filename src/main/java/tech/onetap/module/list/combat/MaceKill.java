@@ -1,6 +1,6 @@
 package tech.onetap.module.list.combat;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.decoration.EndCrystalEntity;
 import net.minecraft.item.ItemStack;
@@ -66,7 +66,7 @@ public final class MaceKill extends Module {
         attackTicks = attackDelay.getIntValue();
     }
 
-    @Subscribe
+    @EventHandler
     public void onTick(EventTick event) {
         if (attackTicks > 0) attackTicks--;
         if (funskySmashTicks < 1000) funskySmashTicks++;
@@ -187,7 +187,7 @@ public final class MaceKill extends Module {
         super.onDisable();
     }
 
-    @Subscribe
+    @EventHandler
     public void onAttack(EventAttack event) {
         if (killAuraTriggered) return;
         if (mc.player == null || mc.world == null) return;

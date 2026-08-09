@@ -1,6 +1,6 @@
 package tech.onetap.module.list.combat;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import lombok.Getter;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.ItemEntity;
@@ -44,7 +44,7 @@ public class AutoExplosion extends Module {
 
     private final Set<BlockPos> myCrystalPlaces = new HashSet<>();
 
-    @Subscribe
+    @EventHandler
     private void onObsidianPlace(EventObsidianPlace e) {
         var crystalSlot = InventoryUtil.searchItemHotbar(Items.END_CRYSTAL);
 
@@ -56,7 +56,7 @@ public class AutoExplosion extends Module {
         }
     }
 
-    @Subscribe
+    @EventHandler
     private void onTick(EventTick e) {
         if (ticksToDisableRightClicks > 0) ticksToDisableRightClicks--;
         if (entityToAttack != null) {
@@ -102,7 +102,7 @@ public class AutoExplosion extends Module {
         }, true));
     }
 
-    @Subscribe
+    @EventHandler
     private void onRightClick(EventRightClickBlock e) {
         if (mc.player.getMainHandStack().getItem() != Items.END_CRYSTAL) return;
 
@@ -110,7 +110,7 @@ public class AutoExplosion extends Module {
         myCrystalPlaces.add(placePos);
     }
 
-    @Subscribe
+    @EventHandler
     private void onEntitySpawn(EventEntitySpawn e) {
         if (!(e.getEntity() instanceof EndCrystalEntity crystal)) return;
 

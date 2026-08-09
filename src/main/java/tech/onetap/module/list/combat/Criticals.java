@@ -1,6 +1,6 @@
 package tech.onetap.module.list.combat;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import net.minecraft.block.Blocks;
 import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.effect.StatusEffects;
@@ -24,7 +24,7 @@ public class Criticals extends Module {
 
     public static boolean killAuraTriggered;
 
-    @Subscribe
+    @EventHandler
     private void onAttack(EventAttack e) {
         if (killAuraTriggered) return;
         if (mc.player == null || mc.world == null) return;
@@ -32,7 +32,7 @@ public class Criticals extends Module {
         doCrit();
     }
 
-    @Subscribe
+    @EventHandler
     private void onChangeSprint(EventChangeSprint e) {
         if (mc.player == null || mc.world == null) return;
         if (!isEnabled()) return;

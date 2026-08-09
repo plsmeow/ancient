@@ -1,6 +1,6 @@
 package tech.onetap.module.list.movement;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import net.minecraft.entity.EquipmentSlot;
 import net.minecraft.item.ArmorItem;
 import net.minecraft.item.Items;
@@ -32,14 +32,14 @@ public class AirStuck extends Module {
     private double lockX;
     private double lockZ;
 
-    @Subscribe
+    @EventHandler
     private void onPacket(EventPacket e) {
         if (mc.player == null) return;
 
         if (e.getPacket() instanceof PlayerMoveC2SPacket) e.cancelEvent();
     }
 
-    @Subscribe
+    @EventHandler
     private void onTick(EventTick e) {
         if (mc.player == null) return;
 
@@ -47,7 +47,7 @@ public class AirStuck extends Module {
         mc.player.setNoGravity(true);
     }
 
-    @Subscribe
+    @EventHandler
     private void onTickEnd(EventTickEnd e) {
         if (mc.player == null) return;
 

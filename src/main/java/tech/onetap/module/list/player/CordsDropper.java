@@ -1,6 +1,6 @@
 package tech.onetap.module.list.player;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import tech.onetap.event.list.EventKeyInput;
 import tech.onetap.module.Module;
 import tech.onetap.module.ModuleCategory;
@@ -12,7 +12,7 @@ public class CordsDropper extends Module {
 
     private final BindSetting bind = new BindSetting("Key",-1);
 
-    @Subscribe
+    @EventHandler
     private void onKey(EventKeyInput e) {
         if (e.getAction() == 0) return;
         if (e.getKey() == bind.getValue()) {

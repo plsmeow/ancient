@@ -1,6 +1,6 @@
 package tech.onetap.module.list.movement;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import net.minecraft.item.ArmorStandItem;
 import net.minecraft.item.BlockItem;
 import net.minecraft.item.FireworkRocketItem;
@@ -74,7 +74,7 @@ public class Flight extends Module {
         resetVulcanXzState();
     }
 
-    @Subscribe
+    @EventHandler
     public void onUpdate(EventTick event) {
         if (mc.player == null || mc.getNetworkHandler() == null) return;
 
@@ -112,7 +112,7 @@ public class Flight extends Module {
         mc.player.fallDistance = 0;
     }
 
-    @Subscribe
+    @EventHandler
     public void onUpdateVulcanXz(EventTick event) {
         if (mc.player == null || mc.getNetworkHandler() == null) return;
         if (!mode.is("Vulcan XZ")) return;
@@ -120,7 +120,7 @@ public class Flight extends Module {
         handleVulcanXzMode();
     }
 
-    @Subscribe
+    @EventHandler
     public void onUpdateAirJump(EventTick event) {
         if (mc.player == null || mc.getNetworkHandler() == null) return;
         if (!mode.is("FunSky")) return;
@@ -128,7 +128,7 @@ public class Flight extends Module {
         handleAirJumpMode();
     }
 
-    @Subscribe
+    @EventHandler
     public void onPacket(EventPacket event) {
         if (mc.player == null || mc.getNetworkHandler() == null) return;
         if (!mode.is("FunSky")) return;
@@ -162,7 +162,7 @@ public class Flight extends Module {
         }
     }
 
-    @Subscribe
+    @EventHandler
     public void onPlayerUpdate(EventPlayerUpdate event) {
         if (mc.player == null || mc.getNetworkHandler() == null) return;
         if (!mode.is("Vulcan")) return;

@@ -1,6 +1,6 @@
 package tech.onetap.module.list.player;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import net.minecraft.component.DataComponentTypes;
 import net.minecraft.component.type.FoodComponent;
 import net.minecraft.item.ItemStack;
@@ -18,7 +18,7 @@ public class AutoEat extends Module {
     private boolean isEating = false;
     private int previousSlot = -1;
 
-    @Subscribe
+    @EventHandler
     private void onUpdate(EventPlayerUpdate e) {
         if (mc.player == null || mc.world == null) return;
 

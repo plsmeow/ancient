@@ -1,6 +1,6 @@
 package tech.onetap.module.list.combat;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import net.minecraft.item.Items;
 import net.minecraft.network.packet.Packet;
 import net.minecraft.network.packet.c2s.play.ClientCommandC2SPacket;
@@ -41,7 +41,7 @@ public class BowBomb extends Module {
     private final StopWatch delayTimer = new StopWatch();
     private final Random rnd = new Random();
 
-    @Subscribe
+    @EventHandler
     public void onPacket(EventPacket event) {
         if (event.getType() != EventPacket.Type.SEND) return;
         if (mc.player == null || mc.world == null) return;

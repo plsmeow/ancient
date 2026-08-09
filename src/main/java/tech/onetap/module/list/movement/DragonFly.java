@@ -1,6 +1,6 @@
 package tech.onetap.module.list.movement;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import net.minecraft.util.math.Vec3d;
 import tech.onetap.event.list.EventPlayerUpdate;
 import tech.onetap.event.list.MoveInputEvent;
@@ -40,7 +40,7 @@ public final class DragonFly extends Module {
         }
     }
 
-    @Subscribe
+    @EventHandler
     private void onUpdate(EventPlayerUpdate e) {
         if (mc.player == null) return;
 
@@ -57,7 +57,7 @@ public final class DragonFly extends Module {
         }
     }
 
-    @Subscribe
+    @EventHandler
     private void onStrafe(MoveInputEvent e) {
         if (mc.player == null) return;
         if (!mc.player.getAbilities().flying) return;

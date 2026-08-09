@@ -1,6 +1,6 @@
 package tech.onetap.module.list.misc;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import net.minecraft.util.Hand;
 import tech.onetap.event.list.EventPlayerUpdate;
 import tech.onetap.module.Module;
@@ -13,7 +13,7 @@ public class AntiAFK extends Module {
 
     private final StopWatch stopWatch = new StopWatch();
 
-    @Subscribe
+    @EventHandler
     private void onUpdate(EventPlayerUpdate e) {
         if (mc.player == null || mc.world == null) return;
 

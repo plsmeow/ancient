@@ -1,10 +1,13 @@
 package tech.onetap.event;
 
-import lombok.Data;
+import lombok.Getter;
+import lombok.Setter;
+import meteordevelopment.orbit.ICancellable;
 import tech.onetap.Onetap;
 
-@Data
-public class Event {
+@Getter
+@Setter
+public class Event implements ICancellable {
     private boolean cancelled;
 
     public void post() {

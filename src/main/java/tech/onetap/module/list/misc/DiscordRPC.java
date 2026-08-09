@@ -1,6 +1,6 @@
 package tech.onetap.module.list.misc;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import meteordevelopment.discordipc.DiscordIPC;
 import net.minecraft.client.gui.screen.TitleScreen;
 import net.minecraft.client.gui.screen.multiplayer.MultiplayerScreen;
@@ -32,7 +32,7 @@ public class DiscordRPC extends Module {
         DiscordIPC.stop();
     }
 
-    @Subscribe
+    @EventHandler
     private void onTick(EventTick e) {
         String details;
 

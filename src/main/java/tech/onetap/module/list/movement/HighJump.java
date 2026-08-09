@@ -1,6 +1,6 @@
 package tech.onetap.module.list.movement;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import net.minecraft.block.entity.BlockEntity;
 import net.minecraft.block.entity.ShulkerBoxBlockEntity;
 import net.minecraft.util.math.BlockPos;
@@ -19,7 +19,7 @@ public class HighJump extends Module {
     private final SliderSetting funtimeJumpY = new SliderSetting("Funtime JumpY", 0.42, 0.1, 1.0, 0.01).setVisible(() -> mode.is("Funtime"));
     private final SliderSetting shulkerJumpY = new SliderSetting("Shulker JumpY", 1.0, 0.5, 5.0, 0.1).setVisible(() -> mode.is("Grim Shulker"));
 
-    @Subscribe
+    @EventHandler
     public void onUpdate(final EventTick ignored) {
         if (mc.player == null || mc.world == null) return;
 

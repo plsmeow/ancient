@@ -1,6 +1,6 @@
 package tech.onetap.module.list.player;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import tech.onetap.event.list.EventTick;
 import tech.onetap.module.Module;
 import tech.onetap.module.ModuleCategory;
@@ -17,7 +17,7 @@ public class TapeMouse extends Module {
 
     private long lastClick;
 
-    @Subscribe
+    @EventHandler
     private void onTick(EventTick eventTick) {
         long delay = (long) (1000.0f / cps.getValue());
         long now = System.currentTimeMillis();

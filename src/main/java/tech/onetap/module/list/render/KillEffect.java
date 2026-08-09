@@ -1,6 +1,6 @@
 package tech.onetap.module.list.render;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityType;
 import net.minecraft.entity.LightningEntity;
@@ -32,12 +32,12 @@ public class KillEffect extends Module {
 
     private Entity entity;
 
-    @Subscribe
+    @EventHandler
     private void onAttack(EventAttack e) {
         if (e.getEntity() instanceof PlayerEntity) entity = e.getEntity();
     }
 
-    @Subscribe
+    @EventHandler
     public void onUpdate(final EventTick ignored) {
         if (mc.player == null || mc.world == null) return;
 

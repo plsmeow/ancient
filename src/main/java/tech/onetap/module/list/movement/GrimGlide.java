@@ -1,6 +1,6 @@
 package tech.onetap.module.list.movement;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import net.minecraft.util.math.Vec3d;
 import tech.onetap.event.list.EventPlayerUpdate;
 import tech.onetap.module.Module;
@@ -15,7 +15,7 @@ public class GrimGlide extends Module {
     private int tickCounter = 0;
     private int ticksTwo = 0;
 
-    @Subscribe
+    @EventHandler
     private void onPlayerUpdate(EventPlayerUpdate e) {
         if (mc.player == null || mc.world == null || !mc.player.isGliding()) {
             return;

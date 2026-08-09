@@ -1,6 +1,6 @@
 package tech.onetap.module.list.movement;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import com.mojang.authlib.GameProfile;
 import com.mojang.blaze3d.systems.RenderSystem;
 import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderContext;
@@ -77,7 +77,7 @@ public class Blink extends Module {
         box = null;
     }
 
-    @Subscribe
+    @EventHandler
     public void onPacket(EventPacket e) {
         if (mc.player == null || mc.world == null) return;
 
@@ -108,7 +108,7 @@ public class Blink extends Module {
         }
     }
 
-    @Subscribe
+    @EventHandler
     public void onTick(EventTick event) {
         if (mc.player == null || mc.world == null) return;
 

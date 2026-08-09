@@ -1,6 +1,6 @@
 package tech.onetap.module.list.player;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import net.minecraft.item.ItemStack;
 import net.minecraft.screen.slot.SlotActionType;
 import tech.onetap.event.list.EventPlayerUpdate;
@@ -27,7 +27,7 @@ public class HotbarRefill extends Module {
         delayTicks = delay.getIntValue();
     }
 
-    @Subscribe
+    @EventHandler
     private void onUpdate(EventPlayerUpdate e) {
         if (mc.player == null || mc.interactionManager == null) return;
         if (mc.currentScreen != null) {

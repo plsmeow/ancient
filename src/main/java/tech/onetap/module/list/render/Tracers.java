@@ -1,6 +1,6 @@
 package tech.onetap.module.list.render;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.client.gl.ShaderProgramKeys;
 import net.minecraft.client.network.ClientPlayerEntity;
@@ -42,7 +42,7 @@ public class Tracers extends Module {
     private final BooleanSetting onlyNetherite = new BooleanSetting("Незеритовая броня", false);
     private final BooleanSetting pinkElytra = new BooleanSetting("Розовый цвет Элитр", false);
 
-    @Subscribe
+    @EventHandler
     public void onWorldRender(EventWorldRender event) {
         MatrixStack stack = event.getMatrixStack();
         float tickDelta = mc.getRenderTickCounter().getTickDelta(true);

@@ -1,6 +1,6 @@
 package tech.onetap.module.list.player;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import net.minecraft.block.BlockState;
 import net.minecraft.item.ItemStack;
 import net.minecraft.screen.slot.SlotActionType;
@@ -18,7 +18,7 @@ public class AutoTool extends Module {
     private int itemIndex = -1, oldSlot = -1;
     private boolean status;
 
-    @Subscribe
+    @EventHandler
     private void onTick(final EventPlayerUpdate ignored) {
         if (mc.player == null || mc.player.isCreative()) {
             itemIndex = -1;

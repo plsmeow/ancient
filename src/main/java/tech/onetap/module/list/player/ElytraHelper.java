@@ -1,6 +1,6 @@
 package tech.onetap.module.list.player;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import net.minecraft.entity.EquipmentSlot;
 import net.minecraft.item.Items;
 import net.minecraft.item.consume.UseAction;
@@ -32,21 +32,21 @@ public class ElytraHelper extends Module {
     private boolean fireworkUsed;
     private boolean swapped;
 
-    @Subscribe
+    @EventHandler
     private void onKey(EventKeyInput e) {
         if (e.getAction() == 0) return;
         if (e.getKey() == swapKey.getValue()) swapped = true;
         if (e.getKey() == fireworkKey.getValue() && mc.player.isGliding()) fireworkUsed = true;
     }
 
-    @Subscribe
+    @EventHandler
     private void onPlayerUpdate(EventPlayerUpdate e) {
         if (!swapped) return;
         swapped = false;
         swap(mc.player.getEquippedStack(EquipmentSlot.CHEST).getItem() == Items.ELYTRA);
     }
 
-    @Subscribe
+    @EventHandler
     private void onTick(EventTick e) {
         if (mc.player == null) return;
 

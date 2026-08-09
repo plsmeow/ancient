@@ -1,6 +1,6 @@
 package tech.onetap.module.list.player;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import net.minecraft.entity.EquipmentSlot;
 import net.minecraft.item.Items;
 import net.minecraft.network.packet.c2s.play.ClientCommandC2SPacket;
@@ -22,7 +22,7 @@ public class RWHelper extends Module {
     boolean need;
     public boolean fireworkUse;
 
-    @Subscribe
+    @EventHandler
     private void onPacket(EventPacket e) {
         if (e.getPacket() instanceof GameMessageS2CPacket p) {
             if (p.content().getString().contains("Анти Полет » Вы не можете взлететь!")) {
@@ -31,7 +31,7 @@ public class RWHelper extends Module {
         }
     }
 
-    @Subscribe
+    @EventHandler
     private void onPlayerUpdate(EventPlayerUpdate e) {
         if (!antipolet.getValue()) return;
 

@@ -1,6 +1,6 @@
 package tech.onetap.module.list.movement;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import net.minecraft.network.packet.c2s.play.PlayerMoveC2SPacket;
 import tech.onetap.event.list.EventPacket;
 import tech.onetap.module.Module;
@@ -13,7 +13,7 @@ public class GroundSpoof extends Module {
 
     public final ModeSetting mode = new ModeSetting("Режим", "False", "True", "False");
 
-    @Subscribe
+    @EventHandler
     private void onPacket(EventPacket e) {
         if (mc.player == null || mc.getNetworkHandler() == null) return;
 

@@ -1,6 +1,6 @@
 package tech.onetap.module.list.render;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.block.Block;
 import net.minecraft.client.gl.ShaderProgramKeys;
@@ -221,7 +221,7 @@ public class BlockEsp extends Module {
         });
     }
 
-    @Subscribe
+    @EventHandler
     public void onTick(EventTick event) {
         if (mc.world == null || mc.player == null || targetBlocks.isEmpty()) return;
 
@@ -254,7 +254,7 @@ public class BlockEsp extends Module {
         }
     }
 
-    @Subscribe
+    @EventHandler
     public void onWorldRender(EventWorldRender event) {
         if (chunkCache.isEmpty() || mc.player == null) return;
 

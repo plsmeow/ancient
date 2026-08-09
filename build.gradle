@@ -34,7 +34,7 @@ dependencies {
 
     // Discord IPC
     implementation(include("meteordevelopment:discord-ipc:1.1"))
-    
+
     // OSHI for hardware info (authentication)
     implementation(include("com.github.oshi:oshi-core:6.4.8"))
 
@@ -42,6 +42,8 @@ dependencies {
     implementation(include("com.google.code.gson:gson:2.10.1"))
 
 	implementation files('libs/BareAPI_lib.jar')
+
+	implementation(include("meteordevelopment:orbit:0.2.4"))
 
 	// ONNX Runtime для AI inference.
 	// Обычная библиотека, не мод — поэтому implementation(include(...)), как oshi/gson.

@@ -1,6 +1,6 @@
 package tech.onetap.module.list.combat;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import tech.onetap.event.list.EventAttack;
 import tech.onetap.module.Module;
 import tech.onetap.module.ModuleCategory;
@@ -11,7 +11,7 @@ import tech.onetap.util.friend.FriendRepository;
 @ModuleInformation(moduleName = "No Friend Damage", moduleCategory = ModuleCategory.COMBAT)
 public class NoFriendDamage extends Module {
 
-    @Subscribe
+    @EventHandler
     private void onAttack(EventAttack e) {
         for (Friend friend : FriendRepository.getFriends()) {
             if (e.getEntity() == mc.player) continue;

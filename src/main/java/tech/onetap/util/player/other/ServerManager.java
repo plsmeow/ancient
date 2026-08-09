@@ -1,6 +1,6 @@
 package tech.onetap.util.player.other;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import lombok.Getter;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.network.packet.c2s.play.ClientCommandC2SPacket;
@@ -25,10 +25,10 @@ public class ServerManager implements IMinecraft {
     private float sprintingChangeTicks;
 
     public ServerManager() {
-        Onetap.getInstance().getEventBus().register(this);
+        Onetap.getInstance().getEventBus().subscribe(this);
     }
 
-    @Subscribe
+    @EventHandler
     private void onTick(final EventTick ignored) {
         if (mc.player == null) return;
         double y = mc.player.prevY - mc.player.getY();
@@ -36,12 +36,12 @@ public class ServerManager implements IMinecraft {
         else if (y > 0) fallDistance += (float) y;
     }
 
-    @Subscribe
+    @EventHandler
     private void onPlayerUpdate(final EventPlayerUpdate ignored) {
         sprintingChangeTicks++;
     }
 
-    @Subscribe
+    @EventHandler
     public void onPacketSend(final EventPacket e) {
         if (e.getPacket() instanceof PlayerMoveC2SPacket packet) {
             if (packet.changesPosition()) {
@@ -81,7 +81,7 @@ public class ServerManager implements IMinecraft {
         }
     }
 
-    @Subscribe
+    @EventHandler
     public void onPacketReceive(EventPacket e) {
         if (e.getPacket() instanceof EntityStatusS2CPacket packet && packet.getStatus() == 35) {
             if (!(packet.getEntity(mc.world) instanceof PlayerEntity player)) return;

@@ -1,6 +1,6 @@
 package tech.onetap.module.list.player;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import tech.onetap.event.list.EventTick;
 import tech.onetap.module.Module;
 import tech.onetap.module.ModuleCategory;
@@ -11,7 +11,7 @@ public class DeathCoords extends Module {
 
     private boolean send;
 
-    @Subscribe
+    @EventHandler
     private void onUpdate(EventTick e) {
         if (mc.player == null) return;
         if (mc.player.isDead()) {

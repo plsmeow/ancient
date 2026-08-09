@@ -1,6 +1,6 @@
 package tech.onetap.module.list.movement;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import tech.onetap.event.list.EventTick;
 import tech.onetap.module.Module;
 import tech.onetap.module.ModuleCategory;
@@ -9,7 +9,7 @@ import tech.onetap.module.ModuleInformation;
 @ModuleInformation(moduleName = "No Jump Delay", moduleCategory = ModuleCategory.MOVEMENT)
 public class NoJumpDelay extends Module {
 
-    @Subscribe
+    @EventHandler
     private void onUpdate(EventTick e) {
         if (mc.player == null || mc.world == null) return;
 

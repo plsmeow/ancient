@@ -1,6 +1,6 @@
 package tech.onetap.util.rotation;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import lombok.Getter;
 import lombok.Setter;
 import net.minecraft.util.math.MathHelper;
@@ -16,7 +16,7 @@ public class FreeLookComponent extends Component {
     @Setter
     private static float freeYaw, freePitch;
 
-    @Subscribe
+    @EventHandler
     public void onEvent(LookEvent event) {
         if (active) {
             rotateTowards(event.getYaw(), event.getPitch());
@@ -24,7 +24,7 @@ public class FreeLookComponent extends Component {
         }
     }
 
-    @Subscribe
+    @EventHandler
     public void onEvent(RotationEvent event) {
         if (active) {
             event.setYaw(freeYaw);

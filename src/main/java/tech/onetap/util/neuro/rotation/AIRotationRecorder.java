@@ -1,6 +1,6 @@
 package tech.onetap.util.neuro.rotation;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import lombok.Getter;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityType;
@@ -65,7 +65,7 @@ public class AIRotationRecorder implements IMinecraft {
     private final NeuroFeatureCollector collector = new NeuroFeatureCollector();
     private final AimPointController aimController = new AimPointController();
 
-    @Subscribe
+    @EventHandler
     public void onTick(EventTick event) {
         if (!recording || mc.player == null || mc.world == null) return;
 
@@ -200,7 +200,7 @@ public class AIRotationRecorder implements IMinecraft {
         return Math.abs(output[0]) <= 180.0f && Math.abs(output[1]) <= 90.0f;
     }
 
-    @Subscribe
+    @EventHandler
     public void onPacket(EventPacket event) {
         if (!recording || mode != Mode.SLIMES || event.getType() != EventPacket.Type.SEND || mc.world == null) return;
         if (!(event.getPacket() instanceof PlayerInteractEntityC2SPacket packet) || slimeTarget == null) return;

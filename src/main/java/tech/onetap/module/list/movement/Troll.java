@@ -1,6 +1,6 @@
 package tech.onetap.module.list.movement;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import net.minecraft.client.network.ClientPlayerEntity;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.network.packet.c2s.play.PlayerMoveC2SPacket;
@@ -20,7 +20,7 @@ public class Troll extends Module {
     private final SliderSetting predict = new SliderSetting("Предикт", 3.0, 0.0, 10.0, 0.1);
     private final SliderSetting distance = new SliderSetting("Дистанция", 0.8, 0.1, 3.0, 0.1);
 
-    @Subscribe
+    @EventHandler
     private void onTick(EventTick event) {
         if (mc.player == null || mc.world == null || mc.getNetworkHandler() == null) return;
 

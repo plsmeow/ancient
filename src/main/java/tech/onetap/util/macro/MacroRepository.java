@@ -1,6 +1,6 @@
 package tech.onetap.util.macro;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import com.google.common.reflect.TypeToken;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -26,7 +26,7 @@ public class MacroRepository implements IMinecraft, QuickLogger {
     private final Gson gson = new GsonBuilder().setPrettyPrinting().create();
 
     public MacroRepository() {
-        Onetap.getInstance().getEventBus().register(this);
+        Onetap.getInstance().getEventBus().subscribe(this);
     }
 
     private final List<Macro> macroList = new ArrayList<>();
@@ -86,7 +86,7 @@ public class MacroRepository implements IMinecraft, QuickLogger {
         }
     }
 
-    @Subscribe
+    @EventHandler
     public void onKey(EventKeyInput event) {
         if (Hide.isActive) return;
         int key = event.getKey();

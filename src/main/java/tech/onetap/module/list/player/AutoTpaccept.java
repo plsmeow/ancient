@@ -1,6 +1,6 @@
 package tech.onetap.module.list.player;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import net.minecraft.client.network.ClientPlayerEntity;
 import net.minecraft.network.packet.c2s.play.PlayerInteractBlockC2SPacket;
 import net.minecraft.network.packet.s2c.play.GameMessageS2CPacket;
@@ -30,7 +30,7 @@ public class AutoTpaccept extends Module {
         }
     }
 
-    @Subscribe
+    @EventHandler
     public void onPacket(EventPacket e) {
         if (mc.player == null || mc.world == null) return;
 

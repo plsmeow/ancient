@@ -1,6 +1,6 @@
 package tech.onetap.module.list.player;
 
-import com.google.common.eventbus.Subscribe;
+import meteordevelopment.orbit.EventHandler;
 import com.mojang.blaze3d.systems.RenderSystem;
 import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents;
 import net.minecraft.client.gl.ShaderProgramKeys;
@@ -69,7 +69,7 @@ public class InstantRebreak extends Module {
         super.onDisable();
     }
 
-    @Subscribe
+    @EventHandler
     private void onAttackBlock(final EventAttackBlock event) {
         if (event.getBlockPos() != null) {
             this.blockPos = event.getBlockPos();
@@ -78,7 +78,7 @@ public class InstantRebreak extends Module {
         }
     }
 
-    @Subscribe
+    @EventHandler
     private void onUpdate(final EventTick ignored) {
         if (mc.player == null || mc.world == null || blockPos == null) return;
 
