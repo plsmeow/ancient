@@ -116,11 +116,6 @@ esac
 
 CLASSPATH="\\\"\\\""
 
-
-# Pin the JDK used by Gradle for this project.
-JAVA_HOME="C:/Program Files/Eclipse Adoptium/jdk-21.0.12.8-hotspot"
-export JAVA_HOME
-
 # Determine the Java command to use to start the JVM.
 if [ -n "$JAVA_HOME" ] ; then
     if [ -x "$JAVA_HOME/jre/sh/java" ] ; then
