@@ -45,7 +45,7 @@ public class ModuleStorage implements IMinecraft {
                 new DogFly(), new AutoTpaccept(), new RPSpoofer(), new FireFly(), new AutoTrap(), new AutoPot(), new GroundSpoof(),
                 new AntiBot(), new AutoExplosion(), new DeathCoords(), new CrystalOptimizer(), new InstantRebreak(), new BowBomb(),
                 new KillSay(), new KillSound(),
-                new GuiMove(), new Tracers(), new ElytraMotion(), new Velocity(), new ElytraFlight(), new ElytraFly(), new ElytraJump(),
+                new GuiMove(), new Tracers(), new ElytraMotion(), new Velocity(), new ElytraFlight(), new ElytraFly(), new ElytraJump(), new ElytraBounce(),
                 new ViewModel(), new KillEffect(), new AutoArmor(), new LonyHelper(), new FtHelper(), new Speed(), new GrimGlide(),
                 new GrimStrafe(), new HWHelper(),
                 new AutoTool(), new AirPlace(), new TapeMouse(), new Ambience(), new BlockOverlay(), new FreeLook(),

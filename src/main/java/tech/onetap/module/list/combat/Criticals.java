@@ -9,7 +9,6 @@ import net.minecraft.network.packet.c2s.play.PlayerInputC2SPacket;
 import net.minecraft.network.packet.c2s.play.PlayerMoveC2SPacket;
 import net.minecraft.util.PlayerInput;
 import tech.onetap.event.list.EventAttack;
-import tech.onetap.event.list.EventChangeSprint;
 import tech.onetap.module.Module;
 import tech.onetap.module.ModuleCategory;
 import tech.onetap.module.ModuleInformation;
@@ -30,14 +29,6 @@ public class Criticals extends Module {
         if (mc.player == null || mc.world == null) return;
         if (!(e.getEntity() instanceof LivingEntity)) return;
         doCrit();
-    }
-
-    @EventHandler
-    private void onChangeSprint(EventChangeSprint e) {
-        if (mc.player == null || mc.world == null) return;
-        if (!isEnabled()) return;
-        if (killAuraTriggered) return;
-        e.setSprinting(false);
     }
 
     public void doCrit() {
