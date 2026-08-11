@@ -3,6 +3,7 @@ package tech.onetap.mixin;
 import net.minecraft.client.render.VertexConsumerProvider;
 import net.minecraft.client.render.entity.EntityRenderer;
 import net.minecraft.client.render.entity.state.EntityRenderState;
+import net.minecraft.client.render.entity.state.PlayerEntityRenderState;
 import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.text.Text;
 import org.spongepowered.asm.mixin.Mixin;
@@ -17,7 +18,10 @@ public class EntityRendererMixin<S extends EntityRenderState> {
 
     @Inject(method = "renderLabelIfPresent", at = @At(value = "HEAD"), cancellable = true)
     private void renderLabelIfPresent(S state, Text text, MatrixStack matrices, VertexConsumerProvider vertexConsumers, int light, CallbackInfo ci) {
-        if (Instance.get(Tags.class).isEnabled()) {
+        if (!(state instanceof PlayerEntityRenderState)) return;
+
+        Tags tags = Instance.get(Tags.class);
+        if (tags != null && tags.isEnabled() && tags.hidesPlayerNametags()) {
             ci.cancel();
         }
     }
