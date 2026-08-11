@@ -59,17 +59,17 @@ public class Starter {
         String pasteUrl = "";
         try {
             String content = getPasteContent(pasteUrl);
-            System.out.println("HWID: " + hwid);
-            System.out.println("CONTENT:\n" + content);
+            ;
+            ;
 
             for (String part : content.split("\\s+")) {
-                System.out.println("Comparing to: [" + part + "]");
+                ;
                 if (part.trim().equalsIgnoreCase(hwid)) {
                     return true;
                 }
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            ;
         }
         return false;
     }
@@ -91,7 +91,7 @@ public class Starter {
 
             return hexString.toString();
         } catch (Exception e) {
-            e.printStackTrace();
+            ;
             return "Error";
         }
     }
@@ -106,7 +106,7 @@ public class Starter {
 
             Runtime.getRuntime().exec("explorer " + file.getAbsolutePath());
         } catch (IOException e) {
-            e.printStackTrace();
+            ;
         }
     }
 }

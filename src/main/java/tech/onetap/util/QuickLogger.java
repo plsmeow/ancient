@@ -10,12 +10,12 @@ import java.util.stream.Stream;
 
 public interface QuickLogger {
     static Text getPrefix() {
-        MutableText onetap = Text.literal("Ancient");
-        onetap.setStyle(onetap.getStyle().withColor(Formatting.WHITE));
+        MutableText ancient = Text.literal("Ancient");
+        ancient.setStyle(ancient.getStyle().withColor(Formatting.WHITE));
 
         MutableText prefix = Text.literal("");
-        prefix.setStyle(onetap.getStyle().withColor(Formatting.DARK_GRAY));
-        prefix.append(onetap);
+        prefix.setStyle(ancient.getStyle().withColor(Formatting.DARK_GRAY));
+        prefix.append(ancient);
         prefix.append(" -> ");
 
         return prefix;

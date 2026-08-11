@@ -15,7 +15,7 @@ public class DiscordUtil {
      * Get Discord info from running Discord client via IPC
      */
     public static DiscordInfo getDiscordInfo() {
-        System.out.println("[OneTap Auth] Connecting to Discord IPC...");
+        ;
         
         try {
             // Start Discord IPC connection
@@ -35,9 +35,9 @@ public class DiscordUtil {
             DiscordIPC.stop();
             
             if (user != null && user.id != null) {
-                System.out.println("[OneTap Auth] ✓ Successfully connected to Discord!");
-                System.out.println("[OneTap Auth] - ID: " + user.id);
-                System.out.println("[OneTap Auth] - Username: " + user.username);
+                ;
+                ;
+                ;
                 
                 return new DiscordInfo(user.id, user.username, user.avatar);
             }
@@ -45,7 +45,7 @@ public class DiscordUtil {
             throw new Exception("User info not received from Discord");
             
         } catch (Exception e) {
-            System.err.println("[OneTap Auth] Error connecting to Discord: " + e.getMessage());
+            ;
             
             // Make sure to stop connection on error
             try {
@@ -54,14 +54,14 @@ public class DiscordUtil {
         }
         
         // Discord not running or connection failed
-        System.err.println("[OneTap Auth] ✗ Failed to connect to Discord!");
-        System.err.println("[OneTap Auth]");
-        System.err.println("[OneTap Auth] Please make sure:");
-        System.err.println("[OneTap Auth] 1. Discord is running");
-        System.err.println("[OneTap Auth] 2. You are logged in to Discord");
-        System.err.println("[OneTap Auth] 3. Discord is not running in browser (desktop app required)");
-        System.err.println("[OneTap Auth]");
-        System.err.println("[OneTap Auth] Then restart OneTap client.");
+        ;
+        ;
+        ;
+        ;
+        ;
+        ;
+        ;
+        ;
         
         return null;
     }

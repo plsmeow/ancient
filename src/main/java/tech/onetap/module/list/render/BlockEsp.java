@@ -104,7 +104,7 @@ public class BlockEsp extends Module {
             java.nio.file.Files.write(dir.resolve("blockesp.json"),
                     new com.google.gson.GsonBuilder().setPrettyPrinting().create().toJson(root).getBytes());
         } catch (Exception e) {
-            e.printStackTrace();
+            ;
         }
     }
 
@@ -127,7 +127,7 @@ public class BlockEsp extends Module {
                 }
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            ;
         }
     }
 

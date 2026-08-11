@@ -40,7 +40,7 @@ public final class AIRotationManager implements IMinecraft {
             Files.createDirectories(DATASETS_DIR);
             Files.createDirectories(MODELS_DIR);
         } catch (IOException e) {
-            e.printStackTrace();
+            ;
         }
     }
 
@@ -104,7 +104,7 @@ public final class AIRotationManager implements IMinecraft {
             ChatUtil.send("§7Путь: §f" + datasetPath.toAbsolutePath());
         } catch (IOException e) {
             ChatUtil.send("§cОшибка сохранения датасета: " + e.getMessage());
-            e.printStackTrace();
+            ;
         }
     }
 
@@ -128,7 +128,7 @@ public final class AIRotationManager implements IMinecraft {
             ChatUtil.send("§7Путь: §f" + datasetPath.toAbsolutePath());
         } catch (IOException e) {
             ChatUtil.send("§cОшибка сохранения дампа: " + e.getMessage());
-            e.printStackTrace();
+            ;
         }
     }
 
@@ -185,7 +185,7 @@ public final class AIRotationManager implements IMinecraft {
             newModel = new ActiveModel(modelName, meta, normalizer, engine);
         } catch (Throwable t) {
             ChatUtil.send("§cОшибка загрузки модели: " + t.getMessage());
-            t.printStackTrace();
+            ;
             return;
         }
 

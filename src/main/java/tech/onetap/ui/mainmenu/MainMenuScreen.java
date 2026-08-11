@@ -229,7 +229,7 @@ public class MainMenuScreen extends Screen implements IMinecraft {
                     .newInstance(this);
             mc.setScreen(screen);
         } catch (Throwable t) {
-            LOGGER.error("Failed to open screen {}", screenClass, t);
+            ;
         }
     }
 

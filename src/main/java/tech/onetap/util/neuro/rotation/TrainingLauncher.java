@@ -153,7 +153,7 @@ public final class TrainingLauncher implements IMinecraft {
             return target;
         } catch (IOException e) {
             ChatUtil.send("§cНе удалось распаковать trainer: " + e.getMessage());
-            e.printStackTrace();
+            ;
             return devFallback();
         }
     }

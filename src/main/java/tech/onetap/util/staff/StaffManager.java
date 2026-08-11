@@ -65,7 +65,7 @@ public class StaffManager {
                 gson.toJson(array, writer);
             }
         } catch (IOException e) {
-            e.printStackTrace();
+            ;
         }
     }
 
@@ -84,7 +84,7 @@ public class StaffManager {
                 staffList.add(new Staff(name));
             }
         } catch (IOException e) {
-            e.printStackTrace();
+            ;
         }
     }
 

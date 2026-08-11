@@ -47,7 +47,7 @@ public class Module implements IMinecraft, QuickLogger {
                 field.setAccessible(true);
                 return field.get(this);
             } catch (IllegalAccessException e) {
-                e.printStackTrace();
+                ;
             }
             return null;
         }).filter(field -> field instanceof Setting).map(field -> (Setting) field).collect(Collectors.toList());

@@ -125,7 +125,7 @@ public class InventoryUtil implements IMinecraft {
             NetworkUtils.sendSilentPacket(new CloseHandledScreenC2SPacket(0));
             mc.getNetworkHandler().sendPacket(new PlayerInputC2SPacket(mc.player.input.playerInput));
         } catch (Exception e) {
-            e.printStackTrace();
+            ;
         }
     }
 
@@ -142,7 +142,7 @@ public class InventoryUtil implements IMinecraft {
                 NetworkUtils.sendSilentPacket(new CloseHandledScreenC2SPacket(0));
             }));
         } catch (Exception e) {
-            e.printStackTrace();
+            ;
         }
     }
 
@@ -355,7 +355,7 @@ public class InventoryUtil implements IMinecraft {
     public static void clickSlotNoSync(int syncId, int slotId, int button, SlotActionType actionType, PlayerEntity player) {
         ScreenHandler screenHandler = player.currentScreenHandler;
         if (syncId != screenHandler.syncId) {
-            LOGGER.warn("Ignoring click in mismatching container. Click in {}, player has {}.", syncId, screenHandler.syncId);
+            ;
         } else {
             DefaultedList<Slot> defaultedList = screenHandler.slots;
             int i = defaultedList.size();

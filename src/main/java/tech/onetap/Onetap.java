@@ -17,7 +17,6 @@ import tech.onetap.util.commands.manager.CommandRepository;
 import tech.onetap.util.config.ConfigManager;
 import tech.onetap.util.draggable.DragManager;
 import tech.onetap.util.friend.FriendRepository;
-import tech.onetap.util.log.ClientLogBuffer;
 import tech.onetap.util.macro.MacroRepository;
 import tech.onetap.util.math.TPSGetter;
 import tech.onetap.util.neuro.rotation.TrainingLauncher;
@@ -65,7 +64,6 @@ public class Onetap implements ModInitializer {
     public Onetap() {
         instance = this;
 
-        ClientLogBuffer.attach();
 
         eventBus = new EventBus();
         eventBus.registerLambdaFactory("tech.onetap", (lookupInMethod, klass) ->

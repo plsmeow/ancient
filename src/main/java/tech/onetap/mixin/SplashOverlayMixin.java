@@ -19,10 +19,8 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import tech.onetap.module.list.render.Hide;
-import tech.onetap.util.log.ClientLogBuffer;
 
 import java.io.InputStream;
-import java.util.List;
 import java.util.Optional;
 import java.util.function.Consumer;
 
@@ -88,17 +86,6 @@ public abstract class SplashOverlayMixin {
         RenderSystem.enableBlend();
         RenderSystem.defaultBlendFunc();
 
-        if (this.reloading) {
-            try {
-                int lineHeight = 9;
-                List<String> lines = ClientLogBuffer.tail(Math.max(1, (h - 8) / lineHeight));
-                int logColor = ancient$withAlpha(0xC0C0C0, MathHelper.ceil(fade * 190.0F));
-                for (int i = 0; i < lines.size(); i++) {
-                    context.drawTextWithShadow(mc.textRenderer, lines.get(i), 4, 4 + i * lineHeight, logColor);
-                }
-            } catch (Throwable ignored) {
-            }
-        }
 
         int cx = w / 2;
         int cy = h / 2;

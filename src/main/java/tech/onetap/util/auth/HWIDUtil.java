@@ -41,7 +41,7 @@ public class HWIDUtil {
             
             return hexString.toString();
         } catch (Exception e) {
-            e.printStackTrace();
+            ;
             return "unknown";
         }
     }

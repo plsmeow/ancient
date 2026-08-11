@@ -170,7 +170,7 @@ public final class CloudConfigApi implements IMinecraft {
                     }
                 }, CLOUD_EXECUTOR)
                 .exceptionally(e -> {
-                    e.printStackTrace();
+                    ;
                     runMain(() -> onError.accept("Ошибка сети"));
                     return null;
                 });
@@ -197,7 +197,7 @@ public final class CloudConfigApi implements IMinecraft {
                 .thenApplyAsync(HttpResponse::body, CLOUD_EXECUTOR)
                 .thenAcceptAsync(text -> handleSingleRow(text, onOk, onResult), CLOUD_EXECUTOR)
                 .exceptionally(e -> {
-                    e.printStackTrace();
+                    ;
                     runMain(() -> onResult.accept(Result.ERROR));
                     return null;
                 });
@@ -224,7 +224,7 @@ public final class CloudConfigApi implements IMinecraft {
                 .thenApplyAsync(HttpResponse::body, CLOUD_EXECUTOR)
                 .thenAcceptAsync(text -> handleSingleRow(text, onOk, onResult), CLOUD_EXECUTOR)
                 .exceptionally(e -> {
-                    e.printStackTrace();
+                    ;
                     runMain(() -> onResult.accept(Result.ERROR));
                     return null;
                 });
@@ -278,7 +278,7 @@ public final class CloudConfigApi implements IMinecraft {
                     }
                 }, CLOUD_EXECUTOR)
                 .exceptionally(e -> {
-                    e.printStackTrace();
+                    ;
                     runMain(() -> onResult.accept(Result.ERROR));
                     return null;
                 });
@@ -314,7 +314,7 @@ public final class CloudConfigApi implements IMinecraft {
                     }
                 }, CLOUD_EXECUTOR)
                 .exceptionally(e -> {
-                    e.printStackTrace();
+                    ;
                     runMain(() -> onError.accept("Ошибка сети при получении списка"));
                     return null;
                 });
@@ -331,7 +331,7 @@ public final class CloudConfigApi implements IMinecraft {
                 .thenApplyAsync(HttpResponse::body, CLOUD_EXECUTOR)
                 .thenAcceptAsync(text -> handleSingleRow(text, onOk, onResult), CLOUD_EXECUTOR)
                 .exceptionally(e -> {
-                    e.printStackTrace();
+                    ;
                     runMain(() -> onResult.accept(Result.ERROR));
                     return null;
                 });

@@ -1,21 +1,29 @@
 package tech.onetap.util.chat;
 
+import net.minecraft.client.MinecraftClient;
 import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
-import tech.onetap.util.IMinecraft;
 
 import java.util.Arrays;
 
-public class ChatUtil implements IMinecraft {
-    public static void send(Object message) {
-        if (mc.player == null) return;
+public final class ChatUtil {
+    private ChatUtil() {
+    }
 
-        mc.player.sendMessage(Text.of("Ancient " + Formatting.DARK_GRAY + "-> " + Formatting.RESET + message.toString()), false);
+    public static void send(Object message) {
+        sendDirect(message.toString());
     }
 
     public static void send(Object... messages) {
-        if (mc.player == null) return;
+        sendDirect(String.join(",", Arrays.toString(messages)));
+    }
 
-        mc.player.sendMessage(Text.of("Ancient " + Formatting.DARK_GRAY + "-> " + Formatting.RESET + String.join(",", Arrays.toString(messages))), false);
+    private static void sendDirect(String message) {
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client.player == null) return;
+
+        client.inGameHud.getChatHud().addMessage(
+                Text.of("Ancient " + Formatting.DARK_GRAY + "-> " + Formatting.RESET + message)
+        );
     }
 }

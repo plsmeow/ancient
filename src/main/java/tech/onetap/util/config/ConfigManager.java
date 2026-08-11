@@ -70,7 +70,7 @@ public class ConfigManager {
             Path configFile = CONFIG_FOLDER.resolve(name + ".json");
             Files.write(configFile, gson.toJson(root).getBytes());
         } catch (IOException e) {
-            e.printStackTrace();
+            ;
         }
     }
 
@@ -139,7 +139,7 @@ public class ConfigManager {
             }
 
         } catch (IOException e) {
-            e.printStackTrace();
+            ;
         }
     }
 
@@ -157,7 +157,7 @@ public class ConfigManager {
                 }
             }
         } catch (IOException e) {
-            e.printStackTrace();
+            ;
         }
         return configs;
     }

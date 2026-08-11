@@ -123,7 +123,7 @@ public class TPLoot extends Module {
             Files.createDirectories(dir);
             Files.write(dir.resolve("tploot.json"), new GsonBuilder().setPrettyPrinting().create().toJson(root).getBytes());
         } catch (Exception e) {
-            e.printStackTrace();
+            ;
         }
     }
 
@@ -153,7 +153,7 @@ public class TPLoot extends Module {
                 }
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            ;
         }
     }
 

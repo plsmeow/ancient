@@ -315,7 +315,7 @@ public class ArgConsumer implements IArgConsumer {
         try {
             return datatype.apply(this.context, original);
         } catch (Exception e) {
-            e.printStackTrace();
+            ;
             throw new CommandInvalidTypeException(hasAny() ? peek() : consumed(), datatype.getClass().getSimpleName(), e);
         }
     }
@@ -345,7 +345,7 @@ public class ArgConsumer implements IArgConsumer {
         try {
             return datatype.get(this.context);
         } catch (Exception e) {
-            e.printStackTrace();
+            ;
             throw new CommandInvalidTypeException(hasAny() ? peek() : consumed(), datatype.getClass().getSimpleName(), e);
         }
     }
@@ -377,7 +377,7 @@ public class ArgConsumer implements IArgConsumer {
         } catch (CommandException ignored) {
             // NOP
         } catch (Exception e) {
-            e.printStackTrace();
+            ;
         }
         return Stream.empty();
     }

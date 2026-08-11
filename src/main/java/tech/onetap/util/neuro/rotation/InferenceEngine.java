@@ -112,7 +112,7 @@ public class InferenceEngine implements Closeable {
         try {
             session.close();
         } catch (OrtException e) {
-            e.printStackTrace();
+            ;
         }
         // OrtEnvironment — синглтон процесса, его закрывать нельзя.
     }

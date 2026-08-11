@@ -124,7 +124,7 @@ public class CommandRepository implements ICommandManager {
             } catch (CommandException ignored) {
                 // NOP
             } catch (Throwable t) {
-                t.printStackTrace();
+                ;
             }
             return Stream.empty();
         }

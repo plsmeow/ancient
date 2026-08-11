@@ -85,7 +85,7 @@ public class ThemeManagerWindow implements IMinecraft {
 
             Files.writeString(THEME_FILE.toPath(), GSON.toJson(json));
         } catch (IOException e) {
-            e.printStackTrace();
+            ;
         }
     }
 
@@ -131,8 +131,8 @@ public class ThemeManagerWindow implements IMinecraft {
             }
 
         } catch (Exception e) {
-            e.printStackTrace();
-            System.err.println("Ошибка при загрузке тем Onetap!");
+            ;
+            ;
         }
     }
 

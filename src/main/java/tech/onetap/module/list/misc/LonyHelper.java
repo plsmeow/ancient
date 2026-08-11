@@ -371,7 +371,7 @@ public class LonyHelper extends Module {
                 }
             }.parse();
         } catch (Exception e) {
-            System.out.println("[LonyHelper] Ошибка evalMathExpression: " + e.getMessage());
+            ;
             return 0;
         }
     }

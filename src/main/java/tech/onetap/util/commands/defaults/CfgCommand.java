@@ -53,7 +53,7 @@ public class CfgCommand extends Command {
                             Files.delete(file);
                         } catch (IOException e) {
                             logDirect(Formatting.GRAY + "Ошибка при удалении файла.");
-                            e.printStackTrace();
+                            ;
                         }
                     }
                 }
@@ -131,7 +131,7 @@ public class CfgCommand extends Command {
                         logDirect(clickable);
                     } catch (IOException e) {
                         logDirect(Formatting.GRAY + "Ошибка при сохранении файла");
-                        e.printStackTrace();
+                        ;
                     }
                 },
                 result -> {
@@ -493,7 +493,7 @@ public class CfgCommand extends Command {
                 logDirect(Formatting.GRAY + "Конфиг " + Formatting.WHITE + name + Formatting.GRAY + " успешно удалён");
             } catch (IOException e) {
                 logDirect(Formatting.GRAY + "Ошибка при удалении файла.");
-                e.printStackTrace();
+                ;
             }
         } else {
             logDirect(Formatting.GRAY + "Конфиг не найден");

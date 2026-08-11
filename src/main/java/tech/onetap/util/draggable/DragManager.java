@@ -49,7 +49,7 @@ public class DragManager implements IMinecraft {
                 }
             }
         } catch (IOException e) {
-            e.printStackTrace();
+            ;
         }
     }
 
@@ -60,7 +60,7 @@ public class DragManager implements IMinecraft {
                 jsonParser.toJson(draggableElements, writer);
             }
         } catch (IOException e) {
-            e.printStackTrace();
+            ;
         }
     }
 
