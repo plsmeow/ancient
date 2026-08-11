@@ -18,6 +18,7 @@ import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import tech.onetap.module.list.render.Hide;
 import tech.onetap.util.log.ClientLogBuffer;
 
 import java.io.InputStream;
@@ -39,6 +40,9 @@ public abstract class SplashOverlayMixin {
 
     @Inject(method = "render", at = @At("HEAD"), cancellable = true)
     private void ancient$render(DrawContext context, int mouseX, int mouseY, float delta, CallbackInfo ci) {
+        if (Hide.isActive) {
+            return;
+        }
         ci.cancel();
 
         MinecraftClient mc = MinecraftClient.getInstance();
