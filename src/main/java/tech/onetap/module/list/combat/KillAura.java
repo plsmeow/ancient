@@ -776,8 +776,12 @@ public class KillAura extends Module {
             return attackReady;
         }
 
+        boolean manualShield = isSelfBlockingShield() && mc.options.useKey.isPressed();
+        int lead = Math.max(1, unblockShieldDelay.getIntValue());
+
         if (shieldPhase == 0) {
-            if (attackReady && isSelfBlockingShield() && mc.options.useKey.isPressed()) {
+            // Опускаем щит заранее (до готовности удара), тайминг самого удара не сдвигается
+            if (manualShield && (attackReady || isHitImminent(lead))) {
                 mc.interactionManager.stopUsingItem(mc.player);
                 shieldPhase = 1;
                 shieldTicks = 0;
@@ -788,24 +792,35 @@ public class KillAura extends Module {
 
         shieldTicks++;
 
+        // Игрок отпустил ПКМ — перестаём держать щит опущенным
         if (!mc.options.useKey.isPressed()) {
             shieldPhase = 0;
             return attackReady;
         }
 
-        if (shieldTicks < unblockShieldDelay.getIntValue() || mc.player.isUsingItem()) {
-            return false;
-        }
-
-        if (attackReady) {
-            shieldPhase = 0;
+        // Щит опущен минимум тик назад — бьём в естественный тайминг без задержки
+        if (attackReady && shieldTicks >= 1 && !mc.player.isUsingItem()) {
             return true;
         }
 
-        if (shieldTicks > unblockShieldDelay.getIntValue() + 20) {
+        // Удар уже не близко — возвращаем щит обратно
+        if (!attackReady && !isHitImminent(lead)) {
             shieldPhase = 0;
         }
         return false;
+    }
+
+    private boolean isHitImminent(int lead) {
+        if (target == null || mc.player == null) return false;
+        if (!isInAttackDistance(mc.player, target)) return false;
+        if (ticksToAttack > lead) return false;
+
+        float perTick = mc.player.getAttackCooldownProgressPerTick();
+        if (perTick > 0f) {
+            float remaining = (1.0f - mc.player.getAttackCooldownProgress(0.5f)) / perTick;
+            if (remaining > lead) return false;
+        }
+        return true;
     }
 
     public boolean canStopSprinting() {
