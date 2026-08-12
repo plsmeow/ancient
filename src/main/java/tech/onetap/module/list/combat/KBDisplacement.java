@@ -1,6 +1,7 @@
 package tech.onetap.module.list.combat;
 
 import meteordevelopment.orbit.EventHandler;
+import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.item.Item;
 import net.minecraft.item.Items;
@@ -13,6 +14,7 @@ import tech.onetap.module.ModuleInformation;
 import tech.onetap.module.settings.BooleanSetting;
 import tech.onetap.module.settings.ModeSetting;
 import tech.onetap.module.settings.SliderSetting;
+import tech.onetap.util.base.Instance;
 import tech.onetap.util.rotation.MoveFixMode;
 import tech.onetap.util.rotation.Rotation;
 import tech.onetap.util.rotation.RotationComponent;
@@ -20,7 +22,6 @@ import tech.onetap.util.rotation.RotationComponent;
 @ModuleInformation(moduleName = "KB Displacement", moduleDesc = "Displaces sprint-hit knockback direction", moduleCategory = ModuleCategory.COMBAT)
 public class KBDisplacement extends Module {
     private static final String OWNER = "KB Displacement";
-    private static final int TARGET_TIMEOUT = 8;
     private static final int HIT_TIMEOUT = 5;
 
     public final ModeSetting mode = new ModeSetting("Режим", "Left", "Left", "Right", "Back", "Custom");
@@ -33,32 +34,48 @@ public class KBDisplacement extends Module {
     private int stateTicks;
 
     @EventHandler
-    public void onEvent(EventTick ignored) {
+    public void onTick(EventTick ignored) {
         if (mc.player == null || mc.world == null) {
             reset();
             return;
         }
 
-        switch (state) {
-            case IDLE, PREPARE_TARGET -> prepareTarget();
-            case AIM_TARGET -> aimTarget();
-            case PREPARE_DISPLACEMENT -> prepareDisplacement();
-            case WAITING_FOR_SPRINT_HIT -> waitForHit();
-            case RESTORE_CAMERA -> restoreCamera();
+        KillAura aura = Instance.get(KillAura.class);
+        PlayerEntity auraTarget = (aura != null && aura.isEnabled()) ? asPlayer(aura.getTarget()) : null;
+
+        if (auraTarget == null || !validTarget(auraTarget)) {
+            if (state != State.IDLE) {
+                restore();
+            }
+            return;
+        }
+
+        if (aura.canStopSprinting()) {
+            if (state != State.WAITING_FOR_SPRINT_HIT || target != auraTarget) {
+                target = auraTarget;
+                stateTicks = 0;
+            }
+            state = State.WAITING_FOR_SPRINT_HIT;
+
+            float yaw = targetYaw(target) + displacementAngle();
+            RotationComponent.update(new Rotation(MathHelper.wrapDegrees(yaw), mc.player.getPitch()),
+                    360, 360, 360, 360, HIT_TIMEOUT, 2, false, MoveFixMode.CORRECT, OWNER);
+            return;
+        }
+
+        if (state == State.WAITING_FOR_SPRINT_HIT) {
+            if (++stateTicks >= HIT_TIMEOUT) {
+                restore();
+            }
         }
     }
 
     @EventHandler
     public void onAttack(EventAttack event) {
-        if (state != State.WAITING_FOR_SPRINT_HIT || target == null || event.getEntity() != target
-                || !validTarget(target) || !validSprintHit()) {
+        if (state != State.WAITING_FOR_SPRINT_HIT || target == null || event.getEntity() != target) {
             return;
         }
-
-        state = State.RESTORE_CAMERA;
-        stateTicks = 0;
-        clearOwner();
-        RotationComponent.getInstance().stopRotation();
+        restore();
     }
 
     @Override
@@ -67,94 +84,22 @@ public class KBDisplacement extends Module {
         super.onDisable();
     }
 
-    private void prepareTarget() {
-        if (state == State.IDLE || stateTicks++ >= TARGET_TIMEOUT || !validTarget(target)) {
-            target = findTarget();
-            stateTicks = 0;
-        }
-        if (target == null) {
-            state = State.IDLE;
-            return;
-        }
-        state = noRot.getValue() ? State.PREPARE_DISPLACEMENT : State.AIM_TARGET;
+    private static PlayerEntity asPlayer(LivingEntity entity) {
+        return entity instanceof PlayerEntity player ? player : null;
+    }
+
+    private void restore() {
+        state = State.IDLE;
         stateTicks = 0;
-    }
-
-    private void aimTarget() {
-        if (!validTarget(target) || stateTicks++ >= TARGET_TIMEOUT) {
-            state = State.PREPARE_TARGET;
-            stateTicks = 0;
-            return;
-        }
-        RotationComponent.update(Rotation.from(mc.player, target), 360, 360, 360, 360, TARGET_TIMEOUT, 2, false,
-                MoveFixMode.CORRECT, OWNER);
-        if (new Rotation(mc.player).getDelta(Rotation.from(mc.player, target)) < 2) {
-            state = State.PREPARE_DISPLACEMENT;
-            stateTicks = 0;
-        }
-    }
-
-    private void prepareDisplacement() {
-        if (!validTarget(target) || stateTicks++ >= TARGET_TIMEOUT) {
-            state = State.PREPARE_TARGET;
-            stateTicks = 0;
-            clearOwner();
-            return;
-        }
-        float yaw = targetYaw(target) + displacementAngle();
-        RotationComponent.update(new Rotation(MathHelper.wrapDegrees(yaw), mc.player.getPitch()), 360, 360, 360, 360,
-                HIT_TIMEOUT, 2, false, MoveFixMode.CORRECT, OWNER);
-        state = State.WAITING_FOR_SPRINT_HIT;
-        stateTicks = 0;
-    }
-
-    private void waitForHit() {
-        if (!validTarget(target) || stateTicks++ >= HIT_TIMEOUT) {
-            state = State.RESTORE_CAMERA;
-            stateTicks = 0;
-            clearOwner();
-            RotationComponent.getInstance().stopRotation();
-        }
-    }
-
-    private void restoreCamera() {
+        target = null;
         clearOwner();
-        if (!RotationComponent.getInstance().isRotating()) {
-            state = State.PREPARE_TARGET;
-            stateTicks = 0;
-        }
-    }
-
-    private PlayerEntity findTarget() {
-        PlayerEntity result = null;
-        double bestDistance = 4.5 * 4.5;
-        for (PlayerEntity candidate : mc.world.getPlayers()) {
-            if (!validTarget(candidate)) continue;
-            double distance = mc.player.squaredDistanceTo(candidate);
-            if (distance < bestDistance) {
-                bestDistance = distance;
-                result = candidate;
-            }
-        }
-        return result;
+        RotationComponent.getInstance().stopRotation();
     }
 
     private boolean validTarget(PlayerEntity candidate) {
-        return candidate != null && candidate != mc.player && candidate.isAlive()
+        return candidate != null && candidate.isAlive()
                 && !candidate.isSpectator() && !fullyNetherite(candidate)
                 && mc.player.squaredDistanceTo(candidate) <= 4.5 * 4.5;
-    }
-
-    private boolean validSprintHit() {
-        return target != null && mc.player.isSprinting()
-                && mc.player.getAttackCooldownProgress(0.5f) >= 0.99f
-                && !isCritical();
-    }
-
-    private boolean isCritical() {
-        return !mc.player.isOnGround() && mc.player.fallDistance > 0.0f
-                && !mc.player.getAbilities().flying && !mc.player.isClimbing()
-                && !mc.player.isTouchingWater() && !mc.player.isInLava();
     }
 
     private float targetYaw(PlayerEntity entity) {
@@ -197,6 +142,6 @@ public class KBDisplacement extends Module {
     }
 
     private enum State {
-        IDLE, PREPARE_TARGET, AIM_TARGET, PREPARE_DISPLACEMENT, WAITING_FOR_SPRINT_HIT, RESTORE_CAMERA
+        IDLE, WAITING_FOR_SPRINT_HIT
     }
 }
