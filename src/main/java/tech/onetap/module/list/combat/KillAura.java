@@ -18,6 +18,7 @@ import net.minecraft.entity.passive.FishEntity;
 import net.minecraft.entity.passive.PassiveEntity;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.item.Items;
+import net.minecraft.item.consume.UseAction;
 import net.minecraft.network.packet.c2s.play.ClientCommandC2SPacket;
 import net.minecraft.network.packet.c2s.play.PlayerInputC2SPacket;
 import net.minecraft.util.Hand;
@@ -111,6 +112,9 @@ public class KillAura extends Module {
     public final BooleanSetting breakShield = new BooleanSetting("Ломать щит", true);
     public final BooleanSetting forceBreakShield = new BooleanSetting("Ломать щит без задержки", true)
             .setVisible(breakShield::getValue);
+    public final BooleanSetting unblockShield = new BooleanSetting("Отжимать щит", false);
+    private final SliderSetting unblockShieldDelay = new SliderSetting("Отжатие: тиков до удара", ValueUnit.countable("тик", "тика", "тиков"), 2, 1, 6, 1)
+            .setVisible(unblockShield::getValue);
     private final List<net.minecraft.item.Item> AXES = List.of(
             Items.WOODEN_AXE, Items.STONE_AXE, Items.IRON_AXE,
             Items.GOLDEN_AXE, Items.DIAMOND_AXE, Items.NETHERITE_AXE
@@ -187,6 +191,10 @@ public class KillAura extends Module {
     // Поля для логики Snap (используются также в canAttack/onUpdate)
     public boolean snapActive = false;
     public int snapTimer = 0;
+
+    // Отжимать щит: 0 = idle, 1 = щит отжат, ждём удар
+    private int shieldPhase = 0;
+    private int shieldTicks = 0;
 
     public boolean isSnapActive() {
         return snapActive;
@@ -458,7 +466,8 @@ public class KillAura extends Module {
                 mc.getNetworkHandler().sendPacket(new ClientCommandC2SPacket(mc.player, ClientCommandC2SPacket.Mode.STOP_SPRINTING));
             }
 
-            if (canAttack()) {
+            boolean attackReady = handleShieldUnblock(canAttack());
+            if (attackReady) {
                 if (useResolver.getValue() && mc.player.isGliding()) {
                     mc.player.setVelocity(0, 0, 0);
                     findResolverPoint();
@@ -552,6 +561,7 @@ public class KillAura extends Module {
             razvorotikTicks = 0;
             snapActive = false;
             snapTimer = 0;
+            shieldPhase = 0;
             slothRotation.reset(this);
             sloth2Rotation.reset(this);
             if (!rotation.is("Universal")) {
@@ -593,7 +603,7 @@ public class KillAura extends Module {
         TpAura tpAura = Instance.get(TpAura.class);
         if (tpAura != null && tpAura.isPendingVaultReturn()) return false;
 
-        boolean eating = mc.player.isUsingItem();
+        boolean eating = mc.player.isUsingItem() && !isSelfBlockingShield();
 
         if (eating && stopWhileEating.getValue()) return false;
 
@@ -748,6 +758,54 @@ public class KillAura extends Module {
 
         mc.player.getInventory().selectedSlot = previousSlot;
         mc.interactionManager.syncSelectedSlot();
+    }
+
+    private boolean isSelfBlockingShield() {
+        if (mc.player == null || !mc.player.isUsingItem()) return false;
+        var active = mc.player.getActiveItem();
+        return active.isOf(Items.SHIELD) || active.getUseAction() == UseAction.BLOCK;
+    }
+
+    public boolean isShieldSuppressed() {
+        return isEnabled() && unblockShield.getValue() && shieldPhase == 1;
+    }
+
+    private boolean handleShieldUnblock(boolean attackReady) {
+        if (!unblockShield.getValue()) {
+            shieldPhase = 0;
+            return attackReady;
+        }
+
+        if (shieldPhase == 0) {
+            if (attackReady && isSelfBlockingShield() && mc.options.useKey.isPressed()) {
+                mc.interactionManager.stopUsingItem(mc.player);
+                shieldPhase = 1;
+                shieldTicks = 0;
+                return false;
+            }
+            return attackReady;
+        }
+
+        shieldTicks++;
+
+        if (!mc.options.useKey.isPressed()) {
+            shieldPhase = 0;
+            return attackReady;
+        }
+
+        if (shieldTicks < unblockShieldDelay.getIntValue() || mc.player.isUsingItem()) {
+            return false;
+        }
+
+        if (attackReady) {
+            shieldPhase = 0;
+            return true;
+        }
+
+        if (shieldTicks > unblockShieldDelay.getIntValue() + 20) {
+            shieldPhase = 0;
+        }
+        return false;
     }
 
     public boolean canStopSprinting() {
@@ -977,6 +1035,7 @@ public class KillAura extends Module {
         razvorotikTicks = 0;
         snapActive = false;
         snapTimer = 0;
+        shieldPhase = 0;
         neuroRotation.reset(this);
         Onetap.getInstance().getModuleStorage().setSpeedAcceleration(0);
 
@@ -1001,6 +1060,7 @@ public class KillAura extends Module {
         razvorotikTicks = 0;
         snapActive = false;
         snapTimer = 0;
+        shieldPhase = 0;
         isResolving = false;
         resolverPoint = null;
         neuroRotation.reset(this);

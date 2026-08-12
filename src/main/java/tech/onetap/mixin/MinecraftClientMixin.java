@@ -15,6 +15,7 @@ import tech.onetap.event.list.EventMinecraftInit;
 import tech.onetap.event.list.EventTick;
 import tech.onetap.event.list.EventTickEnd;
 import tech.onetap.module.list.combat.AutoExplosion;
+import tech.onetap.module.list.combat.KillAura;
 import tech.onetap.module.list.render.Hide;
 import tech.onetap.util.base.Instance;
 
@@ -48,8 +49,13 @@ public class MinecraftClientMixin {
     }
 
     @Inject(method = "doItemUse", at = @At(value = "HEAD"), cancellable = true)
-    private void fixAutoExplosion(CallbackInfo ci) {
-        if (Instance.get(AutoExplosion.class).getTicksToDisableRightClicks() > 0) ci.cancel();
+    private void onDoItemUse(CallbackInfo ci) {
+        if (Instance.get(AutoExplosion.class).getTicksToDisableRightClicks() > 0) {
+            ci.cancel();
+            return;
+        }
+        KillAura killAura = Instance.get(KillAura.class);
+        if (killAura != null && killAura.isShieldSuppressed()) ci.cancel();
     }
 
     @Inject(method = "render", at = @At(value = "HEAD"))
