@@ -810,7 +810,7 @@ public class KillAura extends Module {
         return false;
     }
 
-    private boolean isHitImminent(int lead) {
+    public boolean isHitImminent(int lead) {
         if (target == null || mc.player == null) return false;
         if (!isInAttackDistance(mc.player, target)) return false;
         if (ticksToAttack > lead) return false;
