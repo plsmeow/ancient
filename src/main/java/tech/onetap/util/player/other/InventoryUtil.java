@@ -490,17 +490,16 @@ public class InventoryUtil implements IMinecraft {
 
     public static int getBestArmorSlot(EquipmentSlot slot) {
         int bestSlot = -1;
-        double bestScore = -1;
+        ArmorPriority bestPriority = null;
 
         for (int i = 0; i < 36; i++) {
             ItemStack stack = mc.player.getInventory().getStack(i);
             if (!(stack.getItem() instanceof ArmorItem)) continue;
             if (getNeededArmorSlot(stack) != slot) continue;
 
-            double score = getArmorScore(stack);
-
-            if (score > bestScore) {
-                bestScore = score;
+            ArmorPriority priority = getArmorPriority(stack);
+            if (bestPriority == null || compareArmorPriority(priority, bestPriority) > 0) {
+                bestPriority = priority;
                 bestSlot = i;
             }
         }
@@ -537,30 +536,61 @@ public class InventoryUtil implements IMinecraft {
     }
 
     public static double getArmorScore(ItemStack stack) {
-        double score = 0;
-        score += getArmorPriority(stack.getItem());
+        ArmorPriority priority = getArmorPriority(stack);
+        return priority.protection() * 1_000_000D
+                + priority.otherProtection() * 10_000D
+                + priority.material() * 100D
+                + priority.unbreaking() * 10D
+                + (priority.mending() ? 1D : 0D)
+                + (priority.thorns() ? 0.1D : 0D);
+    }
 
-        var protection = mc.world.getRegistryManager()
-                .getOptional(RegistryKeys.ENCHANTMENT).get()
-                .getEntry(Enchantments.PROTECTION.getValue()).orElseThrow();
-        var unbreaking = mc.world.getRegistryManager()
-                .getOptional(RegistryKeys.ENCHANTMENT).get()
-                .getEntry(Enchantments.UNBREAKING.getValue()).orElseThrow();
-        var mending = mc.world.getRegistryManager()
-                .getOptional(RegistryKeys.ENCHANTMENT).get()
-                .getEntry(Enchantments.MENDING.getValue()).orElseThrow();
-        score += EnchantmentHelper.getLevel(protection, stack) * 0.75;
-        score += EnchantmentHelper.getLevel(unbreaking, stack) * 0.3;
-        score += EnchantmentHelper.getLevel(mending, stack) * 0.1;
+    private static ArmorPriority getArmorPriority(ItemStack stack) {
+        var enchantments = mc.world.getRegistryManager()
+                .getOptional(RegistryKeys.ENCHANTMENT).orElseThrow();
+        var protection = enchantments.getEntry(Enchantments.PROTECTION.getValue()).orElseThrow();
+        var blastProtection = enchantments.getEntry(Enchantments.BLAST_PROTECTION.getValue()).orElseThrow();
+        var fireProtection = enchantments.getEntry(Enchantments.FIRE_PROTECTION.getValue()).orElseThrow();
+        var projectileProtection = enchantments.getEntry(Enchantments.PROJECTILE_PROTECTION.getValue()).orElseThrow();
+        var unbreaking = enchantments.getEntry(Enchantments.UNBREAKING.getValue()).orElseThrow();
+        var mending = enchantments.getEntry(Enchantments.MENDING.getValue()).orElseThrow();
+        var thorns = enchantments.getEntry(Enchantments.THORNS.getValue()).orElseThrow();
 
-        double durabilityFactor = 1.0;
-
-        if (stack.isDamageable()) {
-            int max = stack.getMaxDamage();
-            int left = max - stack.getDamage();
-            durabilityFactor = Math.max(0.05, (double) left / max);
+        double durability = 1D;
+        if (stack.isDamageable() && stack.getMaxDamage() > 0) {
+            durability = (double) (stack.getMaxDamage() - stack.getDamage()) / stack.getMaxDamage();
         }
 
-        return score * durabilityFactor;
+        return new ArmorPriority(
+                EnchantmentHelper.getLevel(protection, stack),
+                EnchantmentHelper.getLevel(blastProtection, stack)
+                        + EnchantmentHelper.getLevel(fireProtection, stack)
+                        + EnchantmentHelper.getLevel(projectileProtection, stack),
+                getArmorPriority(stack.getItem()),
+                EnchantmentHelper.getLevel(unbreaking, stack),
+                EnchantmentHelper.getLevel(mending, stack) > 0,
+                EnchantmentHelper.getLevel(thorns, stack) > 0,
+                durability);
+    }
+
+    private static int compareArmorPriority(ArmorPriority left, ArmorPriority right) {
+        int comparison = Integer.compare(left.protection(), right.protection());
+        if (comparison != 0) return comparison;
+        comparison = Integer.compare(left.otherProtection(), right.otherProtection());
+        if (comparison != 0) return comparison;
+        comparison = Integer.compare(left.material(), right.material());
+        if (comparison != 0) return comparison;
+        comparison = Integer.compare(left.unbreaking(), right.unbreaking());
+        if (comparison != 0) return comparison;
+        comparison = Boolean.compare(left.mending(), right.mending());
+        if (comparison != 0) return comparison;
+        comparison = Boolean.compare(left.thorns(), right.thorns());
+        if (comparison != 0) return comparison;
+        double durabilityDifference = left.durability() - right.durability();
+        return Math.abs(durabilityDifference) >= 0.25D ? Double.compare(left.durability(), right.durability()) : 0;
+    }
+
+    private record ArmorPriority(int protection, int otherProtection, int material, int unbreaking,
+                                 boolean mending, boolean thorns, double durability) {
     }
 }
