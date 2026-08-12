@@ -44,6 +44,7 @@ public final class DefaultCommands {
                 new AICommand(),
                 new BotCommand(),
                 new BlockEspCommand(),
+                new NukerCommand(),
                 new TPLootCommand(),
                 new TargetCommand(),
                 new PrefixCommand()

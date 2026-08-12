@@ -22,16 +22,18 @@ import tech.onetap.module.settings.BooleanSetting;
 import tech.onetap.module.settings.ModeSetting;
 import tech.onetap.module.settings.SliderSetting;
 import tech.onetap.util.math.RotationUtil;
-import tech.onetap.util.render.math.GCDFixer;
 import tech.onetap.util.render.providers.ColorProvider;
+import tech.onetap.util.rotation.MoveFixMode;
 import tech.onetap.util.rotation.Rotation;
 import tech.onetap.util.rotation.RotationComponent;
 import tech.onetap.util.text.ValueUnit;
+import net.minecraft.registry.tag.ItemTags;
 
 @ModuleInformation(moduleName = "InstantRebreak", moduleCategory = ModuleCategory.PLAYER)
 public class InstantRebreak extends Module {
 
     private final SliderSetting tickDelay = new SliderSetting("Задержка", ValueUnit.countable("тик", "тика", "тиков"), 0, 0, 20, 1);
+    private final BooleanSetting pick = new BooleanSetting("Только кирка", true);
     private final BooleanSetting rotate = new BooleanSetting("Ротация", true);
     private final BooleanSetting render = new BooleanSetting("Рендер", true);
     private final ModeSetting shapeMode = new ModeSetting("Режим рендера", "Both", "Both", "Lines", "Sides");
@@ -66,6 +68,8 @@ public class InstantRebreak extends Module {
     @Override
     public void onDisable() {
         blockPos = null;
+        RotationComponent.getInstance().clearMoveFixMode("InstantRebreak");
+        RotationComponent.getInstance().stopRotation();
         super.onDisable();
     }
 
@@ -84,31 +88,14 @@ public class InstantRebreak extends Module {
 
         if (ticks >= tickDelay.getValue()) {
             ticks = 0;
-
-            if (shouldMine()) {
-                if (rotate.getValue()) {
-                    // 1. Точно как в KillAura: рассчитываем центр блока через RotationUtil.calculate
-                    Vec3d blockCenter = Vec3d.ofCenter(blockPos);
-                    Rotation rot = new Rotation(RotationUtil.calculate(blockCenter));
-
-                    float yaw = rot.getYaw();
-                    float pitch = rot.getPitch();
-
-                    // 2. Применяем фирменный GCD Фикс из утилит твоего софта
-                    float gcd = GCDFixer.getGCDValue();
-                    if (gcd > 0.0f) {
-                        yaw -= (yaw - mc.player.getYaw()) % gcd;
-                        pitch -= (pitch - mc.player.getPitch()) % gcd;
-                    }
-
-                    // 3. Отправляем ротацию на сервер.
-                    // Последний аргумент выставлен в false (clientLook) -> голова на экране НЕ дергается!
-                    RotationComponent.update(new Rotation(yaw, pitch), 360, 360, 360, 360, 0, 1, false);
-                }
-
-                sendPacket();
-                mc.getNetworkHandler().sendPacket(new HandSwingC2SPacket(Hand.MAIN_HAND));
+            if (!shouldMine()) return;
+            if (rotate.getValue()) {
+                Rotation target = new Rotation(RotationUtil.calculate(Vec3d.ofCenter(blockPos)));
+                RotationComponent.update(target, 360, 360, 180, 180, 2, 1, false, MoveFixMode.FREE, "InstantRebreak");
+                if (new Rotation(mc.player).getDelta(target) > 1.5f) return;
             }
+            sendPacket();
+            mc.getNetworkHandler().sendPacket(new HandSwingC2SPacket(Hand.MAIN_HAND));
         } else {
             ticks++;
         }
@@ -116,22 +103,18 @@ public class InstantRebreak extends Module {
 
     public void sendPacket() {
         if (mc.interactionManager == null || mc.world == null || blockPos == null) return;
-
         Direction side = direction == null ? Direction.UP : direction;
         mc.interactionManager.sendSequencedPacket(mc.world, sequence -> new PlayerActionC2SPacket(
-                PlayerActionC2SPacket.Action.STOP_DESTROY_BLOCK,
-                blockPos,
-                side,
-                sequence
-        ));
+                PlayerActionC2SPacket.Action.STOP_DESTROY_BLOCK, blockPos, side, sequence));
     }
 
     public boolean shouldMine() {
-        if (blockPos == null || mc.world == null) return false;
-
+        if (blockPos == null || mc.world == null || mc.world.isOutOfHeightLimit(blockPos.getY())) return false;
         var state = mc.world.getBlockState(blockPos);
-        return !state.isAir() && state.getHardness(mc.world, blockPos) >= 0;
+        if (state.isAir() || state.getHardness(mc.world, blockPos) < 0) return false;
+        return !pick.getValue() || mc.player.getMainHandStack().isIn(ItemTags.PICKAXES);
     }
+
 
     private void renderBlockOverlay(MatrixStack matrices, Camera camera) {
         if (blockPos == null || !shouldMine()) return;
