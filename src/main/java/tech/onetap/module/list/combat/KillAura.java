@@ -90,6 +90,7 @@ public class KillAura extends Module {
             "SpookyTime",
             "Universal",
             "GrimFun",
+            "Grim 1.20.4",
             "Neuro",
             "AresMine"
     );
@@ -159,6 +160,7 @@ public class KillAura extends Module {
     private final SpookyTimeRotation spookyTimeRotation = new SpookyTimeRotation();
     private final UniversalRotation universalRotation = new UniversalRotation();
     private final GrimFunRotation grimFunRotation = new GrimFunRotation();
+    private final Grim1204Rotation grim1204Rotation = new Grim1204Rotation();
     private final NeuroRotation neuroRotation = new NeuroRotation();
     private final AresMineRotation aresMineRotation = new AresMineRotation();
 
@@ -434,6 +436,11 @@ public class KillAura extends Module {
             case "Funtime" -> funtimeRotation.update(this, target);
             case "SpookyTime" -> spookyTimeRotation.update(this, target);
             case "Universal" -> universalRotation.update(this, target);
+            case "Grim 1.20.4" -> {
+                grim1204Rotation.update(this, target);
+                lastYaw = grim1204Rotation.getRotationYaw();
+                lastPitch = grim1204Rotation.getRotationPitch();
+            }
             case "GrimFun" -> grimFunRotation.update(this, target);
             case "Neuro" -> neuroRotation.update(this, target);
             case "AresMine" -> aresMineRotation.update(this, target);
@@ -510,12 +517,20 @@ public class KillAura extends Module {
                     crits.doCrit();
                 }
 
+                if (rotation.is("Grim 1.20.4")) {
+                    grim1204Rotation.sendRotationPacket(this);
+                }
+
                 mc.interactionManager.attackEntity(mc.player, target);
 
                 crits.killAuraTriggered = false;
                 maceKill.killAuraTriggered = false;
 
                 mc.player.swingHand(breakSwing.getValue() ? Hand.OFF_HAND : Hand.MAIN_HAND);
+
+                if (rotation.is("Grim 1.20.4")) {
+                    grim1204Rotation.sendResetPacket(this);
+                }
 
                 if (boatAuraMoved) {
                     boatAura.afterAttack();
@@ -568,6 +583,7 @@ public class KillAura extends Module {
                 universalRotation.reset(this);
             }
             grimFunRotation.reset(this);
+            grim1204Rotation.reset(this);
             neuroRotation.reset(this);
             aresMineRotation.reset(this);
         }
@@ -1051,6 +1067,7 @@ public class KillAura extends Module {
         snapActive = false;
         snapTimer = 0;
         shieldPhase = 0;
+        grim1204Rotation.reset(this);
         neuroRotation.reset(this);
         Onetap.getInstance().getModuleStorage().setSpeedAcceleration(0);
 
@@ -1079,6 +1096,7 @@ public class KillAura extends Module {
         isResolving = false;
         resolverPoint = null;
         neuroRotation.reset(this);
+        grim1204Rotation.reset(this);
         aresMineRotation.reset(this);
         Onetap.getInstance().getModuleStorage().setSpeedAcceleration(0);
         Onetap.getInstance().getModuleStorage().setRandomness(1);
