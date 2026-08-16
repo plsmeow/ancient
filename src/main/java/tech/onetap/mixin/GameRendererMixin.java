@@ -13,7 +13,9 @@ import org.objectweb.asm.Opcodes;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
-import org.spongepowered.asm.mixin.injection.Redirect;
+import com.llamalad7.mixinextras.injector.ModifyExpressionValue;
+import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
+import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import tech.onetap.event.list.EventWorldRender;
 import tech.onetap.util.rotation.FreeLookComponent;
@@ -32,14 +34,14 @@ public class GameRendererMixin {
         DrawUtil.onRender3D(event.getMatrixStack());
     }
 
-    @Redirect(
+    @WrapOperation(
             method = "findCrosshairTarget",
             at = @At(value = "INVOKE", target = "Lnet/minecraft/entity/Entity;raycast(DFZ)Lnet/minecraft/util/hit/HitResult;")
     )
-    private HitResult freelookBlockRaycast(Entity camera, double maxDistance, float tickDelta, boolean includeFluids) {
+    private HitResult freelookBlockRaycast(Entity camera, double maxDistance, float tickDelta, boolean includeFluids, Operation<HitResult> original) {
         Vec3d direction = FreeLookComponent.interactionDirection();
         if (direction == null) {
-            return camera.raycast(maxDistance, tickDelta, includeFluids);
+            return original.call(camera, maxDistance, tickDelta, includeFluids);
         }
 
         Vec3d eye = camera.getCameraPosVec(tickDelta);
@@ -52,12 +54,12 @@ public class GameRendererMixin {
                 camera));
     }
 
-    @Redirect(
+    @ModifyExpressionValue(
             method = "findCrosshairTarget",
             at = @At(value = "INVOKE", target = "Lnet/minecraft/entity/Entity;getRotationVec(F)Lnet/minecraft/util/math/Vec3d;")
     )
-    private Vec3d freelookEntityDirection(Entity camera, float tickDelta) {
+    private Vec3d freelookEntityDirection(Vec3d original) {
         Vec3d direction = FreeLookComponent.interactionDirection();
-        return direction != null ? direction : camera.getRotationVec(tickDelta);
+        return direction != null ? direction : original;
     }
 }

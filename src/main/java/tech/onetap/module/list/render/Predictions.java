@@ -4,15 +4,22 @@ import meteordevelopment.orbit.EventHandler;
 import net.minecraft.block.Blocks;
 import net.minecraft.client.util.math.Vector2f;
 import net.minecraft.entity.Entity;
+import net.minecraft.entity.EntityType;
 import net.minecraft.entity.ItemEntity;
 import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.projectile.PersistentProjectileEntity;
 import net.minecraft.entity.projectile.TridentEntity;
 import net.minecraft.entity.projectile.thrown.ThrownItemEntity;
+import net.minecraft.entity.projectile.thrown.EggEntity;
+import net.minecraft.entity.projectile.thrown.EnderPearlEntity;
+import net.minecraft.entity.projectile.thrown.ExperienceBottleEntity;
+import net.minecraft.entity.projectile.thrown.PotionEntity;
+import net.minecraft.entity.projectile.thrown.SnowballEntity;
 import net.minecraft.item.Items;
 import net.minecraft.item.ItemStack;
 import net.minecraft.registry.tag.FluidTags;
 import net.minecraft.util.hit.HitResult;
+import net.minecraft.util.Hand;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.Vec3d;
@@ -48,6 +55,8 @@ public class Predictions extends Module {
             new BooleanSetting("Снежки/яйца", true),
             new BooleanSetting("Предметы", true)
     );
+
+    private final BooleanSetting inHand = new BooleanSetting("В руке", false);
 
     private final List<Point> points = new ArrayList<>();
 
@@ -94,35 +103,83 @@ public class Predictions extends Module {
     @EventHandler
     public void onWorldRender(EventWorldRender e) {
         points.clear();
-        getProjectiles().forEach(entity -> {
-            Vec3d motion = entity.getVelocity();
-            Vec3d pos = entity.getPos();
-            Vec3d prevPos;
-            int ticks = 0;
+        getProjectiles().forEach(this::traceProjectile);
 
-            for (int i = 0; i < 300; i++) {
-                prevPos = pos;
-                pos = pos.add(motion);
-                motion = calculateMotion(entity, prevPos, motion);
+        if (inHand.getValue()) {
+            Entity held = createHeldThrowable();
+            if (held != null) traceProjectile(held);
+        }
+    }
 
-                HitResult result = RaytraceUtil.raycast(prevPos, pos, RaycastContext.ShapeType.COLLIDER, entity);
-                if (!result.getType().equals(HitResult.Type.MISS)) {
-                    pos = result.getPos();
-                }
+    private void traceProjectile(Entity entity) {
+        Vec3d motion = entity.getVelocity();
+        Vec3d pos = entity.getPos();
+        Vec3d prevPos;
+        int ticks = 0;
 
-                DrawUtil.drawLine(prevPos, pos, ColorProvider.setAlpha(ColorProvider.getThemeColor(), MathHelper.clamp(i / 25.0f, 0, 1) * 255), 2, false);
+        for (int i = 0; i < 300; i++) {
+            prevPos = pos;
+            pos = pos.add(motion);
+            motion = calculateMotion(entity, prevPos, motion);
 
-                Vec3d finalPrevPos = prevPos, finalPos = pos;
-                boolean inEntity = StreamSupport.stream(mc.world.getEntities().spliterator(), false)
-                        .filter(ent -> ent instanceof LivingEntity living && living != mc.player && living.isAlive())
-                        .anyMatch(ent -> ent.getBoundingBox().expand(0.25).intersects(finalPrevPos, finalPos));
-                if (result.getType().equals(HitResult.Type.BLOCK) || pos.y < -128 || inEntity || result.getType().equals(HitResult.Type.ENTITY)) {
-                    BreakingBad(entity, pos, ticks);
-                    break;
-                }
-                ticks++;
+            HitResult result = RaytraceUtil.raycast(prevPos, pos, RaycastContext.ShapeType.COLLIDER, entity);
+            if (!result.getType().equals(HitResult.Type.MISS)) {
+                pos = result.getPos();
             }
-        });
+
+            DrawUtil.drawLine(prevPos, pos, ColorProvider.setAlpha(ColorProvider.getThemeColor(), MathHelper.clamp(i / 25.0f, 0, 1) * 255), 2, false);
+
+            Vec3d finalPrevPos = prevPos, finalPos = pos;
+            boolean inEntity = StreamSupport.stream(mc.world.getEntities().spliterator(), false)
+                    .filter(ent -> ent instanceof LivingEntity living && living != mc.player && living.isAlive())
+                    .anyMatch(ent -> ent.getBoundingBox().expand(0.25).intersects(finalPrevPos, finalPos));
+            if (result.getType().equals(HitResult.Type.BLOCK) || pos.y < -128 || inEntity || result.getType().equals(HitResult.Type.ENTITY)) {
+                BreakingBad(entity, pos, ticks);
+                break;
+            }
+            ticks++;
+        }
+    }
+
+    private Entity createHeldThrowable() {
+        for (Hand hand : Hand.values()) {
+            Entity entity = throwableFromStack(mc.player.getStackInHand(hand));
+            if (entity != null) return entity;
+        }
+        return null;
+    }
+
+    private Entity throwableFromStack(ItemStack stack) {
+        ThrownItemEntity entity;
+        float roll, speed;
+        if (stack.isOf(Items.ENDER_PEARL) && targets.isEnabled("Эндерперлы")) {
+            entity = new EnderPearlEntity(EntityType.ENDER_PEARL, mc.world);
+            roll = 0f;
+            speed = 1.5f;
+        } else if (stack.isOf(Items.SNOWBALL) && targets.isEnabled("Снежки/яйца")) {
+            entity = new SnowballEntity(EntityType.SNOWBALL, mc.world);
+            roll = 0f;
+            speed = 1.5f;
+        } else if (stack.isOf(Items.EGG) && targets.isEnabled("Снежки/яйца")) {
+            entity = new EggEntity(EntityType.EGG, mc.world);
+            roll = 0f;
+            speed = 1.5f;
+        } else if (stack.isOf(Items.EXPERIENCE_BOTTLE) && targets.isEnabled("Опыт")) {
+            entity = new ExperienceBottleEntity(EntityType.EXPERIENCE_BOTTLE, mc.world);
+            roll = -20f;
+            speed = 0.7f;
+        } else if ((stack.isOf(Items.SPLASH_POTION) || stack.isOf(Items.LINGERING_POTION)) && targets.isEnabled("Зелья")) {
+            entity = new PotionEntity(EntityType.POTION, mc.world);
+            roll = -20f;
+            speed = 0.5f;
+        } else {
+            return null;
+        }
+
+        entity.setItem(stack);
+        entity.setPosition(mc.player.getX(), mc.player.getEyeY() - 0.1, mc.player.getZ());
+        entity.setVelocity(mc.player, mc.player.getPitch(), mc.player.getYaw(), roll, speed, 0.0f);
+        return entity;
     }
 
     public List<Entity> getProjectiles() {

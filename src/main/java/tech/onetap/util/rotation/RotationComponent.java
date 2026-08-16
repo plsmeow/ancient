@@ -128,9 +128,19 @@ public class RotationComponent extends Component {
 
         if (effective == MoveFixMode.FREE) {
             fixMovement(event, viewYaw, serverYaw);
-        } else {
+        } else if (effective == MoveFixMode.CORRECT) {
             fixMovement(event, viewYaw);
         }
+    }
+
+    /**
+     * NONE-режим коррекции активен: вход не трогаем, а yaw для расчёта скорости
+     * подменяем на взгляд FreeLook (миксин на Entity.updateVelocity).
+     */
+    public boolean isFreelookMovement() {
+        return isRotating()
+                && getEffectiveMoveFixMode() == MoveFixMode.NONE
+                && FreeLookComponent.interactionActive();
     }
 
     private void resetRotation() {

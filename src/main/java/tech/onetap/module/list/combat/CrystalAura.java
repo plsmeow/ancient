@@ -48,7 +48,7 @@ public class CrystalAura extends Module {
     private final BooleanSetting autoBreak = new BooleanSetting("Взрыв", true);
     private final BooleanSetting antiSuicide = new BooleanSetting("Анти суицид", true);
     private final BooleanSetting ignoreTerrain = new BooleanSetting("Ignore terrain", false);
-    private final ModeSetting moveFix = new ModeSetting("MoveFix", "Сфокусированная", "Свободный", "Сфокусированная");
+    private final ModeSetting moveFix = new ModeSetting("MoveFix", "Сфокусированная", "Свободный", "Сфокусированная", "None");
     private final ModeSetting rotationMode = new ModeSetting("Ротация", "Vanilla", "Vanilla", "None");
     private final SliderSetting targetRange = new SliderSetting("Target Range", 10.0f, 1.0f, 16.0f, 0.1f);
     private final SliderSetting placeRange = new SliderSetting("Place Range", 4.5f, 1.0f, 6.0f, 0.1f);
@@ -341,7 +341,9 @@ public class CrystalAura extends Module {
     }
 
     private MoveFixMode getMoveFixMode() {
-        return moveFix.is("Свободный") ? MoveFixMode.FREE : MoveFixMode.CORRECT;
+        if (moveFix.is("Свободный")) return MoveFixMode.FREE;
+        if (moveFix.is("None")) return MoveFixMode.NONE;
+        return MoveFixMode.CORRECT;
     }
 
     private Hand getCrystalHand() {

@@ -101,7 +101,7 @@ public class KillAura extends Module {
             new BooleanSetting("Монстры", true),
             new BooleanSetting("Животные", true)
     );
-    public final ModeSetting moveFix = new ModeSetting("MoveFix", "Сфокусированная", "Свободный", "Сфокусированная");
+    public final ModeSetting moveFix = new ModeSetting("MoveFix", "Сфокусированная", "Свободный", "Сфокусированная", "None");
     public final SliderSetting snapHoldTicks = new SliderSetting("Snap tick", ValueUnit.countable("тик", "тика", "тиков"), 2, 1, 10, 1)
             .setVisible(() -> rotation.is("Snap"));
 
@@ -203,7 +203,9 @@ public class KillAura extends Module {
     }
 
     public tech.onetap.util.rotation.MoveFixMode getMoveFixMode() {
-        return moveFix.is("Свободный") ? tech.onetap.util.rotation.MoveFixMode.FREE : tech.onetap.util.rotation.MoveFixMode.CORRECT;
+        if (moveFix.is("Свободный")) return tech.onetap.util.rotation.MoveFixMode.FREE;
+        if (moveFix.is("None")) return tech.onetap.util.rotation.MoveFixMode.NONE;
+        return tech.onetap.util.rotation.MoveFixMode.CORRECT;
     }
 
     private final StopWatch turnaroundTimer = new StopWatch();

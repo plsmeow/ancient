@@ -1,17 +1,21 @@
 package tech.onetap.mixin;
 
 import net.minecraft.client.network.ClientPlayerEntity;
+import net.minecraft.client.MinecraftClient;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.LivingEntity;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
+import com.llamalad7.mixinextras.injector.ModifyExpressionValue;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import tech.onetap.event.list.EventChangeSprint;
 import tech.onetap.module.list.player.NoPush;
 import tech.onetap.module.list.render.SwingAnimations;
 import tech.onetap.util.base.Instance;
+import tech.onetap.util.rotation.FreeLookComponent;
+import tech.onetap.util.rotation.RotationComponent;
 
 @Mixin(LivingEntity.class)
 public class LivingEntityMixin {
@@ -38,6 +42,14 @@ public class LivingEntityMixin {
             var speed = (int) swing.speed.getValue();
             cir.setReturnValue(25 - speed * 2);
         }
+    }
+
+    @ModifyExpressionValue(method = "jump", at = @At(value = "INVOKE", target = "Lnet/minecraft/entity/LivingEntity;getYaw()F"))
+    private float freelookJumpYaw(float original) {
+        if ((Object) this == MinecraftClient.getInstance().player && RotationComponent.getInstance().isFreelookMovement()) {
+            return FreeLookComponent.interactionYaw();
+        }
+        return original;
     }
 
 }
