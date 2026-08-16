@@ -34,28 +34,23 @@ public final class DragonFly extends Module {
     public void onDisable() {
         super.onDisable();
         if (mc.player != null) {
-            // Возвращаем стандартную скорость полёта
             mc.player.getAbilities().setFlySpeed(0.05f);
-            mc.player.sendAbilitiesUpdate();
         }
     }
+
 
     @EventHandler
     private void onUpdate(EventPlayerUpdate e) {
         if (mc.player == null) return;
 
-        // Работает только если игрок в режиме полёта (креатив / команда)
         if (mc.player.getAbilities().flying) {
-            // Устанавливаем ускоренную скорость (по горизонтали)
             float flySpeed = (float) (speedX.getValue() * 0.05f);
             mc.player.getAbilities().setFlySpeed(flySpeed);
-            mc.player.sendAbilitiesUpdate();
         } else {
-            // Если полёт выключен — сбрасываем на стандарт
             mc.player.getAbilities().setFlySpeed(0.05f);
-            mc.player.sendAbilitiesUpdate();
         }
     }
+
 
     @EventHandler
     private void onStrafe(MoveInputEvent e) {
