@@ -10,6 +10,7 @@ import net.minecraft.util.hit.BlockHitResult;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Direction;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
@@ -17,6 +18,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import tech.onetap.event.list.EventAttack;
 import tech.onetap.event.list.EventAttackBlock;
 import tech.onetap.event.list.EventRightClickBlock;
+import tech.onetap.util.rotation.FreeLookComponent;
 
 @Mixin(ClientPlayerInteractionManager.class)
 public class ClientPlayerInteractionManagerMixin {
@@ -44,5 +46,30 @@ public class ClientPlayerInteractionManagerMixin {
         var event = new EventAttackBlock(pos, direction);
         event.post();
         if (event.isCancelled()) cir.setReturnValue(false);
+    }
+
+    @Unique private float onetap$savedYaw;
+    @Unique private float onetap$savedPitch;
+    @Unique private boolean onetap$rotationSwapped;
+
+    @Inject(method = "interactItem", at = @At("HEAD"))
+    private void freelookUseHead(PlayerEntity player, Hand hand, CallbackInfoReturnable<ActionResult> cir) {
+        if (!FreeLookComponent.interactionActive()) {
+            onetap$rotationSwapped = false;
+            return;
+        }
+        onetap$savedYaw = player.getYaw();
+        onetap$savedPitch = player.getPitch();
+        onetap$rotationSwapped = true;
+        player.setYaw(FreeLookComponent.interactionYaw());
+        player.setPitch(FreeLookComponent.interactionPitch());
+    }
+
+    @Inject(method = "interactItem", at = @At("RETURN"))
+    private void freelookUseReturn(PlayerEntity player, Hand hand, CallbackInfoReturnable<ActionResult> cir) {
+        if (!onetap$rotationSwapped) return;
+        onetap$rotationSwapped = false;
+        player.setYaw(onetap$savedYaw);
+        player.setPitch(onetap$savedPitch);
     }
 }
