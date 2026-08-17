@@ -25,7 +25,7 @@ public class NoRotRotation extends RotationMode {
         var angle = new Rotation(RotationUtil.calculate(target.getBoundingBox().getCenter().add(0, (float) Math.abs(Math.sin(time * 19)) / 2, 0)));
         var predict = PredictUtils.getPredicted(target, ka.predictValue.getValue() + 2.5f);
 
-        if (target.isGliding() && ka.predictate.getValue() && !ka.isTurnaroundActive) angle = new Rotation(predict);
+        if (target.isGliding() && ka.isElytraPredictActive() && !ka.isTurnaroundActive) angle = new Rotation(predict);
 
         if (!RaytraceUtil.rayTrace(mc.player.getRotationVector(), 999, target.getBoundingBox().expand(-0.2f))) {
             ka.speedAcceleration += (float) Math.abs(Math.sin(time * 19)) / 666;

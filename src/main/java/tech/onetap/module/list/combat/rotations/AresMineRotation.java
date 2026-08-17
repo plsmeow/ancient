@@ -191,14 +191,14 @@ public class AresMineRotation extends RotationMode implements IMinecraft {
     }
 
     private Vec3d getPredictedPoint(KillAura ka, LivingEntity target, Vec3d center) {
-        if (target.isGliding() && ka.predictate.getValue()) {
+        if (target.isGliding() && ka.isElytraPredictActive()) {
             return PredictUtils.getPredicted(target, ka.predictValue.getValue());
         }
         return center;
     }
 
     private boolean shouldUseElytraPredict(KillAura ka, LivingEntity target) {
-        return target.isGliding() && ka.predictate.getValue();
+        return target.isGliding() && ka.isElytraPredictActive();
     }
 
     @Override

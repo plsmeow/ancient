@@ -135,7 +135,7 @@ public class UniversalRotation extends RotationMode {
         Vec3d freshAimPoint = getAimPoint(ka, target);
 
         // Предикт элитры.
-        if (target.isGliding() && ka.predictate.getValue() && !ka.isTurnaroundActive) {
+        if (target.isGliding() && ka.isElytraPredictActive() && !ka.isTurnaroundActive) {
             Vec3d predicted = PredictUtils.getPredicted(target, ka.predictValue.getValue());
             freshAimPoint = freshAimPoint.lerp(predicted, 0.5f);
         }

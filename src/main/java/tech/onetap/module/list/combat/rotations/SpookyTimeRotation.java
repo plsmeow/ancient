@@ -217,7 +217,7 @@ public class SpookyTimeRotation extends RotationMode {
     }
 
     private Vec3d getPredictedPoint(KillAura ka, LivingEntity target, Vec3d point) {
-        if (target.isGliding() && ka.predictate.getValue() && !ka.isTurnaroundActive) {
+        if (target.isGliding() && ka.isElytraPredictActive() && !ka.isTurnaroundActive) {
             Vec3d predictedCenter = PredictUtils.getPredicted(target, ka.predictValue.getValue());
             Vec3d currentCenter = target.getPos().add(0.0, target.getHeight(), 0.0);
             return point.add(predictedCenter.subtract(currentCenter));

@@ -46,7 +46,7 @@ public class SlothRotation extends RotationMode {
 
         // Получение целевой точки
         Vec3d point = ka.resolveMultipoint(target, BestPoint.getPoint2(target), 6);
-        if (target.isGliding() && ka.predictate.getValue() && !ka.isTurnaroundActive) {
+        if (target.isGliding() && ka.isElytraPredictActive() && !ka.isTurnaroundActive) {
             point = PredictUtils.getPredicted(target, ka.predictValue.getValue());
         }
 

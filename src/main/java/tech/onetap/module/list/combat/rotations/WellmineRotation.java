@@ -30,7 +30,7 @@ public class WellmineRotation extends RotationMode {
         Box box = target.getBoundingBox();
         Vec3d vector = ka.resolveMultipoint(target, BestPoint.getMultipoint(target, 6), 6);
 
-        if (target.isGliding() && ka.predictate.getValue() && !ka.isTurnaroundActive) {
+        if (target.isGliding() && ka.isElytraPredictActive() && !ka.isTurnaroundActive) {
             vector = PredictUtils.getPredicted(target, ka.predictValue.getValue());
         }
 

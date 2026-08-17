@@ -19,7 +19,7 @@ public class LonyGriefRotation extends RotationMode {
     public void update(KillAura ka, LivingEntity target) {
         var mc = ka.mc;
 
-        Vec3d point = target.isGliding() && ka.predictate.getValue() && !ka.isTurnaroundActive ? PredictUtils.getPredicted(target, ka.predictValue.getValue()) : ka.resolveMultipoint(target, BestPoint.getPoint(target), 6);
+        Vec3d point = target.isGliding() && ka.isElytraPredictActive() && !ka.isTurnaroundActive ? PredictUtils.getPredicted(target, ka.predictValue.getValue()) : ka.resolveMultipoint(target, BestPoint.getPoint(target), 6);
 
         var angle = new Rotation(RotationUtil.calculate(point));
         float targetYaw = angle.getYaw();

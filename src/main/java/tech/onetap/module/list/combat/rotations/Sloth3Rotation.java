@@ -39,7 +39,7 @@ public class Sloth3Rotation extends RotationMode {
         }
 
         Vec3d optimalPoint = multiPoints.get(ThreadLocalRandom.current().nextInt(multiPoints.size()));
-        if (target.isGliding() && ka.predictate.getValue() && !ka.isTurnaroundActive) {
+        if (target.isGliding() && ka.isElytraPredictActive() && !ka.isTurnaroundActive) {
             optimalPoint = PredictUtils.getPredicted(target, ka.predictValue.getValue());
         }
 

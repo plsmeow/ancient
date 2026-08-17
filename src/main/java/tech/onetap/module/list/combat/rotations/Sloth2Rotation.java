@@ -889,7 +889,7 @@ public class Sloth2Rotation extends RotationMode implements IMinecraft {
     }
 
     private Vec3d resolveElytraAimPoint(KillAura ka, LivingEntity target, Vec3d eye, double dist) {
-        if (target.isGliding() && ka.predictate.getValue() && !ka.isTurnaroundActive) return PredictUtils.getPredicted(target, ka.predictValue.getValue());
+        if (target.isGliding() && ka.isElytraPredictActive() && !ka.isTurnaroundActive) return PredictUtils.getPredicted(target, ka.predictValue.getValue());
         Vec3d body = BestPoint.getNearestPoint(target);
         if (body == null) {
             Box box = target.getBoundingBox();

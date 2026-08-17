@@ -21,18 +21,19 @@ import net.minecraft.item.Items;
 import net.minecraft.item.consume.UseAction;
 import net.minecraft.network.packet.c2s.play.ClientCommandC2SPacket;
 import net.minecraft.network.packet.c2s.play.PlayerInputC2SPacket;
+import net.minecraft.network.packet.c2s.play.PlayerMoveC2SPacket;
 import net.minecraft.util.Hand;
 import net.minecraft.util.PlayerInput;
-import net.minecraft.util.hit.HitResult;
 import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.Vec3d;
-import net.minecraft.world.RaycastContext;
 import org.joml.Matrix4f;
 import tech.onetap.Onetap;
 import tech.onetap.event.EventGameUpdate;
 import tech.onetap.event.list.EventChangeSprint;
 import tech.onetap.event.list.EventHUD;
+import tech.onetap.event.list.EventPacket;
 import tech.onetap.event.list.EventTick;
+import tech.onetap.event.list.EventTickEnd;
 import tech.onetap.module.Module;
 import tech.onetap.module.ModuleCategory;
 import tech.onetap.module.ModuleInformation;
@@ -106,7 +107,11 @@ public class KillAura extends Module {
             .setVisible(() -> rotation.is("Snap"));
 
     public final SliderSetting distance = new SliderSetting("Дистанция", ValueUnit.countable("блок", "блока", "блоков"), 3, 2, 6, 0.1f);
-    public final SliderSetting elytraDistance = new SliderSetting("Дистанция (Элитры)", 300, 3, 500, 10);
+    public final BooleanSetting elytraTarget = new BooleanSetting("ElytraTarget", true);
+    public final BooleanSetting smoothElytraRotation = new BooleanSetting("Плавная ротация (Elytra)", false)
+            .setVisible(() -> elytraTarget.getValue());
+    public final SliderSetting elytraDistance = new SliderSetting("Дистанция (Элитры)", 300, 3, 500, 10)
+            .setVisible(() -> elytraTarget.getValue());
     private final SliderSetting preRotation = new SliderSetting("Пре дистанция", ValueUnit.countable("блок", "блока", "блоков"), 1.5f, 0, 3, 0.1f);
     private final BooleanSetting stopWhileEating = new BooleanSetting("Не бить при еде", false);
     public final BooleanSetting breakSwing = new BooleanSetting("Ломать swing", false);
@@ -122,17 +127,23 @@ public class KillAura extends Module {
     );
     public final BooleanSetting raycastCheck = new BooleanSetting("Проверка на наведение", true);
     public final BooleanSetting smartAim = new BooleanSetting("Умное наведение", true);
-    public final BooleanSetting predictate = new BooleanSetting("Предикт на элитрах", true);
-    public final SliderSetting predictValue = new SliderSetting("Предикт значение", 3, 1, 5, 0.1f);
+    public final BooleanSetting predictate = new BooleanSetting("Предикт на элитрах", true)
+            .setVisible(() -> elytraTarget.getValue());
+    public final SliderSetting predictValue = new SliderSetting("Предикт значение", 3, 1, 5, 0.1f)
+            .setVisible(() -> elytraTarget.getValue() && predictate.getValue());
 
-    public final BooleanSetting hitAfterOvertake = new BooleanSetting("Бить токо после перегона", true);
+    public final BooleanSetting hitAfterOvertake = new BooleanSetting("Бить токо после перегона", true)
+            .setVisible(() -> elytraTarget.getValue());
 
     public final BooleanSetting onlySpace = new BooleanSetting("Только с пробелом", true);
     public final BooleanSetting clientLook = new BooleanSetting("Клиент лук", true);
-    public final BooleanSetting showPredictPoint = new BooleanSetting("Показать предикт точку", true);
-    public final BooleanSetting elytraTurnaround = new BooleanSetting("Разворот на элитрах", true);
+    public final BooleanSetting showPredictPoint = new BooleanSetting("Показать предикт точку", true)
+            .setVisible(() -> elytraTarget.getValue());
+    public final BooleanSetting elytraTurnaround = new BooleanSetting("Разворот на элитрах", true)
+            .setVisible(() -> elytraTarget.getValue());
 
-    public static final BooleanSetting useResolver = new BooleanSetting("Резольвер (Elytra)", true);
+    public final BooleanSetting freeze = new BooleanSetting("Freeze", false)
+            .setVisible(() -> elytraTarget.getValue());
 
     public final SliderSetting neuroYawMultiplier = new SliderSetting("Yaw множитель", 1.0, 0.5, 2.0, 0.05)
             .setVisible(() -> rotation.is("Neuro"));
@@ -140,11 +151,6 @@ public class KillAura extends Module {
             .setVisible(() -> rotation.is("Neuro"));
     public final BooleanSetting neuroDebug = new BooleanSetting("Neuro отладка", false)
             .setVisible(() -> rotation.is("Neuro"));
-
-
-    public boolean isResolving = false;
-    public Vec3d resolverPoint = null;
-    private final StopWatch resolverTimer = new StopWatch();
 
     // Экземпляры ротаций (каждая хранит своё внутреннее состояние)
     private final VanillaRotation vanillaRotation = new VanillaRotation();
@@ -190,6 +196,12 @@ public class KillAura extends Module {
     public float obhod;
     public static long lastPhysicalMoveTime;
 
+    private boolean freezeActive = false;
+    private double freezeLockX, freezeLockZ;
+    private int freezeTicks = 0;
+    private boolean freezeExpired = false;
+    private static final int FREEZE_MAX_TICKS = 40;
+
     // Поля для логики Snap (используются также в canAttack/onUpdate)
     public boolean snapActive = false;
     public int snapTimer = 0;
@@ -217,7 +229,7 @@ public class KillAura extends Module {
 
     private boolean renderListenerRegistered = false;
     private final WorldRenderEvents.Last renderListener = context -> {
-        if (isEnabled() && showPredictPoint.getValue()) {
+        if (isEnabled() && elytraTarget.getValue() && showPredictPoint.getValue()) {
             renderPredictPoint(context.matrixStack(), context.camera(), context.tickCounter().getTickDelta(true));
         }
         if (isEnabled() && rotation.is("Neuro") && neuroDebug.getValue()) {
@@ -370,36 +382,6 @@ public class KillAura extends Module {
         }
     }
 
-    private void findResolverPoint() {
-        if (mc.player == null || mc.world == null) return;
-        Vec3d eye = mc.player.getEyePos();
-
-        float oppositeYaw = mc.player.getYaw() + 180f;
-        float searchPitch = -50f;
-
-        int[] yawOffsets = {0, 30, -30, 45, -45, 60, -60, 90, -90};
-
-        for (int offset : yawOffsets) {
-            float testYaw = oppositeYaw + offset;
-
-            float radYaw = (float) Math.toRadians(testYaw);
-            float radPitch = (float) Math.toRadians(searchPitch);
-
-            double x = -Math.sin(radYaw) * Math.cos(radPitch);
-            double y = -Math.sin(radPitch);
-            double z = Math.cos(radYaw) * Math.cos(radPitch);
-
-            Vec3d checkVec = new Vec3d(x, y, z).normalize().multiply(8.0);
-            Vec3d endPoint = eye.add(checkVec);
-
-            if (mc.world.raycast(new RaycastContext(eye, endPoint, RaycastContext.ShapeType.COLLIDER, RaycastContext.FluidHandling.NONE, mc.player)).getType() == HitResult.Type.MISS) {
-                resolverPoint = endPoint;
-                return;
-            }
-        }
-        resolverPoint = null;
-    }
-
     @EventHandler
     private void onGameUpdate(EventGameUpdate e) {
         if (mc.player == null) return;
@@ -413,39 +395,38 @@ public class KillAura extends Module {
             return;
         }
 
-        if (isResolving && target != null) {
-            if (resolverTimer.isReached(300)) {
-                isResolving = false;
-            } else if (resolverPoint != null) {
-                var rot = new Rotation(RotationUtil.calculate(resolverPoint));
-                RotationComponent.update(rot, 360, 360, 360, 360, 0, 1, clientLook.getValue(), getMoveFixMode(), "KillAura");
-                lastYaw = rot.getYaw();
-                lastPitch = rot.getPitch();
-                return;
+        boolean forceElytraRot = elytraTarget.getValue() && target != null && target.isGliding();
+        if (forceElytraRot && !smoothElytraRotation.getValue()) {
+            Vec3d center = target.getBoundingBox().getCenter();
+            var rot = new Rotation(RotationUtil.calculate(center));
+            RotationComponent.update(rot, 360, 360, 360, 360, 0, 1, clientLook.getValue(), getMoveFixMode(), "KillAura");
+            lastYaw = rot.getYaw();
+            lastPitch = rot.getPitch();
+        } else if (forceElytraRot && smoothElytraRotation.getValue()) {
+            slothRotation.update(this, target);
+        } else {
+            switch (rotation.getValue()) {
+                case "Vanilla" -> vanillaRotation.update(this, target);
+                case "Snap" -> snapRotation.update(this, target);
+                case "Sloth2" -> sloth2Rotation.update(this, target);
+                case "Sloth3" -> sloth3Rotation.update(this, target);
+                case "Sloth" -> slothRotation.update(this, target);
+                case "Wellmine old" -> wellmineRotation.update(this, target);
+                case "NoRot" -> noRotRotation.update(this, target);
+                case "LonyGrief" -> lonyGriefRotation.update(this, target);
+                case "Vulcan" -> vulcanRotation.update(this, target);
+                case "Funtime" -> funtimeRotation.update(this, target);
+                case "SpookyTime" -> spookyTimeRotation.update(this, target);
+                case "Universal" -> universalRotation.update(this, target);
+                case "Grim 1.20.4" -> {
+                    grim1204Rotation.update(this, target);
+                    lastYaw = grim1204Rotation.getRotationYaw();
+                    lastPitch = grim1204Rotation.getRotationPitch();
+                }
+                case "GrimFun" -> grimFunRotation.update(this, target);
+                case "Neuro" -> neuroRotation.update(this, target);
+                case "AresMine" -> aresMineRotation.update(this, target);
             }
-        }
-
-        switch (rotation.getValue()) {
-            case "Vanilla" -> vanillaRotation.update(this, target);
-            case "Snap" -> snapRotation.update(this, target);
-            case "Sloth2" -> sloth2Rotation.update(this, target);
-            case "Sloth3" -> sloth3Rotation.update(this, target);
-            case "Sloth" -> slothRotation.update(this, target);
-            case "Wellmine old" -> wellmineRotation.update(this, target);
-            case "NoRot" -> noRotRotation.update(this, target);
-            case "LonyGrief" -> lonyGriefRotation.update(this, target);
-            case "Vulcan" -> vulcanRotation.update(this, target);
-            case "Funtime" -> funtimeRotation.update(this, target);
-            case "SpookyTime" -> spookyTimeRotation.update(this, target);
-            case "Universal" -> universalRotation.update(this, target);
-            case "Grim 1.20.4" -> {
-                grim1204Rotation.update(this, target);
-                lastYaw = grim1204Rotation.getRotationYaw();
-                lastPitch = grim1204Rotation.getRotationPitch();
-            }
-            case "GrimFun" -> grimFunRotation.update(this, target);
-            case "Neuro" -> neuroRotation.update(this, target);
-            case "AresMine" -> aresMineRotation.update(this, target);
         }
     }
 
@@ -477,14 +458,6 @@ public class KillAura extends Module {
 
             boolean attackReady = handleShieldUnblock(canAttack());
             if (attackReady) {
-                if (useResolver.getValue() && mc.player.isGliding()) {
-                    mc.player.setVelocity(0, 0, 0);
-                    findResolverPoint();
-                    if (resolverPoint != null) {
-                        isResolving = true;
-                        resolverTimer.reset();
-                    }
-                }
                 mc.getNetworkHandler().sendPacket(new PlayerInputC2SPacket(new PlayerInput(false, false, false, false, false, false, false)));
 
                 AutoMace autoMace = Onetap.getInstance().getModuleStorage().get(AutoMace.class);
@@ -589,6 +562,60 @@ public class KillAura extends Module {
             neuroRotation.reset(this);
             aresMineRotation.reset(this);
         }
+
+        updateFreeze();
+    }
+
+    private boolean isAtOvertakePoint() {
+        if (mc.player == null || target == null) return false;
+        if (!elytraTarget.getValue() || !target.isGliding() || !mc.player.isGliding()) return false;
+        Vec3d predict = PredictUtils.getPredicted(target, predictValue.getValue());
+        double distToPredict = mc.player.getEyePos().distanceTo(predict);
+        float threshold = hitAfterOvertake.getValue() ? 2.7f : 4f;
+        return distToPredict <= threshold;
+    }
+
+    private void updateFreeze() {
+        if (mc.player == null) return;
+        boolean atPoint = isAtOvertakePoint();
+        if (!atPoint) freezeExpired = false;
+        if (freeze.getValue() && atPoint && !freezeExpired) {
+            if (!freezeActive) {
+                freezeActive = true;
+                freezeTicks = 0;
+                freezeLockX = mc.player.getX();
+                freezeLockZ = mc.player.getZ();
+            }
+            if (++freezeTicks > FREEZE_MAX_TICKS) {
+                freezeExpired = true;
+                stopFreeze();
+                return;
+            }
+            mc.player.setVelocity(0, 0, 0);
+            mc.player.setNoGravity(true);
+        } else {
+            stopFreeze();
+        }
+    }
+
+    private void stopFreeze() {
+        if (!freezeActive) return;
+        freezeActive = false;
+        freezeTicks = 0;
+        if (mc.player != null) mc.player.setNoGravity(false);
+    }
+
+    @EventHandler
+    private void onFreezeTickEnd(EventTickEnd e) {
+        if (mc.player == null || !freezeActive) return;
+        mc.player.setVelocity(0, mc.player.getVelocity().y, 0);
+        mc.player.setPosition(freezeLockX, mc.player.getY(), freezeLockZ);
+    }
+
+    @EventHandler
+    private void onFreezePacket(EventPacket e) {
+        if (mc.player == null || !freezeActive) return;
+        if (e.getPacket() instanceof PlayerMoveC2SPacket) e.cancelEvent();
     }
 
     private boolean isValidEntity(Entity entity) {
@@ -631,7 +658,7 @@ public class KillAura extends Module {
         if (!isInAttackDistance(player, target)) return false;
 
         isTurnaroundActive = false;
-        if (target.isGliding()) {
+        if (elytraTarget.getValue() && target.isGliding() && mc.player.isGliding()) {
             Vec3d predict = PredictUtils.getPredicted(target, predictValue.getValue());
             double distToPredict = player.getEyePos().distanceTo(predict);
 
@@ -686,18 +713,22 @@ public class KillAura extends Module {
         return Onetap.getInstance().getIdealHitUtils().canCritical();
     }
 
+    public boolean isElytraPredictActive() {
+        return predictate.getValue() && mc.player != null && mc.player.isGliding();
+    }
+
     private boolean isInAttackDistance(PlayerEntity player, LivingEntity entity) {
         if (canReachWithPositionAura(entity)) return true;
 
         Vec3d nearestPoint = BestPoint.getNearestPoint(entity);
         if (nearestPoint == null) return false;
 
-        double attackDistance = player.isGliding() ? elytraDistance.getValue() : distance.getValue();
+        double attackDistance = (elytraTarget.getValue() && player.isGliding()) ? elytraDistance.getValue() : distance.getValue();
         return player.getEyePos().distanceTo(nearestPoint) <= attackDistance;
     }
 
     private double getTargetSearchDistance(PlayerEntity player) {
-        double searchDistance = player.isGliding() ? elytraDistance.getValue() : distance.getValue() + preRotation.getValue();
+        double searchDistance = (elytraTarget.getValue() && player.isGliding()) ? elytraDistance.getValue() : distance.getValue() + preRotation.getValue();
 
         BoatAura boatAura = Instance.get(BoatAura.class);
         if (boatAura != null && boatAura.isEnabled() && mc.player != null && mc.player.hasVehicle()) {
@@ -916,7 +947,7 @@ public class KillAura extends Module {
     }
 
     private void renderPredictPoint(MatrixStack matrices, Camera camera, float tickDelta) {
-        if (target == null || !target.isGliding()) return;
+        if (target == null || !target.isGliding() || mc.player == null || !mc.player.isGliding()) return;
 
         Vec3d predictPos = PredictUtils.getPredictedRender(target, predictValue.getValue(), tickDelta);
         Vec3d camPos = camera.getPos();
@@ -1095,8 +1126,6 @@ public class KillAura extends Module {
         snapActive = false;
         snapTimer = 0;
         shieldPhase = 0;
-        isResolving = false;
-        resolverPoint = null;
         neuroRotation.reset(this);
         grim1204Rotation.reset(this);
         aresMineRotation.reset(this);
@@ -1104,6 +1133,8 @@ public class KillAura extends Module {
         Onetap.getInstance().getModuleStorage().setRandomness(1);
         RotationComponent.getInstance().clearMoveFixMode("KillAura");
         RotationComponent.getInstance().stopRotation();
+        freezeExpired = false;
+        stopFreeze();
         super.onDisable();
     }
 }

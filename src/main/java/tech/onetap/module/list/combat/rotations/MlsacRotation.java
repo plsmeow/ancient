@@ -55,7 +55,7 @@ public class MlsacRotation extends RotationMode implements IMinecraft {
     public void update(KillAura ka, LivingEntity target) {
         if (mc.player == null || target == null) return;
 
-        Vec3d point = target.isGliding() && ka.predictate.getValue() && !ka.isTurnaroundActive
+        Vec3d point = target.isGliding() && ka.isElytraPredictActive() && !ka.isTurnaroundActive
                 ? PredictUtils.getPredicted(target, ka.predictValue.getValue())
                 : ka.resolveMultipoint(target, BestPoint.getPoint(target), 6);
 

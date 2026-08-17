@@ -8,9 +8,8 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
-import org.spongepowered.asm.mixin.injection.Constant;
 import org.spongepowered.asm.mixin.injection.Inject;
-import org.spongepowered.asm.mixin.injection.ModifyConstant;
+import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import tech.onetap.event.list.FireworkEvent;
 
@@ -22,11 +21,18 @@ public abstract class FireworkRocketEntityMixin {
     @Unique
     private static final MinecraftClient mc = MinecraftClient.getInstance();
 
-    @ModifyConstant(method = "tick", constant = @Constant(doubleValue = 1.5D))
-    private double replaceSpeed(double original) {
-        var event = new FireworkEvent(shooter, (float) original);
+    @Redirect(method = "tick", at = @At(value = "INVOKE", target = "Lnet/minecraft/entity/LivingEntity;setVelocity(Lnet/minecraft/util/math/Vec3d;)V"))
+    private void redirectBoost(LivingEntity entity, Vec3d vanillaVelocity) {
+        var event = new FireworkEvent(entity);
         event.post();
-        return event.getSpeed();
+        Vec3d look = entity.getRotationVector();
+        Vec3d old = entity.getVelocity();
+        double xz = event.getSpeedXZ();
+        double y = event.getSpeedY();
+        entity.setVelocity(old.add(
+                look.x * 0.1 + (look.x * xz - old.x) * 0.5,
+                look.y * 0.1 + (look.y * y - old.y) * 0.5,
+                look.z * 0.1 + (look.z * xz - old.z) * 0.5));
     }
 
     @Inject(method = "tick", at = @At("HEAD"))

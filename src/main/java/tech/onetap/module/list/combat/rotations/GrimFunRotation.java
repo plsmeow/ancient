@@ -20,7 +20,7 @@ public class GrimFunRotation extends RotationMode {
         if (mc.player == null || target == null) return;
 
         Vec3d targetPoint = ka.resolveMultipoint(target, BestPoint.getNearestPoint(target), ka.distance.getValue());
-        if (target.isGliding() && ka.predictate.getValue() && !ka.isTurnaroundActive) {
+        if (target.isGliding() && ka.isElytraPredictActive() && !ka.isTurnaroundActive) {
             targetPoint = PredictUtils.getPredicted(target, ka.predictValue.getValue());
         }
 
