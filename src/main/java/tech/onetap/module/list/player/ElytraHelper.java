@@ -127,7 +127,7 @@ public class ElytraHelper extends Module {
         if (mc.player == null || mc.interactionManager == null) return;
 
         if (mc.player.getOffHandStack().getItem() == Items.FIREWORK_ROCKET) {
-            mc.interactionManager.interactItem(mc.player, Hand.OFF_HAND);
+            InventoryUtil.useItemSilently(Hand.OFF_HAND);
             return;
         }
 
@@ -138,8 +138,7 @@ public class ElytraHelper extends Module {
         if (slot == -1) return;
 
         final int fireworkSlot = slot;
-
-        Runnable swapToOffhand = () -> {
+        Runnable swap = () -> {
             if (fireworkSlot >= 0 && fireworkSlot <= 8) {
                 mc.interactionManager.clickSlot(0, 45, fireworkSlot, SlotActionType.SWAP, mc.player);
             } else {
@@ -147,18 +146,8 @@ public class ElytraHelper extends Module {
             }
         };
 
-        Runnable swapBack = () -> {
-            if (fireworkSlot >= 0 && fireworkSlot <= 8) {
-                mc.interactionManager.clickSlot(0, 45, fireworkSlot, SlotActionType.SWAP, mc.player);
-            } else {
-                mc.interactionManager.clickSlot(0, fireworkSlot, 40, SlotActionType.SWAP, mc.player);
-            }
-        };
-
-        InventoryUtil.clickWithGuiBypass(() -> {
-            swapToOffhand.run();
-            mc.interactionManager.interactItem(mc.player, Hand.OFF_HAND);
-            swapBack.run();
-        });
+        swap.run();
+        InventoryUtil.useItemSilently(Hand.OFF_HAND);
+        swap.run();
     }
 }

@@ -198,9 +198,6 @@ public class KillAura extends Module {
 
     private boolean freezeActive = false;
     private double freezeLockX, freezeLockZ;
-    private int freezeTicks = 0;
-    private boolean freezeExpired = false;
-    private static final int FREEZE_MAX_TICKS = 40;
 
     // Поля для логики Snap (используются также в canAttack/onUpdate)
     public boolean snapActive = false;
@@ -395,15 +392,19 @@ public class KillAura extends Module {
             return;
         }
 
-        boolean forceElytraRot = elytraTarget.getValue() && target != null && target.isGliding();
-        if (forceElytraRot && !smoothElytraRotation.getValue()) {
-            Vec3d center = target.getBoundingBox().getCenter();
-            var rot = new Rotation(RotationUtil.calculate(center));
-            RotationComponent.update(rot, 360, 360, 360, 360, 0, 1, clientLook.getValue(), getMoveFixMode(), "KillAura");
-            lastYaw = rot.getYaw();
-            lastPitch = rot.getPitch();
-        } else if (forceElytraRot && smoothElytraRotation.getValue()) {
-            slothRotation.update(this, target);
+        boolean forceElytraRot = elytraTarget.getValue() && target != null && mc.player.isGliding();
+        if (forceElytraRot) {
+            if (smoothElytraRotation.getValue()) {
+                slothRotation.update(this, target);
+            } else {
+                Vec3d point = (target.isGliding() && isElytraPredictActive() && !isTurnaroundActive)
+                        ? PredictUtils.getPredicted(target, predictValue.getValue())
+                        : target.getBoundingBox().getCenter();
+                var rot = new Rotation(RotationUtil.calculate(point));
+                RotationComponent.update(rot, 360, 360, 360, 360, 0, 1, clientLook.getValue(), getMoveFixMode(), "KillAura");
+                lastYaw = rot.getYaw();
+                lastPitch = rot.getPitch();
+            }
         } else {
             switch (rotation.getValue()) {
                 case "Vanilla" -> vanillaRotation.update(this, target);
@@ -577,19 +578,11 @@ public class KillAura extends Module {
 
     private void updateFreeze() {
         if (mc.player == null) return;
-        boolean atPoint = isAtOvertakePoint();
-        if (!atPoint) freezeExpired = false;
-        if (freeze.getValue() && atPoint && !freezeExpired) {
+        if (freeze.getValue() && isAtOvertakePoint()) {
             if (!freezeActive) {
                 freezeActive = true;
-                freezeTicks = 0;
                 freezeLockX = mc.player.getX();
                 freezeLockZ = mc.player.getZ();
-            }
-            if (++freezeTicks > FREEZE_MAX_TICKS) {
-                freezeExpired = true;
-                stopFreeze();
-                return;
             }
             mc.player.setVelocity(0, 0, 0);
             mc.player.setNoGravity(true);
@@ -601,7 +594,6 @@ public class KillAura extends Module {
     private void stopFreeze() {
         if (!freezeActive) return;
         freezeActive = false;
-        freezeTicks = 0;
         if (mc.player != null) mc.player.setNoGravity(false);
     }
 
@@ -1133,7 +1125,6 @@ public class KillAura extends Module {
         Onetap.getInstance().getModuleStorage().setRandomness(1);
         RotationComponent.getInstance().clearMoveFixMode("KillAura");
         RotationComponent.getInstance().stopRotation();
-        freezeExpired = false;
         stopFreeze();
         super.onDisable();
     }

@@ -176,30 +176,31 @@ public class InventoryUtil implements IMinecraft {
         }
     }
 
-    public static void swapAndUseWithGuiBypass(Item item) {
+    private static void swapAndUse(Item item) {
+        if (mc.player == null || mc.getNetworkHandler() == null) return;
         if (mc.player.getItemCooldownManager().isCoolingDown(new ItemStack(item))) return;
 
-        int inventorySlot = searchItem(item, 9, 45);
-        int hotbarSlot = searchItem(item, 0, 9);
-        int previousSlot = mc.player.getInventory().selectedSlot;
-
         if (mc.player.getMainHandStack().getItem() == item) {
-            mc.interactionManager.interactItem(mc.player, Hand.MAIN_HAND);
+            useItemSilently(Hand.MAIN_HAND);
             return;
         }
 
         if (mc.player.getOffHandStack().getItem() == item) {
-            mc.interactionManager.interactItem(mc.player, Hand.OFF_HAND);
+            useItemSilently(Hand.OFF_HAND);
             return;
         }
 
+        int previousSlot = mc.player.getInventory().selectedSlot;
+        int hotbarSlot = searchItem(item, 0, 9);
+
         if (hotbarSlot != -1) {
             mc.getNetworkHandler().sendPacket(new UpdateSelectedSlotC2SPacket(hotbarSlot));
-            mc.interactionManager.interactItem(mc.player, Hand.MAIN_HAND);
+            useItemSilently(Hand.MAIN_HAND);
             mc.getNetworkHandler().sendPacket(new UpdateSelectedSlotC2SPacket(previousSlot));
             return;
         }
 
+        int inventorySlot = searchItem(item, 9, 45);
         if (inventorySlot == -1) return;
 
         int swapSlot = findUsableHotbarSwapSlot();
@@ -210,10 +211,20 @@ public class InventoryUtil implements IMinecraft {
         clickWithGuiBypass(() -> {
             mc.interactionManager.clickSlot(0, finalInventorySlot, finalSwapSlot, SlotActionType.SWAP, mc.player);
             mc.getNetworkHandler().sendPacket(new UpdateSelectedSlotC2SPacket(finalSwapSlot));
-            mc.interactionManager.interactItem(mc.player, Hand.MAIN_HAND);
+            useItemSilently(Hand.MAIN_HAND);
             mc.getNetworkHandler().sendPacket(new UpdateSelectedSlotC2SPacket(previousSlot));
             mc.interactionManager.clickSlot(0, finalInventorySlot, finalSwapSlot, SlotActionType.SWAP, mc.player);
         });
+    }
+
+    public static void useItemSilently(Hand hand) {
+        if (mc.player == null || mc.getNetworkHandler() == null) return;
+        mc.interactionManager.sendSequencedPacket(mc.world, sequence ->
+                new PlayerInteractItemC2SPacket(hand, sequence, mc.player.getYaw(), mc.player.getPitch()));
+    }
+
+    public static void swapAndUseWithGuiBypass(Item item) {
+        swapAndUse(item);
     }
 
     private static int findUsableHotbarSwapSlot() {
@@ -226,130 +237,11 @@ public class InventoryUtil implements IMinecraft {
     }
 
     public static void swapAndUseHvH(Item item) {
-        if (mc.player.getItemCooldownManager().isCoolingDown(new ItemStack(item))) return;
-
-        var slot = searchItem(item, 9, 45);
-        var slotHotbar = searchItem(item, 0, 9);
-        var previousSlot = mc.player.getInventory().selectedSlot;
-
-        if (mc.player.getMainHandStack().getItem() == item) {
-            mc.interactionManager.interactItem(mc.player, Hand.MAIN_HAND);
-            return;
-        }
-
-        if (mc.player.getOffHandStack().getItem() == item) {
-            mc.interactionManager.interactItem(mc.player, Hand.OFF_HAND);
-            return;
-        }
-
-        if (slotHotbar != -1) {
-            mc.getNetworkHandler().sendPacket(new UpdateSelectedSlotC2SPacket(slotHotbar));
-            mc.interactionManager.interactItem(mc.player, Hand.MAIN_HAND);
-            mc.getNetworkHandler().sendPacket(new UpdateSelectedSlotC2SPacket(previousSlot));
-        }
-
-        if (slotHotbar == -1 && slot != -1) {
-            var slotCorrectable = -1;
-            for (var slotNone = 0; slotNone < 8; slotNone++) {
-                var stack = mc.player.getInventory().getStack(slotNone);
-                if (stack.isEmpty()) slotCorrectable = slotNone;
-
-                var action = stack.getUseAction();
-
-                if (action == UseAction.NONE) {
-                    slotCorrectable = slotNone;
-                }
-            }
-            if (slotCorrectable == -1) {
-                mc.getNetworkHandler().sendPacket(new PlayerInputC2SPacket(new PlayerInput(false, false, false, false, false, false, false)));
-                if (Onetap.getInstance().getServerManager().isServerSprinting()) {
-                    mc.player.setSprinting(false);
-                    mc.getNetworkHandler().sendPacket(new ClientCommandC2SPacket(mc.player, ClientCommandC2SPacket.Mode.STOP_SPRINTING));
-                    if (!Instance.get(Sprint.class).isEnabled()) mc.options.sprintKey.setPressed(false);
-                }
-                mc.interactionManager.clickSlot(0, slot, 8, SlotActionType.SWAP, mc.player);
-                mc.getNetworkHandler().sendPacket(new CloseHandledScreenC2SPacket(0));
-                mc.getNetworkHandler().sendPacket(new UpdateSelectedSlotC2SPacket(8));
-                mc.interactionManager.interactItem(mc.player, Hand.MAIN_HAND);
-                mc.getNetworkHandler().sendPacket(new UpdateSelectedSlotC2SPacket(previousSlot));
-                mc.getNetworkHandler().sendPacket(new PlayerInputC2SPacket(mc.player.input.playerInput));
-            } else {
-                mc.getNetworkHandler().sendPacket(new PlayerInputC2SPacket(new PlayerInput(false, false, false, false, false, false, false)));
-                if (Onetap.getInstance().getServerManager().isServerSprinting()) {
-                    mc.player.setSprinting(false);
-                    mc.getNetworkHandler().sendPacket(new ClientCommandC2SPacket(mc.player, ClientCommandC2SPacket.Mode.STOP_SPRINTING));
-                    if (!Instance.get(Sprint.class).isEnabled()) mc.options.sprintKey.setPressed(false);
-                }
-                mc.interactionManager.clickSlot(0, slot, slotCorrectable, SlotActionType.SWAP, mc.player);
-                mc.getNetworkHandler().sendPacket(new CloseHandledScreenC2SPacket(0));
-                mc.getNetworkHandler().sendPacket(new UpdateSelectedSlotC2SPacket(slotCorrectable));
-                mc.interactionManager.interactItem(mc.player, Hand.MAIN_HAND);
-                mc.getNetworkHandler().sendPacket(new UpdateSelectedSlotC2SPacket(previousSlot));
-                mc.interactionManager.clickSlot(0, slot, slotCorrectable, SlotActionType.SWAP, mc.player);
-                mc.getNetworkHandler().sendPacket(new CloseHandledScreenC2SPacket(0));
-                mc.getNetworkHandler().sendPacket(new PlayerInputC2SPacket(mc.player.input.playerInput));
-            }
-        }
+        swapAndUse(item);
     }
 
     public static void swapAndUseLegit(Item item) {
-        if (mc.player.getItemCooldownManager().isCoolingDown(new ItemStack(item))) return;
-
-        var slot = searchItem(item, 9, 45);
-        var slotHotbar = searchItem(item, 0, 9);
-        var previousSlot = mc.player.getInventory().selectedSlot;
-
-        if (mc.player.getMainHandStack().getItem() == item) {
-            mc.interactionManager.interactItem(mc.player, Hand.MAIN_HAND);
-            return;
-        }
-
-        if (mc.player.getOffHandStack().getItem() == item) {
-            mc.interactionManager.interactItem(mc.player, Hand.OFF_HAND);
-            return;
-        }
-
-        if (slotHotbar != -1) {
-            mc.player.getInventory().selectedSlot = slotHotbar;
-            mc.interactionManager.syncSelectedSlot();
-            mc.interactionManager.sendSequencedPacket(mc.world, (sequence) -> new PlayerInteractItemC2SPacket(Hand.MAIN_HAND, sequence, mc.player.getYaw(), mc.player.getPitch()));
-            mc.player.getInventory().selectedSlot = previousSlot;
-        }
-
-        if (slotHotbar == -1 && slot != -1) {
-            var slotCorrectable = -1;
-            for (var slotNone = 0; slotNone < 8; slotNone++) {
-                var stack = mc.player.getInventory().getStack(slotNone);
-                if (stack.isEmpty()) slotCorrectable = slotNone;
-
-                var action = stack.getUseAction();
-
-                if (action == UseAction.NONE) {
-                    slotCorrectable = slotNone;
-                }
-            }
-            if (slotCorrectable == -1) {
-                mc.getNetworkHandler().sendPacket(new PlayerInputC2SPacket(new PlayerInput(false, false, false, false, false, false, false)));
-                mc.interactionManager.clickSlot(0, slot, 8, SlotActionType.SWAP, mc.player);
-                mc.getNetworkHandler().sendPacket(new CloseHandledScreenC2SPacket(0));
-                mc.player.getInventory().selectedSlot = slotCorrectable;
-                mc.interactionManager.syncSelectedSlot();
-                mc.interactionManager.sendSequencedPacket(mc.world, (sequence) -> new PlayerInteractItemC2SPacket(Hand.MAIN_HAND, sequence, mc.player.getYaw(), mc.player.getPitch()));
-                mc.player.getInventory().selectedSlot = previousSlot;
-                mc.getNetworkHandler().sendPacket(new PlayerInputC2SPacket(mc.player.input.playerInput));
-            } else {
-                mc.getNetworkHandler().sendPacket(new PlayerInputC2SPacket(new PlayerInput(false, false, false, false, false, false, false)));
-                mc.interactionManager.clickSlot(0, slot, slotCorrectable, SlotActionType.SWAP, mc.player);
-                mc.getNetworkHandler().sendPacket(new CloseHandledScreenC2SPacket(0));
-                mc.player.getInventory().selectedSlot = slotCorrectable;
-                mc.interactionManager.syncSelectedSlot();
-                mc.interactionManager.sendSequencedPacket(mc.world, (sequence) -> new PlayerInteractItemC2SPacket(Hand.MAIN_HAND, sequence, mc.player.getYaw(), mc.player.getPitch()));
-                mc.player.getInventory().selectedSlot = previousSlot;
-                mc.interactionManager.clickSlot(0, slot, slotCorrectable, SlotActionType.SWAP, mc.player);
-                mc.getNetworkHandler().sendPacket(new CloseHandledScreenC2SPacket(0));
-                mc.getNetworkHandler().sendPacket(new PlayerInputC2SPacket(mc.player.input.playerInput));
-            }
-        }
+        swapAndUse(item);
     }
 
     public static void clickSlotNoSync(int syncId, int slotId, int button, SlotActionType actionType, PlayerEntity player) {
