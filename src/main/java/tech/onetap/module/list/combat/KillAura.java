@@ -572,8 +572,10 @@ public class KillAura extends Module {
         if (!elytraTarget.getValue() || !target.isGliding() || !mc.player.isGliding()) return false;
         Vec3d predict = PredictUtils.getPredicted(target, predictValue.getValue());
         double distToPredict = mc.player.getEyePos().distanceTo(predict);
+        double distToHitbox = mc.player.getEyePos().distanceTo(BestPoint.getNearestPoint(target));
+        double distToTarget = Math.min(distToPredict, distToHitbox);
         float threshold = hitAfterOvertake.getValue() ? 2.7f : 4f;
-        return distToPredict <= threshold;
+        return distToTarget <= threshold;
     }
 
     private void updateFreeze() {
@@ -653,14 +655,16 @@ public class KillAura extends Module {
         if (elytraTarget.getValue() && target.isGliding() && mc.player.isGliding()) {
             Vec3d predict = PredictUtils.getPredicted(target, predictValue.getValue());
             double distToPredict = player.getEyePos().distanceTo(predict);
+            double distToHitbox = player.getEyePos().distanceTo(BestPoint.getNearestPoint(target));
+            double distToTarget = Math.min(distToPredict, distToHitbox);
 
             preddict = hitAfterOvertake.getValue() ? 2.7f : 4f;
 
-            if (distToPredict <= preddict && elytraTurnaround.getValue()) {
+            if (distToTarget <= preddict && elytraTurnaround.getValue()) {
                 isTurnaroundActive = true;
             }
 
-            if (distToPredict > preddict) return false;
+            if (distToTarget > preddict) return false;
 
             if (isTurnaroundActive) {
                 float targetYaw = new Rotation(RotationUtil.calculate(target.getBoundingBox().getCenter())).getYaw();
