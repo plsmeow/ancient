@@ -4,7 +4,6 @@ import meteordevelopment.orbit.EventHandler;
 import lombok.Getter;
 import lombok.Setter;
 import net.minecraft.client.option.Perspective;
-import net.minecraft.util.math.MathHelper;
 import tech.onetap.Onetap;
 import tech.onetap.event.EventGameUpdate;
 import tech.onetap.event.list.EventHUD;
@@ -19,10 +18,7 @@ import tech.onetap.module.list.render.Interface;
 import tech.onetap.module.settings.BooleanSetting;
 import tech.onetap.module.settings.ThemeSetting;
 import tech.onetap.util.IMinecraft;
-import tech.onetap.util.base.Instance;
 import tech.onetap.util.player.other.SlownessManager;
-import tech.onetap.util.rotation.Rotation;
-import tech.onetap.util.rotation.RotationComponent;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -50,7 +46,7 @@ public class ModuleStorage implements IMinecraft {
                 new GrimStrafe(), new HWHelper(),
                 new AutoTool(), new AirPlace(), new TapeMouse(), new Ambience(), new BlockOverlay(), new FreeLook(),
                 new Trails(), new FastExp(), new FastCrossbow(), new NameProtect(), new CrystalSpammer(), new ChinaHat(),
-                new AirStuck(), new AutoSwap(), new NoSlow(), new NoWeb(), new DiscordRPC(), new FakePlayer(), new Interface(), new AutoEat(),new AutoLeave(), new Hide(), new SpecCordExploit(),
+                new AirStuck(), new AutoSwap(), new NoSlow(), new NoWeb(), new DiscordRPC(), new FakePlayer(), new Interface(), new AutoEat(), new GapFix(), new AutoLeave(), new Hide(), new SpecCordExploit(),
                 new Nuker(), new BlockEsp(), new TPLoot(), new ScoreboardHealth(), new BoatFly(), new AutoCart(),
                 new AutoCaptcha(), new Step(), new Arrows(), new PrefixFixer(), new CustomCape(), new Chams()
         ));
@@ -100,10 +96,6 @@ public class ModuleStorage implements IMinecraft {
                 aura.lastYaw = mc.gameRenderer.getCamera().getYaw();
                 aura.lastPitch = mc.gameRenderer.getCamera().getPitch();
             }
-
-            if (aura.rotation.is("Vanilla") || Instance.get(FreeLook.class).isActive()) return;
-
-            updateBackwardsOther();
         }
     }
 
@@ -138,33 +130,4 @@ public class ModuleStorage implements IMinecraft {
         if (!SlownessManager.timeTasksIsEmpty()) SlownessManager.updateTimeTasks(true);
     }
 
-    private void updateBackwardsOther() {
-        if(mc.player.isGliding()){
-            speedAcceleration += 0.06f;
-
-        }
-        else{
-            speedAcceleration += 0.006f;
-
-        }
-        get(KillAura.class).speedAcceleration = 0;
-
-        var angle = new Rotation(mc.gameRenderer.getCamera().getYaw(), mc.gameRenderer.getCamera().getPitch());
-
-        var deltaYaw = MathHelper.wrapDegrees(angle.getYaw() - mc.player.getYaw());
-        var deltaPitch = angle.getPitch() - mc.player.getPitch();
-        if (mc.options.getPerspective() == Perspective.THIRD_PERSON_FRONT) {
-            deltaYaw = MathHelper.wrapDegrees((angle.getYaw() - 180) - mc.player.getYaw());
-            deltaPitch = MathHelper.wrapDegrees(-angle.getPitch() - mc.player.getPitch());
-        }
-
-        var smooth = Math.max(speedAcceleration, 0);
-
-        var newYaw = mc.player.getYaw() + deltaYaw * (Math.min(Math.max(smooth, 0), 1));
-        var newPitch = mc.player.getPitch() + deltaPitch * (Math.min(Math.max(smooth / 2, 0), 1));
-
-        var smoothRot = new Rotation(newYaw, newPitch);
-
-        RotationComponent.update(smoothRot, 360, 360, 360, 360, 0, 2, false);
-    }
 }

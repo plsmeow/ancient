@@ -100,7 +100,7 @@ public class ClickGuiSettingRenderer {
         DrawUtil.drawText(Fonts.SFREGULAR.get(), setting.getName(), x + 1f, y + 2f,
                 ColorProvider.rgba(255, 255, 255, alpha), 6f);
         String valStr = BigDecimal.valueOf(setting.getValue())
-                .setScale(1, RoundingMode.HALF_UP).stripTrailingZeros().toPlainString();
+                .setScale(3, RoundingMode.HALF_UP).stripTrailingZeros().toPlainString();
         float valW = Fonts.SFREGULAR.get().getWidth(valStr, 6f);
         DrawUtil.drawText(Fonts.SFREGULAR.get(), valStr, x + width - valW, y + 2f,
                 ColorProvider.rgba(180, 180, 195, alpha), 6f);

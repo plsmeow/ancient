@@ -33,7 +33,7 @@ public class SliderComponent extends Component {
     }
 
     private String formatNumber(double value) {
-        return BigDecimal.valueOf(value).setScale(1, RoundingMode.HALF_UP).stripTrailingZeros().toPlainString();
+        return BigDecimal.valueOf(value).setScale(3, RoundingMode.HALF_UP).stripTrailingZeros().toPlainString();
     }
 
     @Override

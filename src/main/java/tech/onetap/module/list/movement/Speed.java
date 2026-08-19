@@ -48,7 +48,7 @@ import tech.onetap.util.text.ValueUnit;
 @ModuleInformation(moduleName = "Speed", moduleCategory = ModuleCategory.MOVEMENT)
 public class Speed extends Module {
 
-    private final ModeSetting mode = new ModeSetting("Режим", "Contact", "Contact", "Vulcan", "Vanilla", "Polar");
+    private final ModeSetting mode = new ModeSetting("Режим", "Contact", "Contact", "Vulcan", "Vanilla", "Polar", "MetaHVH");
 
     private final SliderSetting boost = new SliderSetting("Сила буста", 8.0f, 1.0f, 20.0f, 0.1f).setVisible(() -> mode.is("Contact"));
     private final SliderSetting targetRange = new SliderSetting("Радиус цели", 3.0f, 0.5f, 10.0f, 0.1f).setVisible(() -> mode.is("Contact"));
@@ -83,6 +83,8 @@ public class Speed extends Module {
             .setVisible(() -> mode.is("Vanilla") && hvhTarget.getValue() && leave.getValue());
     private final SliderSetting attackDistance = new SliderSetting("Радиус удара", ValueUnit.countable("блок", "блока", "блоков"), 4, 1, 6, 0.1f)
             .setVisible(() -> mode.is("Vanilla") && hvhTarget.getValue() && leave.getValue());
+
+    private final SliderSetting metaHvhSpeed = new SliderSetting("Базовая скорость", 0.36f, 0.1f, 1.0f, 0.01f).setVisible(() -> mode.is("MetaHVH"));
 
     private static final double VANILLA_DEFAULT_SPEED = 0.2873;
     // Зона допуска у цели (блоки) — резкая остановка, чтобы избежать дёрганья
@@ -130,6 +132,11 @@ public class Speed extends Module {
 
         if (mode.is("Polar")) {
             handlePolar();
+            return;
+        }
+
+        if (mode.is("MetaHVH")) {
+            handleMetaHvh();
             return;
         }
 
@@ -320,6 +327,36 @@ public class Speed extends Module {
         NetworkUtils.sendSilentPacket(new ClientCommandC2SPacket(mc.player, ClientCommandC2SPacket.Mode.START_FALL_FLYING));
         mc.player.startGliding();
         NetworkUtils.sendSilentPacket(new PlayerActionC2SPacket(PlayerActionC2SPacket.Action.SWAP_ITEM_WITH_OFFHAND, BlockPos.ORIGIN, Direction.DOWN));
+    }
+
+    private void handleMetaHvh() {
+        float base = metaHvhSpeed.getFloatValue();
+        String offhandName = mc.player.getOffHandStack().getName().getString();
+
+        float applied = 0f;
+        if (mc.player.hasStatusEffect(StatusEffects.SPEED)) {
+            int amplifier = mc.player.getStatusEffect(StatusEffects.SPEED).getAmplifier();
+            if (amplifier == 2) {
+                applied = base * 1.155f;
+                if (offhandName.contains("Ломтик Дыни")) {
+                    applied = 0.41755f;
+                }
+            } else if (amplifier == 1) {
+                applied = base;
+            }
+        } else {
+            applied = base * 0.68f;
+        }
+
+        if (mc.player.hasStatusEffect(StatusEffects.SLOWNESS)) {
+            applied *= 0.835f;
+        }
+
+        if (!mc.player.isOnGround()) {
+            applied *= 1.435f;
+        }
+
+        MoveUtil.setMotion(applied);
     }
 
     private void handleContact() {

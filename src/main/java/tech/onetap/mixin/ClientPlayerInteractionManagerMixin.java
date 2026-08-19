@@ -18,6 +18,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import tech.onetap.event.list.EventAttack;
 import tech.onetap.event.list.EventAttackBlock;
 import tech.onetap.event.list.EventRightClickBlock;
+import tech.onetap.event.list.EventUseItem;
 import tech.onetap.util.rotation.FreeLookComponent;
 
 @Mixin(ClientPlayerInteractionManager.class)
@@ -51,6 +52,13 @@ public class ClientPlayerInteractionManagerMixin {
     @Unique private float onetap$savedYaw;
     @Unique private float onetap$savedPitch;
     @Unique private boolean onetap$rotationSwapped;
+
+    @Inject(method = "interactItem", at = @At("HEAD"), cancellable = true)
+    private void onUseItem(PlayerEntity player, Hand hand, CallbackInfoReturnable<ActionResult> cir) {
+        var event = new EventUseItem(hand);
+        event.post();
+        if (event.isCancelled()) cir.setReturnValue(ActionResult.FAIL);
+    }
 
     @Inject(method = "interactItem", at = @At("HEAD"))
     private void freelookUseHead(PlayerEntity player, Hand hand, CallbackInfoReturnable<ActionResult> cir) {
