@@ -85,6 +85,9 @@ public class Speed extends Module {
             .setVisible(() -> mode.is("Vanilla") && hvhTarget.getValue() && leave.getValue());
 
     private final SliderSetting metaHvhSpeed = new SliderSetting("Базовая скорость", 0.36f, 0.1f, 1.0f, 0.01f).setVisible(() -> mode.is("MetaHVH"));
+    private final BooleanSetting metaHvhTarget = new BooleanSetting("HvH Target", false).setVisible(() -> mode.is("MetaHVH"));
+    private final SliderSetting metaHvhPredictStrength = new SliderSetting("Сила предикта", 4.0f, 0.5f, 20.0f, 0.1f)
+            .setVisible(() -> mode.is("MetaHVH") && metaHvhTarget.getValue());
 
     private static final double VANILLA_DEFAULT_SPEED = 0.2873;
     // Зона допуска у цели (блоки) — резкая остановка, чтобы избежать дёрганья
@@ -354,6 +357,33 @@ public class Speed extends Module {
 
         if (!mc.player.isOnGround()) {
             applied *= 1.435f;
+        }
+
+        if (metaHvhTarget.getValue()) {
+            KillAura aura = Onetap.getInstance().getModuleStorage().get(KillAura.class);
+            if (aura != null && aura.isEnabled() && aura.getTarget() != null) {
+                LivingEntity target = aura.getTarget();
+                if (lastHvhTarget != null && lastHvhTarget != target) {
+                    HvhTargetPredict.reset(lastHvhTarget);
+                }
+                lastHvhTarget = target;
+
+                Vec3d targetPos = HvhTargetPredict.predict(target, metaHvhPredictStrength.getValue());
+                double dx = targetPos.x - mc.player.getX();
+                double dz = targetPos.z - mc.player.getZ();
+                double distToPoint = Math.sqrt(dx * dx + dz * dz);
+
+                if (distToPoint <= HVH_TARGET_ZONE) {
+                    Vec3d current = mc.player.getVelocity();
+                    mc.player.setVelocity(0.0, current.y, 0.0);
+                } else {
+                    double moveSpeed = Math.min(applied, distToPoint);
+                    double[] dir = getDirectionToPoint(mc.player.getPos(), targetPos, moveSpeed);
+                    Vec3d current = mc.player.getVelocity();
+                    mc.player.setVelocity(dir[0], current.y, dir[1]);
+                }
+                return;
+            }
         }
 
         MoveUtil.setMotion(applied);

@@ -4,6 +4,7 @@ import meteordevelopment.orbit.EventHandler;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
 import tech.onetap.event.list.EventHUD;
+import tech.onetap.event.list.EventItemUseFinish;
 import tech.onetap.event.list.EventPlayerUpdate;
 import tech.onetap.event.list.EventUseItem;
 import tech.onetap.module.Module;
@@ -24,24 +25,12 @@ public class GapFix extends Module {
     private final BooleanSetting counter = new BooleanSetting("Счётчик", true);
 
     private int cooldownTicks;
-    private boolean consumedThisUse;
 
     @EventHandler
     private void onUpdate(EventPlayerUpdate ignored) {
         if (mc.player == null) {
             reset();
             return;
-        }
-
-        boolean usingGapple = mc.player.isUsingItem() && isGapple(mc.player.getActiveItem());
-
-        if (usingGapple) {
-            if (!consumedThisUse && mc.player.getItemUseTimeLeft() <= 0) {
-                cooldownTicks = delay.getIntValue();
-                consumedThisUse = true;
-            }
-        } else {
-            consumedThisUse = false;
         }
 
         if (cooldownTicks > 0) cooldownTicks--;
@@ -51,6 +40,13 @@ public class GapFix extends Module {
     private void onUseItem(EventUseItem e) {
         if (mc.player == null || cooldownTicks <= 0) return;
         if (isGapple(mc.player.getStackInHand(e.getHand()))) e.cancelEvent();
+    }
+
+    @EventHandler
+    private void onItemUseFinish(EventItemUseFinish e) {
+        if (isGapple(e.getStack())) {
+            cooldownTicks = delay.getIntValue();
+        }
     }
 
     @EventHandler
@@ -75,7 +71,6 @@ public class GapFix extends Module {
 
     private void reset() {
         cooldownTicks = 0;
-        consumedThisUse = false;
     }
 
     @Override

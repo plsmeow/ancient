@@ -11,6 +11,7 @@ import com.llamalad7.mixinextras.injector.ModifyExpressionValue;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import tech.onetap.event.list.EventChangeSprint;
+import tech.onetap.event.list.EventItemUseFinish;
 import tech.onetap.module.list.player.NoPush;
 import tech.onetap.module.list.render.SwingAnimations;
 import tech.onetap.util.base.Instance;
@@ -50,6 +51,12 @@ public class LivingEntityMixin {
             return FreeLookComponent.interactionYaw();
         }
         return original;
+    }
+
+    @Inject(method = "consumeItem()V", at = @At("HEAD"))
+    private void onConsumeItem(CallbackInfo ci) {
+        if ((Object) this != MinecraftClient.getInstance().player) return;
+        new EventItemUseFinish(((LivingEntity) (Object) this).getActiveItem()).post();
     }
 
 }
