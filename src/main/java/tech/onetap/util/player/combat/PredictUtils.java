@@ -2,6 +2,8 @@ package tech.onetap.util.player.combat;
 
 import lombok.experimental.UtilityClass;
 import net.minecraft.entity.Entity;
+import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.Box;
 import net.minecraft.util.math.Vec3d;
 
 @UtilityClass
@@ -74,5 +76,39 @@ public class PredictUtils {
 
     public static Vec3d predict(Entity entity, double ticks) {
         return getPredicted(entity, ticks);
+    }
+
+    /**
+     * Прямолинейная экстраполяция позиции по горизонтальной скорости с остановкой на стене.
+     * Используется расчётом урона кристаллов: там нужен хитбокс, а не точка прицеливания.
+     */
+    public static Vec3d predictPosition(Entity entity, int ticks) {
+        Vec3d pos = entity.getPos();
+        if (ticks <= 0) return pos;
+
+        double motionX = entity.getVelocity().x;
+        double motionZ = entity.getVelocity().z;
+
+        for (int i = 0; i < ticks; i++) {
+            double marginX = motionX > 0 ? 0.3 : -0.3;
+            double marginZ = motionZ > 0 ? 0.3 : -0.3;
+
+            boolean feetBlocked = !entity.getWorld().isAir(BlockPos.ofFloored(pos.add(motionX + marginX, 0.1, motionZ + marginZ)));
+            boolean headBlocked = !entity.getWorld().isAir(BlockPos.ofFloored(pos.add(motionX + marginX, 1.0, motionZ + marginZ)));
+
+            if (feetBlocked || headBlocked) {
+                motionX = 0;
+                motionZ = 0;
+            }
+
+            pos = pos.add(motionX, 0, motionZ);
+        }
+
+        return pos;
+    }
+
+    public static Box predictBox(Entity entity, int ticks) {
+        if (ticks <= 0) return entity.getBoundingBox();
+        return entity.getBoundingBox().offset(predictPosition(entity, ticks).subtract(entity.getPos()));
     }
 }

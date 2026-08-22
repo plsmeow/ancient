@@ -263,11 +263,11 @@ public class AnchorAura extends Module {
         if (isOutOfRange(Vec3d.ofCenter(pos), pos, false)) return 0.0;
 
         Vec3d explosionPos = Vec3d.ofCenter(pos);
-        float selfDamage = CrystalDamageCalculator.calculateAnchorDamage(explosionPos, mc.player, 0.0, ignoreTerrain.getValue());
+        float selfDamage = CrystalDamageCalculator.anchorDamage(explosionPos, mc.player, ignoreTerrain.getValue());
         if (selfDamage > maxSelfDamage.getValue()) return 0.0;
         if (antiSuicide.getValue() && selfDamage >= mc.player.getHealth() + mc.player.getAbsorptionAmount()) return 0.0;
 
-        float targetDamage = CrystalDamageCalculator.calculateAnchorDamage(explosionPos, bestTarget, 0.0, ignoreTerrain.getValue());
+        float targetDamage = CrystalDamageCalculator.anchorDamage(explosionPos, bestTarget, ignoreTerrain.getValue());
         if (targetDamage < minDamage.getValue()) return 0.0;
 
         return targetDamage;
@@ -279,11 +279,11 @@ public class AnchorAura extends Module {
         if (isOutOfRange(Vec3d.ofCenter(pos), pos, true)) return 0.0;
 
         Vec3d explosionPos = Vec3d.ofCenter(pos);
-        float selfDamage = CrystalDamageCalculator.calculateAnchorDamage(explosionPos, mc.player, 0.0, ignoreTerrain.getValue());
+        float selfDamage = CrystalDamageCalculator.anchorDamage(explosionPos, mc.player, ignoreTerrain.getValue());
         if (selfDamage > maxSelfDamage.getValue()) return 0.0;
         if (antiSuicide.getValue() && selfDamage >= mc.player.getHealth() + mc.player.getAbsorptionAmount()) return 0.0;
 
-        float targetDamage = CrystalDamageCalculator.calculateAnchorDamage(explosionPos, bestTarget, 0.0, ignoreTerrain.getValue());
+        float targetDamage = CrystalDamageCalculator.anchorDamage(explosionPos, bestTarget, ignoreTerrain.getValue());
         if (targetDamage < minDamage.getValue()) return 0.0;
 
         return targetDamage;
