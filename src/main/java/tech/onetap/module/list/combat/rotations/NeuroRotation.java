@@ -25,7 +25,7 @@ public class NeuroRotation extends RotationMode {
 
     private static final float MAX_DELTA_YAW = 75.0f;
     private static final float MAX_DELTA_PITCH = 55.0f;
-    private static final float MIN_CONFIDENCE = 0.15f;
+    private static final float MIN_CONFIDENCE = 0.3f;
 
     /** Причина отката в fallback — для debug-панели. */
     public enum FallbackReason {
@@ -51,8 +51,8 @@ public class NeuroRotation extends RotationMode {
 
     private LivingEntity lastTarget = null;
     private long lastTickHandled = -1;
-    private float prevDeltaYaw = 0.0f;
-    private float prevDeltaPitch = 0.0f;
+    private float tickAppliedYaw = 0.0f;
+    private float tickAppliedPitch = 0.0f;
     private boolean fallbackActive = false;
 
     /** Диагностика для debug-рендера. */
@@ -96,6 +96,11 @@ public class NeuroRotation extends RotationMode {
                 holdOrFallback(ka, target);
                 return;
             }
+            if (fallbackActive) {
+                // В окне истории за время простоя образовалась дыра — сбрасываем,
+                // следующие SEQ_LEN тиков цель ведётся геометрически (warm-up)
+                history.reset();
+            }
             fallbackActive = false;
             fallbackReason = FallbackReason.NONE;
             fallbackTicks = 0;
@@ -123,9 +128,25 @@ public class NeuroRotation extends RotationMode {
         var mc = ka.mc;
         if (mc.player.isGliding() && target.isGliding()) {
             noRotFallback.update(ka, target);
-        } else {
-            keepAlive(ka);
+            return;
         }
+
+        // Не морозим взгляд: пока модель не восстановится, ведём прицел к точке
+        // геометрически — иначе фолбэк выглядит как «застрял на одном месте»
+        Vec3d aimPoint = aimController.update(ka, target, false);
+        Rotation targetRotation = new Rotation(aimPoint);
+        float dYaw = MathHelper.wrapDegrees(targetRotation.getYaw() - mc.player.getYaw());
+        float dPitch = targetRotation.getPitch() - mc.player.getPitch();
+
+        if (Math.abs(dYaw) < 1.0f && Math.abs(dPitch) < 1.0f) {
+            keepAlive(ka);
+            return;
+        }
+
+        float stepYaw = MathHelper.clamp(dYaw * 0.35f, -20.0f, 20.0f);
+        float stepPitch = MathHelper.clamp(dPitch * 0.35f, -15.0f, 15.0f);
+        setBudget(ka, stepYaw, stepPitch);
+        applySubStep(ka);
     }
 
     /**
@@ -163,8 +184,10 @@ public class NeuroRotation extends RotationMode {
         debugAimPoint = aimPoint;
 
         collector.collect(featureRow, 0, mc.player, target, currentRotation, aimPoint, targetChanged);
-        featureRow[NeuroFeatureSchema.PREV_DELTA_YAW] = prevDeltaYaw;
-        featureRow[NeuroFeatureSchema.PREV_DELTA_PITCH] = prevDeltaPitch;
+        featureRow[NeuroFeatureSchema.PREV_DELTA_YAW] = tickAppliedYaw;
+        featureRow[NeuroFeatureSchema.PREV_DELTA_PITCH] = tickAppliedPitch;
+        tickAppliedYaw = 0.0f;
+        tickAppliedPitch = 0.0f;
 
         debugGeoYaw = featureRow[NeuroFeatureSchema.TARGET_DELTA_YAW];
         debugGeoPitch = featureRow[NeuroFeatureSchema.TARGET_DELTA_PITCH];
@@ -202,8 +225,18 @@ public class NeuroRotation extends RotationMode {
 
         float deltaYaw = MathHelper.clamp(output[0], -MAX_DELTA_YAW, MAX_DELTA_YAW);
         float deltaPitch = MathHelper.clamp(output[1], -MAX_DELTA_PITCH, MAX_DELTA_PITCH);
+
+        // Срезаем выбросы магнитуды: модель не должна крутить сильнее, чем
+        // требует геометрия, иначе прицел перелетает цель и уходит в небо
+        float predMag = (float) Math.hypot(deltaYaw, deltaPitch);
+        float geoMag = (float) Math.hypot(debugGeoYaw, debugGeoPitch);
+        float maxMag = geoMag * 1.5f + 10.0f;
+        if (predMag > maxMag) {
+            float scale = maxMag / predMag;
+            deltaYaw *= scale;
+            deltaPitch *= scale;
+        }
         debugPredYaw = deltaYaw;
-        debugPredPitch = deltaPitch;
 
         // Confidence выводится из согласия с геометрической дельтой (§12):
         // метки confidence в датасете нет, поэтому оцениваем на inference.
@@ -242,11 +275,13 @@ public class NeuroRotation extends RotationMode {
             return 0.0f;
         }
 
-        // Косинус между предсказанным и геометрическим направлением
+        // Косинус между предсказанным и геометрическим направлением.
+        // Перпендикулярное предсказание (косинус ~0) раньше проходило порог
+        // и уводило прицел вбок/в небо — засчитываем только сонаправленное
         float dot = predYaw * geoYaw + predPitch * geoPitch;
         float cosine = dot / (predMagnitude * geoMagnitude);
 
-        return MathHelper.clamp((cosine + 1.0f) * 0.5f, 0.0f, 1.0f);
+        return MathHelper.clamp(cosine, 0.0f, 1.0f);
     }
 
     /**
@@ -282,8 +317,8 @@ public class NeuroRotation extends RotationMode {
         ka.lastYaw = rotation.getYaw();
         ka.lastPitch = rotation.getPitch();
 
-        prevDeltaYaw = MathHelper.wrapDegrees(rotation.getYaw() - currentYaw);
-        prevDeltaPitch = rotation.getPitch() - currentPitch;
+        tickAppliedYaw += stepYaw;
+        tickAppliedPitch += stepPitch;
     }
 
     /**
@@ -296,8 +331,8 @@ public class NeuroRotation extends RotationMode {
         collector.reset();
         controller.reset();
         aimController.reset();
-        prevDeltaYaw = 0.0f;
-        prevDeltaPitch = 0.0f;
+        tickAppliedYaw = 0.0f;
+        tickAppliedPitch = 0.0f;
     }
 
     @Override
@@ -309,8 +344,8 @@ public class NeuroRotation extends RotationMode {
         noRotFallback.reset(ka);
         lastTarget = null;
         lastTickHandled = -1;
-        prevDeltaYaw = 0.0f;
-        prevDeltaPitch = 0.0f;
+        tickAppliedYaw = 0.0f;
+        tickAppliedPitch = 0.0f;
         fallbackActive = false;
         fallbackReason = FallbackReason.NONE;
         fallbackTicks = 0;

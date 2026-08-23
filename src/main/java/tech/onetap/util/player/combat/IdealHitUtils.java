@@ -14,7 +14,6 @@ import tech.onetap.module.list.combat.KillAura;
 import tech.onetap.module.list.combat.MaceKill;
 import tech.onetap.module.list.movement.AirStuck;
 import tech.onetap.module.list.movement.Flight;
-import tech.onetap.module.list.player.FreeCamera;
 import tech.onetap.util.IMinecraft;
 import tech.onetap.util.math.StopWatch;
 import tech.onetap.util.player.other.WorldUtils;
@@ -90,7 +89,6 @@ public class IdealHitUtils implements IMinecraft {
                 || mc.player.hasVehicle()
                 || mc.player.getAbilities().flying
                 || (allowedMovement.y < mc.player.getStepHeight() - 0.5 && mc.player.isOnGround() || mc.player.getVelocity().y == -0.005 && mc.player.isSubmergedInWater())
-                || Onetap.getInstance().getModuleStorage().get(FreeCamera.class).isEnabled()
                 // С включённым AirStuck игрок завис в воздухе без скорости падения — крит невозможен,
                 // поэтому бьём сразу, а не ждём подтверждённого падения (иначе KillAura не атакует вообще).
                 || Onetap.getInstance().getModuleStorage().get(AirStuck.class).isEnabled()

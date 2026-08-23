@@ -15,6 +15,7 @@ accessible field net/minecraft/client/util/Window scaleFactor D
 accessible method net/minecraft/network/ClientConnection channelRead0 (Lio/netty/channel/ChannelHandlerContext;Lnet/minecraft/network/packet/Packet;)V
 accessible method net/minecraft/client/render/Camera setRotation (FF)V
 accessible method net/minecraft/client/render/Camera clipToSpace (F)F
+accessible method net/minecraft/client/render/Camera setPos (DDD)V
 accessible class net/minecraft/client/render/item/HeldItemRenderer$HandRenderType
 accessible method net/minecraft/client/render/item/HeldItemRenderer getHandRenderType (Lnet/minecraft/client/network/ClientPlayerEntity;)Lnet/minecraft/client/render/item/HeldItemRenderer$HandRenderType;
 accessible field net/minecraft/client/render/item/HeldItemRenderer$HandRenderType renderMainHand Z

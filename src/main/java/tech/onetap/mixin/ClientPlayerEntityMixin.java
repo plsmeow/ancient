@@ -15,7 +15,6 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import tech.onetap.event.list.*;
-import tech.onetap.module.list.player.FreeCamera;
 import tech.onetap.module.list.player.NoPush;
 import tech.onetap.util.base.Instance;
 
@@ -73,8 +72,7 @@ public abstract class ClientPlayerEntityMixin {
 
     @Inject(method = "pushOutOfBlocks", at = @At("HEAD"), cancellable = true)
     public void pushOutOfBlocks(double x, double z, CallbackInfo ci) {
-        if (Instance.get(FreeCamera.class).isEnabled()
-                || Instance.get(NoPush.class).isEnabled()
+        if (Instance.get(NoPush.class).isEnabled()
                 && Instance.get(NoPush.class).objects.isEnabled("Блоки")) {
             ci.cancel();
         }

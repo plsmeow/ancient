@@ -37,7 +37,6 @@ import tech.onetap.event.list.EventTickEnd;
 import tech.onetap.module.Module;
 import tech.onetap.module.ModuleCategory;
 import tech.onetap.module.ModuleInformation;
-import tech.onetap.module.list.player.FreeCamera;
 import tech.onetap.module.settings.BooleanSetting;
 import tech.onetap.module.settings.ModeListSetting;
 import tech.onetap.module.settings.ModeSetting;
@@ -529,7 +528,8 @@ public class KillAura extends Module {
                 if (maceKill.isEnabled() && maceKill.isCustomDelayEnabled()) {
                     // MaceKill: после удара ждём кастомную задержку, а не 10 тиков/кулдаун предмета
                     maceKill.resetAttackDelay();
-                } else if (!autoMace.isForceAutoMaceReady(target) && !isForceBreakShieldReady()) {
+                } else if (!autoMace.isForceAutoMaceReady(target) && !isForceBreakShieldReady()
+                        && !Onetap.getInstance().getModuleStorage().get(FunskyMace.class).isEnabled()) {
                     ticksToAttack = 10;
                 }
 
@@ -614,8 +614,7 @@ public class KillAura extends Module {
 
     private boolean isValidEntity(Entity entity) {
         if (!entity.isAlive()) return false;
-        PlayerEntity player = Onetap.getInstance().getModuleStorage().get(FreeCamera.class).fakePlayer != null ? Onetap.getInstance().getModuleStorage().get(FreeCamera.class).fakePlayer : mc.player;
-        if (entity == Onetap.getInstance().getModuleStorage().get(FreeCamera.class).fakePlayer) return false;
+        PlayerEntity player = mc.player;
         if (entity instanceof ClientPlayerEntity) return false;
         if (entity instanceof ArmorStandEntity) return false;
         if (entity instanceof PlayerEntity p) {
@@ -646,8 +645,7 @@ public class KillAura extends Module {
 
         if (eating && stopWhileEating.getValue()) return false;
 
-        PlayerEntity player = Onetap.getInstance().getModuleStorage().get(FreeCamera.class).fakePlayer != null ?
-                Onetap.getInstance().getModuleStorage().get(FreeCamera.class).fakePlayer : mc.player;
+        PlayerEntity player = mc.player;
 
         if (!isInAttackDistance(player, target)) return false;
 
@@ -687,6 +685,11 @@ public class KillAura extends Module {
 
         if (rotation.is("Snap")) {
             if (!snapActive || snapTimer < snapHoldTicks.getValue()) return false;
+        }
+
+        FunskyMace funskyMace = Onetap.getInstance().getModuleStorage().get(FunskyMace.class);
+        if (funskyMace != null && funskyMace.isEnabled()) {
+            return true;
         }
 
         MaceKill maceKill = Onetap.getInstance().getModuleStorage().get(MaceKill.class);

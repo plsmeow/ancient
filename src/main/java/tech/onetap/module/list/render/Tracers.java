@@ -26,7 +26,6 @@ import tech.onetap.module.Module;
 import tech.onetap.module.ModuleCategory;
 import tech.onetap.module.ModuleInformation;
 import tech.onetap.module.list.combat.AntiBot;
-import tech.onetap.module.list.player.FreeCamera;
 import tech.onetap.module.settings.BooleanSetting;
 import tech.onetap.util.friend.FriendRepository;
 import tech.onetap.util.render.lines.VertexUtil;
@@ -150,7 +149,6 @@ public class Tracers extends Module {
 
     private boolean isValid(Entity entity) {
         if (!entity.isAlive()) return false;
-        if (entity == Onetap.getInstance().getModuleStorage().get(FreeCamera.class).fakePlayer) return false;
         if (entity instanceof ClientPlayerEntity) return false;
         if (entity instanceof ArmorStandEntity) return false;
         if ((entity instanceof HostileEntity || entity instanceof AmbientEntity))

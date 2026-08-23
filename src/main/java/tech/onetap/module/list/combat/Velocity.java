@@ -2,6 +2,7 @@ package tech.onetap.module.list.combat;
 
 import meteordevelopment.orbit.EventHandler;
 import net.minecraft.network.packet.s2c.play.EntityVelocityUpdateS2CPacket;
+import net.minecraft.util.math.Vec3d;
 import net.minecraft.network.packet.s2c.common.CommonPingS2CPacket;
 import tech.onetap.event.list.EventPacket;
 import tech.onetap.mixin.EntityVelocityUpdateS2CPacketAccessor;
@@ -12,6 +13,7 @@ import tech.onetap.module.settings.SliderSetting;
 import tech.onetap.module.settings.ModeSetting;
 import tech.onetap.module.settings.BooleanSetting;
 import tech.onetap.util.text.ValueUnit;
+import java.util.Optional;
 
 @ModuleInformation(moduleName = "Velocity", moduleCategory = ModuleCategory.COMBAT)
 public class Velocity extends Module {
@@ -94,5 +96,15 @@ public class Velocity extends Module {
                 }
             }
         }
+    }
+
+    public Optional<Vec3d> modifyExplosionKnockback(Vec3d knockback) {
+        if (mode.is("Grim")) return Optional.empty();
+
+        double hPct = horizontal.getValue() / 100.0;
+        double vPct = vertical.getValue() / 100.0;
+        if (hPct == 0 && vPct == 0) return Optional.empty();
+
+        return Optional.of(new Vec3d(knockback.x * hPct, knockback.y * vPct, knockback.z * hPct));
     }
 }

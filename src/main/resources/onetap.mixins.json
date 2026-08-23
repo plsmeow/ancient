@@ -19,6 +19,7 @@
     "ChatHudMixin",
     "ChatInputSuggestorMixin",
     "ChatScreenMixin",
+    "ChunkOcclusionDataBuilderMixin",
     "ClientPlayerEntityMixin",
     "ClientPlayerInteractionManagerMixin",
     "ClientPlayNetworkHandlerMixin",
@@ -36,7 +37,6 @@
     "LivingEntityMixin",
     "MinecraftClientMixin",
     "MouseMixin",
-    "PlayerEntityMixin",
     "RenderTickCounterAccessor",
     "ScreenMixin",
 

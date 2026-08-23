@@ -10,7 +10,7 @@ import tech.onetap.util.player.combat.RaytraceUtil;
 import tech.onetap.util.rotation.Rotation;
 
 /**
- * Собирает 33 фичи для одного временного шага.
+ * Собирает 39 фич для одного временного шага.
  * Состояние на инстанс, без static-полей.
  */
 public class NeuroFeatureCollector implements IMinecraft {
@@ -18,9 +18,29 @@ public class NeuroFeatureCollector implements IMinecraft {
     private float prevAttackCooldown = 1.0f;
     private Vec3d prevAimPoint = Vec3d.ZERO;
 
+    // Кинематика поворота (в стиле mlsac TickData)
+    private boolean hasRotation = false;
+    private float lastCollectorYaw;
+    private float lastCollectorPitch;
+    private float lastDeltaYaw;
+    private float lastDeltaPitch;
+    private float lastAccelYaw;
+    private float lastAccelPitch;
+    private final GcdDivisorEstimator yawDivisors = new GcdDivisorEstimator();
+    private final GcdDivisorEstimator pitchDivisors = new GcdDivisorEstimator();
+
     public void reset() {
         prevAttackCooldown = 1.0f;
         prevAimPoint = Vec3d.ZERO;
+        hasRotation = false;
+        lastCollectorYaw = 0.0f;
+        lastCollectorPitch = 0.0f;
+        lastDeltaYaw = 0.0f;
+        lastDeltaPitch = 0.0f;
+        lastAccelYaw = 0.0f;
+        lastAccelPitch = 0.0f;
+        yawDivisors.reset();
+        pitchDivisors.reset();
     }
 
     /**
@@ -104,6 +124,33 @@ public class NeuroFeatureCollector implements IMinecraft {
         // Caller должен перезаписать их на основе истории
         dest[offset + NeuroFeatureSchema.PREV_DELTA_YAW] = 0.0f;
         dest[offset + NeuroFeatureSchema.PREV_DELTA_PITCH] = 0.0f;
+
+        // Кинематика поворота: delta -> accel -> jerk + GCD-error (mlsac TickData)
+        float kinDeltaYaw = hasRotation
+                ? MathHelper.wrapDegrees(currentRotation.getYaw() - lastCollectorYaw) : 0.0f;
+        float kinDeltaPitch = hasRotation
+                ? currentRotation.getPitch() - lastCollectorPitch : 0.0f;
+        float accelYaw = hasRotation ? kinDeltaYaw - lastDeltaYaw : 0.0f;
+        float accelPitch = hasRotation ? kinDeltaPitch - lastDeltaPitch : 0.0f;
+        float jerkYaw = hasRotation ? accelYaw - lastAccelYaw : 0.0f;
+        float jerkPitch = hasRotation ? accelPitch - lastAccelPitch : 0.0f;
+
+        dest[offset + NeuroFeatureSchema.ACCEL_YAW] = accelYaw;
+        dest[offset + NeuroFeatureSchema.ACCEL_PITCH] = accelPitch;
+        dest[offset + NeuroFeatureSchema.JERK_YAW] = jerkYaw;
+        dest[offset + NeuroFeatureSchema.JERK_PITCH] = jerkPitch;
+        dest[offset + NeuroFeatureSchema.GCD_ERROR_YAW] = yawDivisors.gcdError(kinDeltaYaw);
+        dest[offset + NeuroFeatureSchema.GCD_ERROR_PITCH] = pitchDivisors.gcdError(kinDeltaPitch);
+        yawDivisors.update(kinDeltaYaw);
+        pitchDivisors.update(kinDeltaPitch);
+
+        lastCollectorYaw = currentRotation.getYaw();
+        lastCollectorPitch = currentRotation.getPitch();
+        lastDeltaYaw = kinDeltaYaw;
+        lastDeltaPitch = kinDeltaPitch;
+        lastAccelYaw = accelYaw;
+        lastAccelPitch = accelPitch;
+        hasRotation = true;
 
         // Геометрическая дельта к aim point
         Rotation targetRotation = new Rotation(aimPoint);

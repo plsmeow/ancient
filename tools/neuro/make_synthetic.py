@@ -10,11 +10,17 @@ import json
 import math
 from pathlib import Path
 
-FEATURE_COUNT = 33
+FEATURE_COUNT = 39
 TARGET_DELTA_YAW = 21
 TARGET_DELTA_PITCH = 22
 PREV_DELTA_YAW = 19
 PREV_DELTA_PITCH = 20
+ACCEL_YAW = 33
+ACCEL_PITCH = 34
+JERK_YAW = 35
+JERK_PITCH = 36
+GCD_ERROR_YAW = 37
+GCD_ERROR_PITCH = 38
 TARGET_DISTANCE = 15
 
 
@@ -29,6 +35,7 @@ def main():
 
     rows = []
     prev_dy, prev_dp = 0.0, 0.0
+    prev_ay, prev_ap = 0.0, 0.0
 
     for i in range(args.samples):
         t = i * 0.05
@@ -49,6 +56,17 @@ def main():
         label_dy = 0.55 * target_dy + 0.2 * prev_dy
         label_dp = 0.55 * target_dp + 0.2 * prev_dp
 
+        # Кинематика согласована с меткой: accel/jerk из ряда дельт
+        ay, ap = label_dy - prev_dy, label_dp - prev_dp
+        jy, jp = ay - prev_ay, ap - prev_ap
+
+        feats[ACCEL_YAW] = ay
+        feats[ACCEL_PITCH] = ap
+        feats[JERK_YAW] = jy
+        feats[JERK_PITCH] = jp
+        feats[GCD_ERROR_YAW] = abs(ay) % 0.15
+        feats[GCD_ERROR_PITCH] = abs(ap) % 0.15
+
         rows.append({
             "f": [round(v, 5) for v in feats],
             "y": [round(label_dy, 5), round(label_dp, 5)],
@@ -58,6 +76,7 @@ def main():
         })
 
         prev_dy, prev_dp = label_dy, label_dp
+        prev_ay, prev_ap = ay, ap
 
     with open(out_path, "w", encoding="utf-8") as f:
         for row in rows:
@@ -65,7 +84,7 @@ def main():
 
     name = out_path.stem
     meta = {
-        "schemaVersion": 2,
+        "schemaVersion": 3,
         "name": name,
         "mode": "synthetic",
         "source": "HUMAN",

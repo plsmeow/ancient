@@ -6,7 +6,7 @@ from pathlib import Path
 
 from model import FEATURE_COUNT, SEQ_LEN, OUTPUT_SIZE
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 class DatasetError(Exception):

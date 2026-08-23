@@ -3,7 +3,7 @@
 import torch
 import torch.nn as nn
 
-FEATURE_COUNT = 33
+FEATURE_COUNT = 39
 SEQ_LEN = 8
 OUTPUT_SIZE = 2
 

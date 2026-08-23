@@ -4,6 +4,7 @@ import meteordevelopment.orbit.EventHandler;
 import com.mojang.blaze3d.systems.RenderSystem;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.network.PlayerListEntry;
 import net.minecraft.client.network.AbstractClientPlayerEntity;
 import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.client.util.math.Vector2f;
@@ -38,8 +39,8 @@ import tech.onetap.module.settings.BooleanSetting;
 import tech.onetap.module.settings.ModeListSetting;
 import tech.onetap.module.settings.ModeSetting;
 import tech.onetap.util.friend.FriendRepository;
+import tech.onetap.util.staff.StaffManager;
 import tech.onetap.util.target.TargetRepository;
-import tech.onetap.util.parse.ParseTextUtil;
 import tech.onetap.util.render.builders.Builder;
 import tech.onetap.util.render.builders.states.QuadColorState;
 import tech.onetap.util.render.builders.states.QuadRadiusState;
@@ -51,8 +52,10 @@ import tech.onetap.util.render.providers.ColorProvider;
 import tech.onetap.util.render.renderers.DrawUtil;
 import tech.onetap.util.replace.ReplaceUtil;
 
+
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.regex.Pattern;
 
 @ModuleInformation(moduleName = "Tags", moduleDesc = "Теги над игроками", moduleCategory = ModuleCategory.RENDER)
 public class Tags extends Module {
@@ -63,7 +66,9 @@ public class Tags extends Module {
     );
 
     private final BooleanSetting totemCounter = new BooleanSetting("Счетчик тотемов", false);
-    // Стиль всегда Nursultan - настройка удалена
+    private static final Pattern STAFF_PREFIX_PATTERN = Pattern.compile(
+            ".*(ꔷ|ꔳ|ꔩ|ꔥ|ꔡ|ꔗ|ꔓ|\\bmod\\b|\\badm\\b|\\bhelp\\b|\\bwne\\b|модер|мод|хелп|помощ|помо|админ|адм|владел|владе|отриц|отри|\\btaf\\b|\\bcurat\\b|куратор|курато|\\bdev\\b|разраб|раз|\\bsupp\\b|\\bꜱupp\\b|саппорт|сапп|\\bder\\b|\\byt\\b|\\[yt\\]|ютуб|стажер|сотрудник).*");
+
 
     private final Map<UUID, Text> normalizedNames = new ConcurrentHashMap<>();
     private final Map<UUID, Integer> totemPops = new ConcurrentHashMap<>();
@@ -221,6 +226,17 @@ public class Tags extends Module {
         return normalizedNames.computeIfAbsent(entity.getUuid(), uuid -> processNameInternal(entity));
     }
 
+    private boolean isStaffTag(PlayerEntity entity) {
+        if (StaffManager.isStaff(entity.getGameProfile().getName())) return true;
+
+        if (mc.getNetworkHandler() == null) return false;
+        PlayerListEntry entry = mc.getNetworkHandler().getPlayerListEntry(entity.getUuid());
+        if (entry == null || entry.getDisplayName() == null) return false;
+
+        String displayName = entry.getDisplayName().getString().toLowerCase(Locale.ROOT);
+        return STAFF_PREFIX_PATTERN.matcher(displayName).matches();
+    }
+
     @EventHandler
     private void onRender(EventHUD e) {
         if (clearCacheTicker++ > 100) {
@@ -330,7 +346,9 @@ public class Tags extends Module {
             float bgY = tagY;
 
             int bgColor;
-            if (TargetRepository.isTarget(entity.getNameForScoreboard())) {
+            if (isStaffTag(entity)) {
+                bgColor = ColorProvider.rgba(255, 255, 0, 150);
+            } else if (TargetRepository.isTarget(entity.getNameForScoreboard())) {
                 bgColor = ColorProvider.rgba(166, 0, 0, 144);
             } else if (FriendRepository.isFriend(entity.getNameForScoreboard())) {
                 bgColor = ColorProvider.rgba(35, 166, 0, 144);

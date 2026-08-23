@@ -1,13 +1,16 @@
 package tech.onetap.util.neuro.rotation;
 
 /**
- * Схема фич для Neuro Rotation v2.
- * Всего 33 фичи × 8 временных шагов = 264 входа.
+ * Схема фич для Neuro Rotation v3.
+ * Всего 39 фич × 8 временных шагов = 312 входов.
+ *
+ * v3: добавлены кинематические фичи в стиле mlsac (TickData) —
+ * accel/jerk поворота и GCD-error дельт относительно моды делителя.
  */
 public final class NeuroFeatureSchema {
 
-    public static final int SCHEMA_VERSION = 2;
-    public static final int FEATURE_COUNT = 33;
+    public static final int SCHEMA_VERSION = 3;
+    public static final int FEATURE_COUNT = 39;
     public static final int SEQ_LEN = 8;
     public static final int OUTPUT_SIZE = 2;
 
@@ -53,6 +56,14 @@ public final class NeuroFeatureSchema {
     public static final int TARGET_VISIBLE = 30;
     public static final int TARGET_CHANGED = 31;
     public static final int ATTACK_COOLDOWN = 32;
+
+    // Rotation kinematics (6 features) — аналог TickData из mlsac
+    public static final int ACCEL_YAW = 33;
+    public static final int ACCEL_PITCH = 34;
+    public static final int JERK_YAW = 35;
+    public static final int JERK_PITCH = 36;
+    public static final int GCD_ERROR_YAW = 37;
+    public static final int GCD_ERROR_PITCH = 38;
 
     private NeuroFeatureSchema() {
     }

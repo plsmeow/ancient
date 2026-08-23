@@ -1,6 +1,7 @@
 package tech.onetap.mixin;
 
 import com.llamalad7.mixinextras.sugar.Local;
+import net.minecraft.client.render.Camera;
 import net.minecraft.client.render.GameRenderer;
 import net.minecraft.client.render.RenderTickCounter;
 import net.minecraft.client.util.math.MatrixStack;
@@ -18,6 +19,8 @@ import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import tech.onetap.event.list.EventWorldRender;
+import tech.onetap.module.list.player.FreeCamera;
+import tech.onetap.util.base.Instance;
 import tech.onetap.util.rotation.FreeLookComponent;
 import tech.onetap.util.render.renderers.DrawUtil;
 
@@ -32,6 +35,12 @@ public class GameRendererMixin {
         var event = new EventWorldRender(matrixStack, tickCounter.getTickDelta(false));
         event.post();
         DrawUtil.onRender3D(event.getMatrixStack());
+    }
+
+    @Inject(method = "renderHand", at = @At("HEAD"), cancellable = true)
+    private void freecamRenderHand(Camera camera, float tickDelta, Matrix4f matrix4f, CallbackInfo ci) {
+        FreeCamera freeCamera = Instance.get(FreeCamera.class);
+        if (freeCamera != null && freeCamera.isEnabled()) ci.cancel();
     }
 
     @WrapOperation(

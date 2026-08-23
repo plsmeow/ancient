@@ -52,8 +52,9 @@ public class AutoMace extends Module {
         if (!isEnabled()) return -1;
         if (mc.player.isGliding() && !autoMaceElytra.getValue()) return -1;
 
-        // Проверяем, включен ли GroundSpoof через хранилище модулей
+        // Проверяем, включён ли GroundSpoof/FunskyMace через хранилище модулей
         boolean isGroundSpoofActive = Onetap.getInstance().getModuleStorage().get(GroundSpoof.class).isEnabled()
+                || Onetap.getInstance().getModuleStorage().get(FunskyMace.class).isEnabled()
                 || Onetap.getInstance().getModuleStorage().get(MaceKill.class).isEnabled();
 
         // Если GroundSpoof/MaceKill выключены, оставляем стандартную проверку на дистанцию падения
@@ -152,7 +153,8 @@ public class AutoMace extends Module {
     }
 
     private boolean isMaceAttackReady() {
-        boolean isGroundSpoofActive = Onetap.getInstance().getModuleStorage().get(GroundSpoof.class).isEnabled();
+        boolean isGroundSpoofActive = Onetap.getInstance().getModuleStorage().get(GroundSpoof.class).isEnabled()
+                || Onetap.getInstance().getModuleStorage().get(FunskyMace.class).isEnabled();
 
         return isEnabled()
                 && (!mc.player.isGliding() || autoMaceElytra.getValue())

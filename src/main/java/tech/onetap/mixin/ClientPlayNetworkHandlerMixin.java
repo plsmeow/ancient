@@ -1,8 +1,11 @@
 package tech.onetap.mixin;
 
+import com.llamalad7.mixinextras.injector.ModifyExpressionValue;
 import net.minecraft.client.network.ClientPlayNetworkHandler;
 import net.minecraft.client.world.ClientWorld;
 import net.minecraft.network.packet.s2c.play.EntitySpawnS2CPacket;
+import net.minecraft.network.packet.s2c.play.ExplosionS2CPacket;
+import net.minecraft.util.math.Vec3d;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
@@ -10,6 +13,10 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import tech.onetap.event.list.ChatEvent;
 import tech.onetap.event.list.EventEntitySpawn;
+import tech.onetap.module.list.combat.Velocity;
+import tech.onetap.util.base.Instance;
+
+import java.util.Optional;
 
 @Mixin(ClientPlayNetworkHandler.class)
 public class ClientPlayNetworkHandlerMixin {
@@ -57,5 +64,18 @@ public class ClientPlayNetworkHandlerMixin {
 
         var event = new EventEntitySpawn(entity);
         event.post();
+    }
+
+    @ModifyExpressionValue(
+            method = "onExplosion",
+            at = @At(
+                    value = "INVOKE",
+                    target = "Lnet/minecraft/network/packet/s2c/play/ExplosionS2CPacket;playerKnockback()Ljava/util/Optional;"
+            )
+    )
+    private Optional<Vec3d> modifyExplosionKnockback(Optional<Vec3d> original) {
+        Velocity velocity = Instance.get(Velocity.class);
+        if (velocity == null || !velocity.isEnabled() || original.isEmpty()) return original;
+        return velocity.modifyExplosionKnockback(original.get());
     }
 }

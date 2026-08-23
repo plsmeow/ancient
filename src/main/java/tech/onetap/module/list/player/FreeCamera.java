@@ -1,138 +1,206 @@
 package tech.onetap.module.list.player;
 
 import meteordevelopment.orbit.EventHandler;
-import com.mojang.authlib.GameProfile;
-import net.minecraft.client.network.OtherClientPlayerEntity;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.player.PlayerPosition;
-import net.minecraft.network.packet.c2s.play.PlayerInteractBlockC2SPacket;
-import net.minecraft.network.packet.c2s.play.PlayerInteractItemC2SPacket;
-import net.minecraft.network.packet.c2s.play.PlayerMoveC2SPacket;
-import net.minecraft.network.packet.c2s.play.TeleportConfirmC2SPacket;
-import net.minecraft.network.packet.s2c.common.DisconnectS2CPacket;
+import net.minecraft.client.option.GameOptions;
+import net.minecraft.client.option.KeyBinding;
 import net.minecraft.network.packet.s2c.play.GameJoinS2CPacket;
-import net.minecraft.network.packet.s2c.play.PlayerPositionLookS2CPacket;
 import net.minecraft.network.packet.s2c.play.PlayerRespawnS2CPacket;
-import net.minecraft.network.packet.s2c.play.PositionFlag;
+import net.minecraft.network.packet.s2c.common.DisconnectS2CPacket;
+import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.Vec3d;
+import tech.onetap.event.list.EventKeyInput;
 import tech.onetap.event.list.EventPacket;
 import tech.onetap.event.list.EventTick;
+import tech.onetap.event.list.LookEvent;
 import tech.onetap.module.Module;
 import tech.onetap.module.ModuleCategory;
 import tech.onetap.module.ModuleInformation;
+import tech.onetap.module.settings.BooleanSetting;
 import tech.onetap.module.settings.SliderSetting;
-import tech.onetap.util.packet.NetworkUtils;
-import tech.onetap.util.player.move.MoveUtil;
-
-import java.util.Set;
-import java.util.UUID;
 
 @ModuleInformation(moduleName = "Free Camera", moduleCategory = ModuleCategory.PLAYER)
 public class FreeCamera extends Module {
-    public final SliderSetting xyi = new SliderSetting("Скорость по Y",0.5,0.1,1,0.1f);
-    private Vec3d frozenPos;
-    private float frozenYaw, frozenPitch;
-    public OtherClientPlayerEntity fakePlayer;
+    public final SliderSetting speed = new SliderSetting("Скорость", 1.0, 0.1, 5.0, 0.1);
+    private final BooleanSetting reloadChunks = new BooleanSetting("Перезагрузка чанков", true);
+
+    private Vec3d pos = Vec3d.ZERO;
+    private Vec3d prevPos = Vec3d.ZERO;
+    private float yaw, pitch, prevYaw, prevPitch;
+
+    private boolean forward, backward, left, right, up, down;
 
     @Override
     public void onEnable() {
-        if (mc.player == null || mc.world == null || mc.getNetworkHandler() == null) return;
-
-        frozenPos = mc.player.getPos();
-        frozenYaw = mc.player.getYaw();
-        frozenPitch = mc.player.getPitch();
-
-        GameProfile profile = new GameProfile(UUID.randomUUID(), mc.player.getName().getString());
-        fakePlayer = new OtherClientPlayerEntity(mc.world, profile);
-
-        fakePlayer.copyFrom(mc.player);
-        fakePlayer.setPos(frozenPos.x, frozenPos.y, frozenPos.z);
-        fakePlayer.setYaw(frozenYaw);
-        fakePlayer.setPitch(frozenPitch);
-        mc.world.addEntity(fakePlayer);
-
-        mc.player.noClip = true;
-        mc.player.setVelocity(Vec3d.ZERO);
         super.onEnable();
+        if (mc.player == null || mc.gameRenderer == null || mc.gameRenderer.getCamera() == null) return;
+
+        Vec3d camPos = mc.gameRenderer.getCamera().getPos();
+        pos = camPos;
+        prevPos = camPos;
+
+        yaw = mc.player.getYaw();
+        pitch = mc.player.getPitch();
+        prevYaw = yaw;
+        prevPitch = pitch;
+
+        GameOptions o = mc.options;
+        forward = o.forwardKey.isPressed();
+        backward = o.backKey.isPressed();
+        left = o.leftKey.isPressed();
+        right = o.rightKey.isPressed();
+        up = o.jumpKey.isPressed();
+        down = o.sneakKey.isPressed();
+
+        unpress();
+        if (reloadChunks.getValue() && mc.worldRenderer != null) mc.worldRenderer.reload();
     }
 
     @Override
     public void onDisable() {
-        if (mc.player == null || mc.world == null) return;
-
-        mc.player.noClip = false;
-        mc.player.setPos(frozenPos.x, frozenPos.y, frozenPos.z);
-        mc.player.setYaw(frozenYaw);
-        mc.player.setPitch(frozenPitch);
-        mc.player.setVelocity(Vec3d.ZERO);
-
-        if (fakePlayer != null) {
-            mc.world.removeEntity(fakePlayer.getId(), Entity.RemovalReason.DISCARDED);
-            fakePlayer = null;
-        }
-
         super.onDisable();
+        forward = backward = left = right = up = down = false;
+        unpress();
+        if (reloadChunks.getValue() && mc.worldRenderer != null) mc.worldRenderer.reload();
+    }
+
+    private void unpress() {
+        GameOptions o = mc.options;
+        o.forwardKey.setPressed(false);
+        o.backKey.setPressed(false);
+        o.leftKey.setPressed(false);
+        o.rightKey.setPressed(false);
+        o.jumpKey.setPressed(false);
+        o.sneakKey.setPressed(false);
     }
 
     @EventHandler
-    private void onLivingUpdate(EventTick e) {
+    private void onTick(EventTick e) {
         if (mc.player == null) return;
+        unpress();
 
-        mc.player.noClip = true;
-        mc.player.setVelocity(Vec3d.ZERO);
+        if (mc.currentScreen != null) {
+            forward = backward = left = right = up = down = false;
+            prevPos = pos;
+            return;
+        }
 
-        float speed = (float) xyi.getValue();
-        Vec3d motion = Vec3d.ZERO;
+        Vec3d fwd = Vec3d.fromPolar(0, yaw);
+        Vec3d rgt = Vec3d.fromPolar(0, yaw + 90);
 
-        MoveUtil.setMotion(1);
-        if (mc.options.jumpKey.isPressed())
-            motion = motion.add(0, speed, 0);
-        if (mc.options.sneakKey.isPressed())
-            motion = motion.subtract(0, speed, 0);
+        double velX = 0, velY = 0, velZ = 0;
+        double speedVal = speed.getValue();
+        double s = mc.options.sprintKey.isPressed() ? 1.0 : 0.5;
 
-        mc.player.setVelocity(mc.player.getVelocity().x, motion.y, mc.player.getVelocity().z);
+        boolean movingXZ = false, movingSide = false;
+        if (forward) {
+            velX += fwd.x * s * speedVal;
+            velZ += fwd.z * s * speedVal;
+            movingXZ = true;
+        }
+        if (backward) {
+            velX -= fwd.x * s * speedVal;
+            velZ -= fwd.z * s * speedVal;
+            movingXZ = true;
+        }
+        if (right) {
+            velX += rgt.x * s * speedVal;
+            velZ += rgt.z * s * speedVal;
+            movingSide = true;
+        }
+        if (left) {
+            velX -= rgt.x * s * speedVal;
+            velZ -= rgt.z * s * speedVal;
+            movingSide = true;
+        }
+        if (movingXZ && movingSide) {
+            double diagonal = 1 / Math.sqrt(2);
+            velX *= diagonal;
+            velZ *= diagonal;
+        }
+        if (up) velY += s * speedVal;
+        if (down) velY -= s * speedVal;
+
+        prevPos = pos;
+        pos = pos.add(velX, velY, velZ);
     }
 
-    private void setPosition(PlayerPosition pos, Set<PositionFlag> flags) {
-        PlayerPosition playerPosition = PlayerPosition.fromEntityLerpTarget(fakePlayer);
-        PlayerPosition playerPosition2 = PlayerPosition.apply(playerPosition, pos, flags);
-        frozenPos = new Vec3d(playerPosition2.position().getX(), playerPosition2.position().getY(), playerPosition2.position().getZ());
-        frozenYaw = playerPosition2.yaw();
-        frozenPitch = playerPosition2.pitch();
+    @EventHandler
+    private void onLook(LookEvent e) {
+        changeLookDirection(e.getYaw() * 0.15, e.getPitch() * 0.15);
+        e.cancelEvent();
+    }
+
+    @EventHandler
+    private void onKey(EventKeyInput e) {
+        if (mc.currentScreen != null) return;
+
+        boolean pressed = e.getAction() != 0;
+        int key = e.getKey();
+        GameOptions o = mc.options;
+
+        if (matches(o.forwardKey, key)) {
+            forward = pressed;
+            o.forwardKey.setPressed(false);
+        } else if (matches(o.backKey, key)) {
+            backward = pressed;
+            o.backKey.setPressed(false);
+        } else if (matches(o.rightKey, key)) {
+            right = pressed;
+            o.rightKey.setPressed(false);
+        } else if (matches(o.leftKey, key)) {
+            left = pressed;
+            o.leftKey.setPressed(false);
+        } else if (matches(o.jumpKey, key)) {
+            up = pressed;
+            o.jumpKey.setPressed(false);
+        } else if (matches(o.sneakKey, key)) {
+            down = pressed;
+            o.sneakKey.setPressed(false);
+        }
     }
 
     @EventHandler
     private void onPacket(EventPacket e) {
-        if (e.getPacket() instanceof PlayerPositionLookS2CPacket packet) {
-            if (mc.world == null || mc.player == null || !mc.player.isAlive()) return;
-            NetworkUtils.sendPacket(new TeleportConfirmC2SPacket(packet.teleportId()));
-            if (!mc.player.hasVehicle()) {
-                setPosition(packet.change(), packet.relatives());
-            }
-
-            NetworkUtils.sendSilentPacket(new PlayerMoveC2SPacket.Full(frozenPos.getX(), frozenPos.getY(), frozenPos.getZ(), frozenYaw, frozenPitch, false, false));
-            e.cancelEvent();
-        }
-
-        if (e.getPacket() instanceof PlayerMoveC2SPacket) {
-            e.cancelEvent();
-        }
-
-        if (e.getPacket() instanceof PlayerInteractBlockC2SPacket p) {
-            NetworkUtils.sendPacket(new PlayerInteractItemC2SPacket(p.getHand(), p.getSequence(), mc.player.getYaw(), mc.player.getPitch()));
-            e.cancelEvent();
-        }
-
-        if (e.getPacket() instanceof PlayerRespawnS2CPacket) {
+        if (e.getPacket() instanceof PlayerRespawnS2CPacket
+                || e.getPacket() instanceof GameJoinS2CPacket
+                || e.getPacket() instanceof DisconnectS2CPacket) {
             setEnabled(false);
         }
+    }
 
-        if (e.getPacket() instanceof GameJoinS2CPacket) {
-            setEnabled(false);
-        }
+    private boolean matches(KeyBinding binding, int key) {
+        return binding.matchesKey(key, -1) || binding.matchesMouse(key);
+    }
 
-        if (e.getPacket() instanceof DisconnectS2CPacket) {
-            setEnabled(false);
-        }
+    private void changeLookDirection(double deltaX, double deltaY) {
+        prevYaw = yaw;
+        prevPitch = pitch;
+        yaw += (float) deltaX;
+        pitch += (float) deltaY;
+        pitch = MathHelper.clamp(pitch, -90.0F, 90.0F);
+    }
+
+    public boolean reloadChunks() {
+        return reloadChunks.getValue();
+    }
+
+    public double getX(float tickDelta) {
+        return MathHelper.lerp((double) tickDelta, prevPos.x, pos.x);
+    }
+
+    public double getY(float tickDelta) {
+        return MathHelper.lerp((double) tickDelta, prevPos.y, pos.y);
+    }
+
+    public double getZ(float tickDelta) {
+        return MathHelper.lerp((double) tickDelta, prevPos.z, pos.z);
+    }
+
+    public double getYaw(float tickDelta) {
+        return MathHelper.lerp((double) tickDelta, prevYaw, yaw);
+    }
+
+    public double getPitch(float tickDelta) {
+        return MathHelper.lerp((double) tickDelta, prevPitch, pitch);
     }
 }
