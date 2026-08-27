@@ -23,6 +23,8 @@ import tech.onetap.util.base.Instance;
 @ModuleInformation(moduleName = "AutoMace", moduleDesc = "Автоматически берёт булаву в руку при атаке KillAura", moduleCategory = ModuleCategory.COMBAT)
 public class AutoMace extends Module {
 
+    private static final float SMASH_MIN_FALL_DISTANCE = 1.5F;
+
     public final BooleanSetting forceAutoMace = new BooleanSetting("AutoMace без задержки", true);
     public final BooleanSetting syncHurtTime = new BooleanSetting("Синхронизация с HurtTime", false)
             .setVisible(forceAutoMace::getValue);
@@ -58,7 +60,7 @@ public class AutoMace extends Module {
                 || Onetap.getInstance().getModuleStorage().get(MaceKill.class).isEnabled();
 
         // Если GroundSpoof/MaceKill выключены, оставляем стандартную проверку на дистанцию падения
-        if (!isGroundSpoofActive && mc.player.fallDistance < 1.8f) return -1;
+        if (!isGroundSpoofActive && mc.player.fallDistance <= SMASH_MIN_FALL_DISTANCE) return -1;
 
         int maceSlot = findBestMaceSlot();
         if (maceSlot == -1) return -1;
@@ -158,7 +160,7 @@ public class AutoMace extends Module {
 
         return isEnabled()
                 && (!mc.player.isGliding() || autoMaceElytra.getValue())
-                && (isGroundSpoofActive || mc.player.fallDistance >= 1.8f)
+                && (isGroundSpoofActive || mc.player.fallDistance > SMASH_MIN_FALL_DISTANCE)
                 && findBestMaceSlot() != -1;
     }
 

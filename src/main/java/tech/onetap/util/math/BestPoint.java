@@ -123,6 +123,23 @@ public class BestPoint implements IMinecraft {
         return bestPoint != null ? bestPoint : preferredPoint;
     }
 
+    public boolean hasVisiblePoint(Entity target, double range) {
+        if (mc.player == null || mc.world == null) return true;
+
+        if (isPointVisible(target, getNearestPoint(target), range)) return true;
+
+        Box box = target.getBoundingBox();
+        double step = 0.25;
+        for (double x = box.minX; x <= box.maxX; x += step) {
+            for (double y = box.minY; y <= box.maxY; y += step) {
+                for (double z = box.minZ; z <= box.maxZ; z += step) {
+                    if (isPointVisible(target, new Vec3d(x, y, z), range)) return true;
+                }
+            }
+        }
+        return false;
+    }
+
     private boolean isPointVisible(Entity target, Vec3d point, double range) {
         Vec3d eyePos = mc.player.getEyePos();
         double distance = eyePos.distanceTo(point);

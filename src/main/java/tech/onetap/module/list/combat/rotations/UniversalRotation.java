@@ -6,73 +6,85 @@ import net.minecraft.util.math.Box;
 import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.Vec3d;
 import tech.onetap.module.list.combat.KillAura;
-import tech.onetap.util.math.BestPoint;
 import tech.onetap.util.player.combat.PredictUtils;
-import tech.onetap.util.rotation.FreeLookComponent;
+import tech.onetap.util.render.math.GCDFixer;
 import tech.onetap.util.rotation.Rotation;
 import tech.onetap.util.rotation.RotationHelper;
 
-/**
- * Universal Rotation v5 — стабильная человекоподобная наводка.
- *
- * v5: Исправлен tracking — relative offset (смещение хранится ОТНОСИТЕЛЬНО цели,
- *     а не как мировая координата). Цель двигается — точка едет вместе с ней.
- *     Убран tracking lag (150мс) — он давал дополнительный отстав.
- *     Убран distScale — замедление на малой дистанции убивало трекинг.
- */
 public class UniversalRotation extends RotationMode {
 
     private boolean init = false;
-    private float curYaw = 0f;
-    private float curPitch = 0f;
     private LivingEntity lastTarget = null;
+    private int lastPlanAge = Integer.MIN_VALUE;
 
-    private float yawSpeedSmooth = 0f;
-    private float pitchSpeedSmooth = 0f;
+    private float planYaw = 0f;
+    private float planPitch = 0f;
+    private float residualYaw = 0f;
+    private float residualPitch = 0f;
+    private float stepYaw = 0f;
+    private float stepPitch = 0f;
 
-    private float windYaw = 0f;
-    private float aimFatigue = 0f;
+    private float noiseYaw1 = 0f;
+    private float noiseYaw2 = 0f;
+    private float noisePitch1 = 0f;
+    private float noisePitch2 = 0f;
+    private float noiseA1Yaw = 0f;
+    private float noiseA2Yaw = 0f;
+    private float noiseA1Pitch = 0f;
+    private float noiseA2Pitch = 0f;
 
-    private int microStopTicks = 0;
-    private long nextMicroStopAt = 0L;
+    private float gainNoiseYaw = 0f;
+    private float gainNoisePitch = 0f;
 
-    private float lookAwayDelta = 0f;
-    private long nextLookAwayAt = 0L;
+    private float velYaw = 0f;
+    private float velPitch = 0f;
+    private boolean hasPrevTarget = false;
+    private float prevTargetYaw = 0f;
+    private float prevTargetPitch = 0f;
 
-    private boolean overshootActive = false;
-    private int overshootTicksLeft = 0;
-    private float overshootYawDelta = 0f;
+    private boolean hasLag = false;
+    private float lagYaw = 0f;
+    private float lagPitch = 0f;
+    private int lagTicks = 0;
 
-    private int reactionTicksLeft = -1;
-    private float moveAngularDist = 0f;
+    private int stopTicks = 0;
+    private int stopCooldown = 0;
+    private int overTicks = 0;
+    private float overDelta = 0f;
+    private int reactionTicks = 0;
+    private int refractoryTicks = 0;
+    private int flickCooldown = 0;
 
-    // Минимальный tracking lag (60-120мс).
-    private long trackDelayMs = 90L;
-    private long lastAimTime = 0L;
-    private Vec3d lastAimPoint = null;
+    private float lagLerp = 0.30f;
+    private float velLerp = 0.65f;
+    private float feedForward = 0.20f;
+    private float inertiaYaw = 0.28f;
+    private float inertiaPitch = 0.20f;
+    private float noiseSigmaYaw = 0.45f;
+    private float noiseSigmaPitch = 0.90f;
+    private float gainYaw = 0.95f;
+    private float gainPitch = 0.65f;
+    private float gainRho = 0.30f;
+    private float gainSigma = 0.10f;
+    private float deliverFraction = 0.35f;
+    private float stopChance = 0.035f;
+    private float stopMinError = 4.0f;
+    private float overMinError = 25.0f;
+    private float overChance = 0.10f;
+    private float speedCapYaw = 26.0f;
+    private float speedCapPitch = 10.0f;
+    private float trackRateYaw = 28.0f;
+    private float trackRatePitch = 11.0f;
+    private float flickMinError = 65.0f;
+    private float flickRateYaw = 110.0f;
+    private float flickCapYaw = 105.0f;
 
-    // ─── Относительное смещение прицеливания (v5) ─────────────────────────
-    // Храним СДВИГ от центра хитбокса (в блоках), а не мировую координату.
-    // Каждый тик вычисляем: aimPoint = target.pos + offset.
-    // Меняем offset раз в 2.5-5 сек — плавно, не прыгая.
     private double aimOffsetX = 0.0;
-    private double aimOffsetY = 0.0;  // от нижней границы хитбокса (в долях высоты)
+    private double aimOffsetY = 0.0;
     private double aimOffsetZ = 0.0;
     private double aimOffsetTargetX = 0.0;
     private double aimOffsetTargetZ = 0.0;
     private long nextAimOffsetUpdate = 0L;
-
-    // Маленький дрейф (±1°).
-    private float aimDriftYaw = 0f;
-    private float aimDriftPitch = 0f;
-    private long nextAimDriftAt = 0L;
-
-    private float jitterYaw = 0f;
-    private long nextJitterAt = 0L;
-    private long tremorPhase = 0L;
-
-    private int ticksSinceTarget = 0;
-    private float lastDistanceToTarget = 999f;
 
     @Override
     public void update(KillAura ka, LivingEntity target) {
@@ -83,245 +95,277 @@ public class UniversalRotation extends RotationMode {
         ThreadLocalRandom r = ThreadLocalRandom.current();
 
         if (!init) {
-            curYaw = mc.player.getYaw();
-            curPitch = mc.player.getPitch();
             init = true;
-            reactionTicksLeft = -1;
-            nextMicroStopAt = now + r.nextLong(200L, 500L);
-        }
-
-        if (target == null) {
-            updateLostTarget(ka, now, r);
-            return;
+            pickPersonality(r);
+            lastPlanAge = Integer.MIN_VALUE;
         }
 
         if (target != lastTarget) {
             lastTarget = target;
-            windYaw = 0f;
-            aimFatigue = 0f;
-            lookAwayDelta = 0f;
-            overshootActive = false;
-            reactionTicksLeft = 1 + r.nextInt(3);
-            microStopTicks = 0;
-            nextMicroStopAt = now + r.nextLong(200L, 500L);
-            ticksSinceTarget = 0;
-            yawSpeedSmooth = 0.2f;
-            pitchSpeedSmooth = 0.2f;
+            onTargetChanged(ka, target, now, r);
+        }
 
-            // Стабильный random offset от центра хитбокса (меняется раз в 2.5-5 сек).
+        int age = mc.player.age;
+        if (age != lastPlanAge) {
+            lastPlanAge = age;
+            if (target != null) {
+                plan(ka, target, now, r);
+                deliver(ka);
+            } else {
+                // Нет цели — не вмешиваемся в камеру, сбрасываем накопленные шаги
+                planYaw = 0f;
+                planPitch = 0f;
+                residualYaw = 0f;
+                residualPitch = 0f;
+                stepYaw = 0f;
+                stepPitch = 0f;
+                velYaw = 0f;
+                velPitch = 0f;
+                stopTicks = 0;
+                overTicks = 0;
+                reactionTicks = 0;
+                refractoryTicks = 0;
+                flickCooldown = 0;
+            }
+        }
+    }
+
+    private void onTargetChanged(KillAura ka, LivingEntity target, long now, ThreadLocalRandom r) {
+        planYaw = 0f;
+        planPitch = 0f;
+        stepYaw = 0f;
+        stepPitch = 0f;
+        noiseYaw1 = 0f;
+        noiseYaw2 = 0f;
+        noisePitch1 = 0f;
+        noisePitch2 = 0f;
+        gainNoiseYaw = 0f;
+        gainNoisePitch = 0f;
+        velYaw = 0f;
+        velPitch = 0f;
+        hasPrevTarget = false;
+        hasLag = false;
+        lagTicks = 0;
+        stopTicks = 0;
+        stopCooldown = 0;
+        overTicks = 0;
+        overDelta = 0f;
+        refractoryTicks = 0;
+        flickCooldown = 0;
+        reactionTicks = target != null ? 1 + r.nextInt(3) : 0;
+
+        pickPersonality(r);
+
+        if (target != null) {
             pickNewOffsets(target, r);
             aimOffsetX = aimOffsetTargetX;
             aimOffsetZ = aimOffsetTargetZ;
             nextAimOffsetUpdate = now + r.nextLong(2500L, 5000L);
-
-            lastDistanceToTarget = (float) mc.player.getEyePos().distanceTo(getAimPoint(ka, target));
         }
+    }
 
-        ticksSinceTarget++;
+    private void pickPersonality(ThreadLocalRandom r) {
+        float style = r.nextFloat();
 
-        boolean canAttack = mc.player.getAttackCooldownProgress(0.5f) >= 0.9f && ka.ticksToAttack <= 0;
+        lagLerp = r.nextFloat(0.30f, 0.50f);
+        velLerp = r.nextFloat(0.55f, 0.75f);
+        feedForward = r.nextFloat(0.12f, 0.30f);
+        inertiaYaw = r.nextFloat(lerp(0.14f, 0.02f, style), lerp(0.24f, 0.10f, style));
+        inertiaPitch = r.nextFloat(0.06f, 0.20f);
+        noiseSigmaYaw = r.nextFloat(lerp(0.50f, 1.00f, style), lerp(1.10f, 1.80f, style));
+        noiseSigmaPitch = r.nextFloat(0.80f, 1.50f);
+        gainYaw = r.nextFloat(0.85f, 1.05f);
+        gainPitch = r.nextFloat(0.58f, 0.80f);
+        gainRho = r.nextFloat(0.20f, 0.40f);
+        gainSigma = r.nextFloat(0.06f, 0.14f);
+        deliverFraction = r.nextFloat(0.30f, 0.40f);
+        stopChance = r.nextFloat(0.025f, 0.050f);
+        stopMinError = r.nextFloat(3.0f, 5.0f);
+        overMinError = r.nextFloat(20.0f, 30.0f);
+        overChance = r.nextFloat(0.06f, 0.14f);
+        speedCapYaw = r.nextFloat(22.0f, 32.0f);
+        speedCapPitch = r.nextFloat(8.0f, 12.0f);
+        trackRateYaw = r.nextFloat(24.0f, 32.0f);
+        trackRatePitch = r.nextFloat(9.0f, 13.0f);
+        flickMinError = r.nextFloat(55.0f, 75.0f);
+        flickRateYaw = r.nextFloat(90.0f, 130.0f);
+        flickCapYaw = r.nextFloat(85.0f, 125.0f);
 
-        // ─── 1. Точка прицеливания: offset от текущей позиции цели ──────────
-        // Плавно меняем offset раз в 2.5-5 сек.
+        float rhoYaw = r.nextFloat(0.75f, 0.90f);
+        float periodYaw = r.nextFloat(lerp(4.5f, 2.8f, style), lerp(6.5f, 4.2f, style));
+        noiseA1Yaw = (float) (2.0 * rhoYaw * Math.cos(2.0 * Math.PI / periodYaw));
+        noiseA2Yaw = -rhoYaw * rhoYaw;
+
+        float rhoPitch = r.nextFloat(0.45f, 0.70f);
+        float periodPitch = r.nextFloat(3.5f, 6.0f);
+        noiseA1Pitch = (float) (2.0 * rhoPitch * Math.cos(2.0 * Math.PI / periodPitch));
+        noiseA2Pitch = -rhoPitch * rhoPitch;
+    }
+
+    private static float lerp(float from, float to, float t) {
+        return from + (to - from) * t;
+    }
+
+    private void plan(KillAura ka, LivingEntity target, long now, ThreadLocalRandom r) {
+        var mc = ka.mc;
+
         if (now >= nextAimOffsetUpdate) {
             pickNewOffsets(target, r);
             nextAimOffsetUpdate = now + r.nextLong(2500L, 5000L);
         }
-        // Плавно лерпим offset к целевому. Не 3% — слишком медленно для движущейся цели,
-        // лучше 12% за тик (за ~10 тиков приходит).
         aimOffsetX = MathHelper.lerp(0.12, aimOffsetX, aimOffsetTargetX);
         aimOffsetZ = MathHelper.lerp(0.12, aimOffsetZ, aimOffsetTargetZ);
 
-        Vec3d freshAimPoint = getAimPoint(ka, target);
-
-        // Предикт элитры.
+        Vec3d aimPoint = getAimPoint(ka, target);
         if (target.isGliding() && ka.isElytraPredictActive() && !ka.isTurnaroundActive) {
             Vec3d predicted = PredictUtils.getPredicted(target, ka.predictValue.getValue());
-            freshAimPoint = freshAimPoint.lerp(predicted, 0.5f);
+            aimPoint = aimPoint.lerp(predicted, 0.5f);
         }
 
-        // ─── Минимальный tracking lag (60-120мс) ────────────────────────────
-        // Сэмплируем "свежую" точку раз в 60-120мс. Между сэмплами лерпим
-        // — это даёт плавное отслеживание с лёгкой задержкой (характерно для
-        // реального игрока, который не реагирует мгновенно).
-        if (lastAimTime == 0L || now - lastAimTime >= trackDelayMs) {
-            lastAimPoint = freshAimPoint;
-            lastAimTime = now;
-            trackDelayMs = r.nextLong(60L, 120L);
+        Rotation aimRotation = RotationHelper.calculateRotation(aimPoint);
+        float targetYaw = aimRotation.getYaw();
+        float targetPitch = aimRotation.getPitch();
+
+        if (!hasPrevTarget) {
+            hasPrevTarget = true;
+            prevTargetYaw = targetYaw;
+            prevTargetPitch = targetPitch;
         }
-        // Лерп от прошлого сэмпла к свежему (плавное подтягивание).
-        Vec3d aimPoint = lastAimPoint != null
-            ? lastAimPoint.lerp(freshAimPoint, 0.5f)
-            : freshAimPoint;
+        float rawVelYaw = clampAbs(RotationHelper.angleDelta(prevTargetYaw, targetYaw), trackRateYaw);
+        float rawVelPitch = clampAbs(targetPitch - prevTargetPitch, trackRatePitch);
+        prevTargetYaw = targetYaw;
+        prevTargetPitch = targetPitch;
+        velYaw = MathHelper.lerp(velLerp, velYaw, rawVelYaw);
+        velPitch = MathHelper.lerp(velLerp, velPitch, rawVelPitch);
 
-        // Дрейф: быстрее обновляется, не затухает полностью (даёт живой lock).
-        if (now >= nextAimDriftAt) {
-            aimDriftYaw = (r.nextFloat() - 0.5f) * 2f * r.nextFloat(0.5f, 1.5f);
-            aimDriftPitch = (r.nextFloat() - 0.5f) * 2f * r.nextFloat(0.3f, 1.0f);
-            nextAimDriftAt = now + r.nextLong(70L, 180L);
-        } else {
-            // Слабое затухание — дрейф течёт, но не прыгает.
-            aimDriftYaw = MathHelper.lerp(0.7f, aimDriftYaw, 0f);
-            aimDriftPitch = MathHelper.lerp(0.7f, aimDriftPitch, 0f);
-        }
-
-        float targetYaw = RotationHelper.calculateRotation(aimPoint).getYaw() + aimDriftYaw;
-        float targetPitch = RotationHelper.calculateRotation(aimPoint).getPitch() + aimDriftPitch;
-
-        // ─── 2. Look-away ───────────────────────────────────────────────────
-        lookAwayDelta = MathHelper.lerp(0.12f, lookAwayDelta, 0f);
-        if (lookAwayDelta < 0.1f) lookAwayDelta = 0f;
-
-        if (now >= nextLookAwayAt && !overshootActive && canAttack && lookAwayDelta == 0f) {
-            float yawDiff = Math.abs(RotationHelper.angleDelta(curYaw, targetYaw));
-            if (yawDiff > 80f) {
-                lookAwayDelta = (r.nextFloat() - 0.5f) * 2f * r.nextFloat(3f, 8f);
-                nextLookAwayAt = now + r.nextLong(400L, 800L);
-            }
-        }
-
-        // ─── 3. Overshoot ───────────────────────────────────────────────────
-        if (!overshootActive && canAttack && lookAwayDelta == 0f) {
-            float yawDiff = RotationHelper.angleDelta(curYaw, targetYaw);
-            overshootYawDelta = RotationHelper.checkOvershoot(yawDiff, moveAngularDist, r);
-            if (overshootYawDelta != 0f) {
-                overshootActive = true;
-                overshootTicksLeft = 2 + r.nextInt(2);
-            }
-        }
-
-        float effectiveYaw = targetYaw;
-        if (overshootActive) {
-            overshootTicksLeft--;
-            if (overshootTicksLeft <= 0) {
-                overshootActive = false;
-            } else {
-                effectiveYaw = targetYaw + overshootYawDelta * ((float) overshootTicksLeft / 3f);
-            }
-        }
-
-        // ─── 4. Реакция (Go-сигнал) ────────────────────────────────────────
-        if (reactionTicksLeft > 0) {
-            reactionTicksLeft--;
-            var rot = new Rotation(curYaw, curPitch);
-            RotationHelper.apply(rot, ka);
-            ka.lastYaw = curYaw;
-            ka.lastPitch = curPitch;
+        if (reactionTicks > 0) {
+            reactionTicks--;
+            hasLag = false;
             return;
         }
 
-        // ─── 5. Наводка ─────────────────────────────────────────────────────
-        float deltaYaw = RotationHelper.angleDelta(curYaw, effectiveYaw + lookAwayDelta);
-        float deltaPitch = targetPitch - curPitch;
-        float errDist = (float) Math.hypot(deltaYaw, deltaPitch);
+        boolean flick = flickCooldown <= 0
+                && Math.abs(RotationHelper.angleDelta(mc.player.getYaw(), targetYaw)) > flickMinError;
+        if (flickCooldown > 0) flickCooldown--;
 
-        lastDistanceToTarget = (float) mc.player.getEyePos().distanceTo(aimPoint);
-
-        aimFatigue = MathHelper.clamp(aimFatigue + errDist * 0.00008f, 0f, 0.32f);
-
-        // WindMouse.
-        if (errDist > 3f) {
-            float windScale = MathHelper.clamp((errDist - 3f) / 27f, 0f, 1f);
-            float windForce = (r.nextFloat() - 0.5f) * 2f * 1.2f * windScale;
-            windYaw = MathHelper.lerp(0.5f, windYaw, windForce);
-        } else {
-            windYaw = MathHelper.lerp(0.3f, windYaw, 0f);
+        if (!hasLag || lagTicks <= 0) {
+            hasLag = true;
+            lagYaw = mc.player.getYaw();
+            lagPitch = mc.player.getPitch();
+            lagTicks = 1 + r.nextInt(3);
         }
-        windYaw = MathHelper.clamp(windYaw, -1.5f, 1.5f);
+        lagTicks--;
+        float lagRateYaw = flick ? flickRateYaw : trackRateYaw;
+        float lagRatePitch = flick ? trackRatePitch * 2.5f : trackRatePitch;
+        lagYaw += clampAbs(RotationHelper.angleDelta(lagYaw, targetYaw) * lagLerp, lagRateYaw);
+        lagPitch += clampAbs((targetPitch - lagPitch) * lagLerp, lagRatePitch);
 
-        // ─── 6. Разгон скорости ─────────────────────────────────────────────
-        // Первые ~15 тиков — плавный разгон. Потом — полная.
-        float rampUp = MathHelper.clamp(ticksSinceTarget / 15f, 0f, 1f);
-        rampUp = rampUp * rampUp * (3f - 2f * rampUp);
+        float noiseYaw = noiseA1Yaw * noiseYaw1 + noiseA2Yaw * noiseYaw2
+                + (float) r.nextGaussian() * noiseSigmaYaw;
+        noiseYaw2 = noiseYaw1;
+        noiseYaw1 = noiseYaw;
 
-        float baseYawSpeed = r.nextFloat(8f, 14f);
-        float basePitchSpeed = r.nextFloat(4f, 8f);
+        float noisePitch = noiseA1Pitch * noisePitch1 + noiseA2Pitch * noisePitch2
+                + (float) r.nextGaussian() * noiseSigmaPitch;
+        noisePitch2 = noisePitch1;
+        noisePitch1 = noisePitch;
 
-        float yawS = RotationHelper.smoothStep(yawSpeedSmooth);
-        float pitchS = RotationHelper.smoothStep(pitchSpeedSmooth);
+        float curYaw = mc.player.getYaw();
+        float curPitch = mc.player.getPitch();
+        float errorYaw = RotationHelper.angleDelta(curYaw, lagYaw + noiseYaw);
+        float errorPitch = (lagPitch + noisePitch) - curPitch;
+        float errorDist = (float) Math.hypot(errorYaw, errorPitch);
 
-        float yawSpeedEff = baseYawSpeed * yawS * (1f - aimFatigue) * rampUp;
-        float pitchSpeedEff = basePitchSpeed * pitchS * (1f - aimFatigue) * rampUp;
-
-        if (errDist > 60f) {
-            float fittsScale = MathHelper.clamp(60f / errDist, 0.5f, 1f);
-            yawSpeedEff *= fittsScale;
-            pitchSpeedEff *= fittsScale;
+        if (stopCooldown > 0) stopCooldown--;
+        if (stopTicks <= 0 && stopCooldown <= 0 && errorDist > stopMinError && r.nextFloat() < stopChance) {
+            stopTicks = 1 + r.nextInt(2);
+            stopCooldown = 5 + r.nextInt(7);
         }
-
-        // ─── Микро-остановки ────────────────────────────────────────────────
-        float progress = moveAngularDist > 0f ? (moveAngularDist - errDist) / moveAngularDist : 1f;
-        if (microStopTicks <= 0 && now >= nextMicroStopAt && errDist > 3f) {
-            boolean inMidpoint = moveAngularDist > 60f && progress > 0.42f && progress < 0.62f;
-            if (r.nextFloat() < 0.06f || inMidpoint) {
-                microStopTicks = 1 + r.nextInt(2);
-                nextMicroStopAt = now + r.nextLong(250L, 550L);
-            }
-        }
-
-        if (microStopTicks > 0) {
-            microStopTicks--;
-            yawSpeedSmooth *= 0.5f;
-            pitchSpeedSmooth *= 0.5f;
-            var rot = new Rotation(curYaw, curPitch);
-            RotationHelper.apply(rot, ka);
-            ka.lastYaw = curYaw;
-            ka.lastPitch = curPitch;
+        if (stopTicks > 0) {
+            stopTicks--;
+            stepYaw *= inertiaYaw;
+            stepPitch *= inertiaPitch;
             return;
         }
 
-        // ─── Clamp + Dead zone ──────────────────────────────────────────────
-        float stepYaw = RotationHelper.smoothRotation(curYaw, effectiveYaw, yawSpeedEff) - curYaw;
-        float clampedYaw = RotationHelper.deadZone(stepYaw + windYaw, 0.35f);
-        float clampedPitch = RotationHelper.deadZone(
-            RotationHelper.smoothRotation(curPitch, targetPitch, pitchSpeedEff) - curPitch,
-            0.18f
-        );
-
-        // Pitch: на маленькой ошибке (≤1°) уменьшаем шаг вдвое, но НЕ замораживаем полностью —
-        // иначе прицел "лочится" на точке.
-        if (Math.abs(targetPitch - curPitch) <= 1f) {
-            clampedPitch *= 0.5f;
+        if (overTicks <= 0 && Math.abs(errorYaw) > overMinError && r.nextFloat() < overChance) {
+            overTicks = 2 + r.nextInt(2);
+            overDelta = Math.copySign(r.nextFloat(2f, 4f), errorYaw);
+        }
+        float overshoot = 0f;
+        if (overTicks > 0) {
+            overTicks--;
+            overshoot = overDelta * (overTicks / 3f);
         }
 
-        // ─── Джиттер + тремор ───────────────────────────────────────────────
-        if (now >= nextJitterAt) {
-            jitterYaw = (r.nextFloat() - 0.5f) * 0.12f;
-            nextJitterAt = now + r.nextLong(60L, 120L);
-        } else {
-            jitterYaw *= 0.85f;
+        gainNoiseYaw = gainRho * gainNoiseYaw + (float) r.nextGaussian() * gainSigma;
+        gainNoisePitch = gainRho * gainNoisePitch + (float) r.nextGaussian() * gainSigma;
+
+        float wantYaw = (errorYaw + overshoot) * gainYaw * (float) Math.exp(gainNoiseYaw)
+                + velYaw * feedForward;
+        float wantPitch = errorPitch * gainPitch * (float) Math.exp(gainNoisePitch)
+                + velPitch * feedForward;
+
+        stepYaw = stepYaw * inertiaYaw + wantYaw * (1f - inertiaYaw);
+        stepPitch = stepPitch * inertiaPitch + wantPitch * (1f - inertiaPitch);
+
+        float capYaw = flick ? flickCapYaw : speedCapYaw;
+        float capPitch = speedCapPitch * (flick ? 2.2f : 1f);
+        if (!flick && refractoryTicks > 0) {
+            refractoryTicks--;
+            capYaw *= 0.35f;
+            capPitch *= 0.45f;
         }
 
-        float tremorY = RotationHelper.tremor(tremorPhase++, now, yawSpeedEff / 14f);
+        float emitYaw = clampAbs(stepYaw, capYaw);
+        float emitPitch = clampAbs(stepPitch, capPitch);
+        if (flick && Math.abs(stepYaw) > speedCapYaw) {
+            flickCooldown = 25 + r.nextInt(36);
+        } else if (!flick && Math.abs(emitYaw) > speedCapYaw * 0.6f) {
+            refractoryTicks = 1 + r.nextInt(2);
+        }
 
-        // ─── Итоговый шаг ───────────────────────────────────────────────────
-        float newYaw = curYaw + clampedYaw + jitterYaw + tremorY;
-        float newPitch = MathHelper.clamp(curPitch + clampedPitch, -89f, 89f);
+        planYaw = clampAbs(planYaw + emitYaw, capYaw);
+        planPitch = clampAbs(planPitch + emitPitch, capPitch);
+    }
 
-        newYaw = RotationHelper.applyGCD(curYaw, newYaw);
-        newPitch = RotationHelper.applyGCD(curPitch, newPitch);
-        newPitch = RotationHelper.clampPitch(newPitch);
+    private static float clampAbs(float value, float limit) {
+        return Math.abs(value) > limit ? Math.copySign(limit, value) : value;
+    }
 
-        yawSpeedSmooth = MathHelper.lerp(0.035f, yawSpeedSmooth,
-            RotationHelper.fittsSpeedFactor(errDist));
-        pitchSpeedSmooth = MathHelper.lerp(0.035f, pitchSpeedSmooth,
-            RotationHelper.fittsSpeedFactor(Math.abs(deltaPitch)));
-        moveAngularDist = errDist;
+    private void deliver(KillAura ka) {
+        var mc = ka.mc;
+        float gcd = GCDFixer.getGCDValue();
+        if (gcd <= 0f) gcd = 0.15f;
 
-        var rot = new Rotation(newYaw, newPitch);
-        RotationHelper.apply(rot, ka);
+        float portionYaw = planYaw * deliverFraction;
+        float portionPitch = planPitch * deliverFraction;
+        planYaw -= portionYaw;
+        planPitch -= portionPitch;
 
-        curYaw = newYaw;
-        curPitch = newPitch;
+        residualYaw += portionYaw;
+        residualPitch += portionPitch;
+
+        float newYaw = mc.player.getYaw();
+        float newPitch = mc.player.getPitch();
+
+        int stepsYaw = Math.round(residualYaw / gcd);
+        if (stepsYaw != 0) {
+            residualYaw -= stepsYaw * gcd;
+            newYaw += stepsYaw * gcd;
+        }
+
+        int stepsPitch = Math.round(residualPitch / gcd);
+        if (stepsPitch != 0) {
+            residualPitch -= stepsPitch * gcd;
+            newPitch = RotationHelper.clampPitch(newPitch + stepsPitch * gcd);
+        }
+
+        RotationHelper.apply(new Rotation(newYaw, newPitch), ka);
         ka.lastYaw = newYaw;
         ka.lastPitch = newPitch;
     }
 
-    /**
-     * Вычисляет точку прицеливания = текущая позиция цели + стабильный offset.
-     * Offset хранится в блоках от центра хитбокса и меняется раз в 2.5-5 сек.
-     * Точка ВСЕГДА едет вместе с целью.
-     */
     private Vec3d getAimPoint(KillAura ka, LivingEntity target) {
         Box box = target.getBoundingBox();
         double h = target.getHeight();
@@ -334,102 +378,49 @@ public class UniversalRotation extends RotationMode {
         ), 6);
     }
 
-    /**
-     * Генерирует новые случайные offset-ы от центра хитбокса.
-     * Маленькие: ±30% ширины/глубины, высота 55-75%.
-     */
     private void pickNewOffsets(LivingEntity target, ThreadLocalRandom r) {
         Box box = target.getBoundingBox();
         double halfW = (box.maxX - box.minX) * 0.3;
         double halfD = (box.maxZ - box.minZ) * 0.3;
         aimOffsetTargetX = (r.nextDouble() - 0.5) * 2.0 * halfW;
         aimOffsetTargetZ = (r.nextDouble() - 0.5) * 2.0 * halfD;
-        aimOffsetY = 0.0 + r.nextDouble(0.0, 0.2);
-    }
-
-    private void updateLostTarget(KillAura ka, long now, ThreadLocalRandom r) {
-        lastTarget = null;
-
-        float targetYaw = FreeLookComponent.getFreeYaw();
-        float targetPitch = FreeLookComponent.getFreePitch();
-        float deltaYaw = RotationHelper.angleDelta(curYaw, targetYaw);
-        float deltaPitch = targetPitch - curPitch;
-        float dist = (float) Math.hypot(deltaYaw, deltaPitch);
-
-        float targetSpeed = MathHelper.clamp(dist / 140f, 0.012f, 0.22f) * r.nextFloat(0.65f, 0.95f);
-        yawSpeedSmooth = MathHelper.lerp(0.008f, yawSpeedSmooth, targetSpeed);
-        pitchSpeedSmooth = MathHelper.lerp(0.006f, pitchSpeedSmooth, targetSpeed);
-
-        yawSpeedSmooth = Math.min(yawSpeedSmooth, 0.55f);
-        pitchSpeedSmooth = Math.min(pitchSpeedSmooth, 0.45f);
-
-        if (microStopTicks <= 0 && now >= nextMicroStopAt && dist > 2f) {
-            microStopTicks = r.nextInt(1, 4);
-            nextMicroStopAt = now + r.nextLong(260L, 620L);
-        }
-
-        if (microStopTicks > 0) {
-            microStopTicks--;
-            RotationHelper.apply(new Rotation(curYaw, curPitch), ka);
-            ka.lastYaw = curYaw;
-            ka.lastPitch = curPitch;
-            return;
-        }
-
-        float yawIn = MathHelper.clamp(Math.abs(yawSpeedSmooth) / 6f, 0f, 1f);
-        float pitchIn = MathHelper.clamp(Math.abs(pitchSpeedSmooth) / 4f, 0f, 1f);
-        float stepYaw = Math.copySign(RotationHelper.smoothStep(yawIn) * 6f, yawSpeedSmooth);
-        float stepPitch = Math.copySign(RotationHelper.smoothStep(pitchIn) * 4f, pitchSpeedSmooth) * 0.75f;
-
-        if (dist < 0.65f) {
-            reset(ka);
-            return;
-        }
-
-        float newYaw = RotationHelper.applyGCD(curYaw, curYaw + stepYaw);
-        float newPitch = RotationHelper.applyGCD(curPitch, curPitch + stepPitch);
-        newPitch = RotationHelper.clampPitch(newPitch);
-
-        curYaw = newYaw;
-        curPitch = newPitch;
-        RotationHelper.apply(new Rotation(newYaw, newPitch), ka);
-        ka.lastYaw = newYaw;
-        ka.lastPitch = newPitch;
+        aimOffsetY = r.nextDouble(0.0, 0.2);
     }
 
     @Override
     public void reset(KillAura ka) {
         init = false;
         lastTarget = null;
-        yawSpeedSmooth = 0f;
-        pitchSpeedSmooth = 0f;
-        windYaw = 0f;
-        aimFatigue = 0f;
-        microStopTicks = 0;
-        nextMicroStopAt = 0L;
-        lookAwayDelta = 0f;
-        nextLookAwayAt = 0L;
-        overshootActive = false;
-        overshootTicksLeft = 0;
-        overshootYawDelta = 0f;
-        reactionTicksLeft = -1;
-        moveAngularDist = 0f;
-        trackDelayMs = 90L;
-        lastAimTime = 0L;
-        lastAimPoint = null;
+        lastPlanAge = Integer.MIN_VALUE;
+        planYaw = 0f;
+        planPitch = 0f;
+        residualYaw = 0f;
+        residualPitch = 0f;
+        stepYaw = 0f;
+        stepPitch = 0f;
+        noiseYaw1 = 0f;
+        noiseYaw2 = 0f;
+        noisePitch1 = 0f;
+        noisePitch2 = 0f;
+        gainNoiseYaw = 0f;
+        gainNoisePitch = 0f;
+        velYaw = 0f;
+        velPitch = 0f;
+        hasPrevTarget = false;
+        hasLag = false;
+        lagTicks = 0;
+        stopTicks = 0;
+        stopCooldown = 0;
+        overTicks = 0;
+        overDelta = 0f;
+        reactionTicks = 0;
+        refractoryTicks = 0;
+        flickCooldown = 0;
         aimOffsetX = 0.0;
         aimOffsetY = 0.0;
         aimOffsetZ = 0.0;
         aimOffsetTargetX = 0.0;
         aimOffsetTargetZ = 0.0;
         nextAimOffsetUpdate = 0L;
-        aimDriftYaw = 0f;
-        aimDriftPitch = 0f;
-        nextAimDriftAt = 0L;
-        jitterYaw = 0f;
-        nextJitterAt = 0L;
-        tremorPhase = 0L;
-        ticksSinceTarget = 0;
-        lastDistanceToTarget = 999f;
     }
 }

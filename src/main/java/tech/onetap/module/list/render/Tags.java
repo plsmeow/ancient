@@ -237,6 +237,13 @@ public class Tags extends Module {
         return STAFF_PREFIX_PATTERN.matcher(displayName).matches();
     }
 
+    private int statusOutlineColor(PlayerEntity entity) {
+        if (isStaffTag(entity)) return ColorProvider.rgba(255, 235, 0, 255);
+        if (TargetRepository.isTarget(entity.getNameForScoreboard())) return ColorProvider.rgba(255, 25, 25, 255);
+        if (FriendRepository.isFriend(entity.getNameForScoreboard())) return ColorProvider.rgba(45, 235, 15, 255);
+        return 0;
+    }
+
     @EventHandler
     private void onRender(EventHUD e) {
         if (clearCacheTicker++ > 100) {
@@ -345,17 +352,19 @@ public class Tags extends Module {
             float bgX = centerX - totalWidth / 2.0f;
             float bgY = tagY;
 
-            int bgColor;
-            if (isStaffTag(entity)) {
-                bgColor = ColorProvider.rgba(255, 255, 0, 150);
-            } else if (TargetRepository.isTarget(entity.getNameForScoreboard())) {
-                bgColor = ColorProvider.rgba(166, 0, 0, 144);
-            } else if (FriendRepository.isFriend(entity.getNameForScoreboard())) {
-                bgColor = ColorProvider.rgba(35, 166, 0, 144);
-            } else {
-                bgColor = ColorProvider.rgba(0, 0, 0, 125);
+            DrawUtil.drawRound(bgX, bgY, totalWidth, tagHeight, 2, ColorProvider.rgba(0, 0, 0, 125));
+
+            int outlineColor = statusOutlineColor(entity);
+            if (outlineColor != 0) {
+                Builder.border()
+                        .size(new SizeState(totalWidth + 1.5f, tagHeight + 1.25f))
+                        .radius(new QuadRadiusState(2f))
+                        .color(new QuadColorState(outlineColor))
+                        .thickness(1f)
+                        .smoothness(1f, 0.5f)
+                        .build()
+                        .render(bgX - 0.5f, bgY - 0.5f);
             }
-            DrawUtil.drawRound(bgX, bgY, totalWidth, tagHeight, 2, bgColor);
 
 
             DrawUtil.drawText(font, name, bgX + paddingX, posY + 0.25f, 8, 255);

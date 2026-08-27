@@ -3,14 +3,22 @@ package tech.onetap.module.list.render;
 import meteordevelopment.orbit.EventHandler;
 import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.block.Block;
+import net.minecraft.block.BlockState;
 import net.minecraft.client.gl.ShaderProgramKeys;
 import net.minecraft.client.render.*;
 import net.minecraft.client.util.math.MatrixStack;
+import net.minecraft.client.world.ClientWorld;
+import net.minecraft.network.packet.Packet;
+import net.minecraft.network.packet.s2c.play.BlockUpdateS2CPacket;
+import net.minecraft.network.packet.s2c.play.ChunkDataS2CPacket;
+import net.minecraft.network.packet.s2c.play.ChunkDeltaUpdateS2CPacket;
+import net.minecraft.network.packet.s2c.play.UnloadChunkS2CPacket;
 import net.minecraft.registry.Registries;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.chunk.Chunk;
 import org.joml.Matrix4f;
+import tech.onetap.event.list.EventPacket;
 import tech.onetap.event.list.EventTick;
 import tech.onetap.event.list.EventWorldRender;
 import tech.onetap.module.Module;
@@ -36,6 +44,12 @@ public class BlockEsp extends Module {
         return t;
     });
 
+    // Обновления приходят из сетевого потока (netty), применяются на тике клиента
+    private final ConcurrentLinkedQueue<ChunkUpdate> pendingUpdates = new ConcurrentLinkedQueue<>();
+
+    private record ChunkUpdate(long chunkKey, BlockPos pos, BlockState state) {}
+
+    private ClientWorld lastWorld;
     private int lastPlayerChunkX = Integer.MIN_VALUE;
     private int lastPlayerChunkZ = Integer.MIN_VALUE;
     private boolean blocksLoaded;
@@ -80,8 +94,7 @@ public class BlockEsp extends Module {
     public void clearBlocks() {
         ensureBlocksLoaded();
         targetBlocks.clear();
-        chunkCache.clear();
-        scanningChunks.clear();
+        rescanAll();
         saveBlocks();
         logDirect("§aСписок BlockEsp очищен");
     }
@@ -135,6 +148,7 @@ public class BlockEsp extends Module {
     public void onEnable() {
         super.onEnable();
         ensureBlocksLoaded();
+        lastWorld = null;
         lastPlayerChunkX = Integer.MIN_VALUE;
         lastPlayerChunkZ = Integer.MIN_VALUE;
         rescanAll();
@@ -144,13 +158,13 @@ public class BlockEsp extends Module {
     public void onDisable() {
         super.onDisable();
         saveBlocks();
-        chunkCache.clear();
-        scanningChunks.clear();
+        rescanAll();
     }
 
     private void rescanAll() {
         chunkCache.clear();
         scanningChunks.clear();
+        pendingUpdates.clear();
         lastPlayerChunkX = Integer.MIN_VALUE;
         lastPlayerChunkZ = Integer.MIN_VALUE;
     }
@@ -172,13 +186,67 @@ public class BlockEsp extends Module {
         return ((long) cx & 0xFFFFFFFFL) | ((long) cz << 32);
     }
 
+    @EventHandler
+    public void onPacket(EventPacket event) {
+        if (event.getType() != EventPacket.Type.RECEIVE || targetBlocks.isEmpty()) return;
+
+        Packet<?> packet = event.getPacket();
+
+        if (packet instanceof ChunkDataS2CPacket p) {
+            // Чанк полностью (заг)ружен - нужен свежий полный скан
+            pendingUpdates.add(new ChunkUpdate(chunkKey(p.getChunkX(), p.getChunkZ()), null, null));
+        } else if (packet instanceof ChunkDeltaUpdateS2CPacket p) {
+            // Мультиблочное обновление секции
+            p.visitUpdates((pos, state) ->
+                    pendingUpdates.add(new ChunkUpdate(chunkKey(pos.getX() >> 4, pos.getZ() >> 4), pos.toImmutable(), state)));
+        } else if (packet instanceof BlockUpdateS2CPacket p) {
+            BlockPos pos = p.getPos();
+            pendingUpdates.add(new ChunkUpdate(chunkKey(pos.getX() >> 4, pos.getZ() >> 4), pos.toImmutable(), p.getState()));
+        } else if (packet instanceof UnloadChunkS2CPacket p) {
+            pendingUpdates.add(new ChunkUpdate(p.pos().toLong(), null, null));
+        }
+    }
+
+    private void processPendingUpdates() {
+        ChunkUpdate update;
+        while ((update = pendingUpdates.poll()) != null) {
+            if (update.pos() == null && update.state() == null) {
+                // RESCAN или UNLOAD - различаем по наличию чанка в кэше после удаления
+                List<BlockPos> removed = chunkCache.remove(update.chunkKey());
+                scanningChunks.remove(update.chunkKey());
+
+                int cx = (int) (update.chunkKey() & 0xFFFFFFFFL);
+                int cz = (int) (update.chunkKey() >>> 32);
+
+                if (removed != null) {
+                    // Чанк был закэширован - значит это его полная перезагрузка, сканируем заново
+                    scheduleChunkScan(cx, cz);
+                }
+                // Если removed == null - чанк не был в кэше (выгрузка), ничего не делаем
+            } else {
+                applyBlockUpdate(update);
+            }
+        }
+    }
+
+    private void applyBlockUpdate(ChunkUpdate update) {
+        List<BlockPos> current = chunkCache.get(update.chunkKey());
+        if (current == null) return; // Чанк ещё не отсканирован - сканер возьмёт актуальное состояние
+
+        boolean matches = update.state() != null && targetBlocks.contains(update.state().getBlock());
+        boolean contained = current.contains(update.pos());
+        if (contained == matches) return; // Ничего не изменилось
+
+        // Заменяем список целиком - рендер читает списки без блокировок
+        List<BlockPos> next = new ArrayList<>(current);
+        if (contained) next.remove(update.pos());
+        if (matches) next.add(update.pos());
+        chunkCache.put(update.chunkKey(), next);
+    }
+
     private void scheduleChunkScan(int cx, int cz) {
         long key = chunkKey(cx, cz);
         if (!scanningChunks.add(key)) return;
-        if (chunkCache.containsKey(key)) {
-            scanningChunks.remove(key);
-            return;
-        }
 
         worker.submit(() -> {
             try {
@@ -195,25 +263,13 @@ public class BlockEsp extends Module {
                 Chunk chunk = mc.world.getChunk(cx, cz);
                 List<BlockPos> found = new ArrayList<>();
 
-                BlockPos.Mutable mutable = new BlockPos.Mutable();
-                int bottomY = mc.world.getBottomY();
-                int topY = bottomY + mc.world.getHeight();
+                // Итерирует по секциям, пропуская пустые - сильно быстрее полного перебора
+                chunk.forEachBlockMatchingPredicate(
+                        state -> targetBlocks.contains(state.getBlock()),
+                        (pos, state) -> found.add(pos.toImmutable()));
 
-                for (int x = 0; x < 16; x++) {
-                    for (int z = 0; z < 16; z++) {
-                        for (int y = bottomY; y < topY; y++) {
-                            mutable.set(cx * 16 + x, y, cz * 16 + z);
-                            var state = chunk.getBlockState(mutable);
-                            if (!state.isAir() && targetBlocks.contains(state.getBlock())) {
-                                found.add(mutable.toImmutable());
-                            }
-                        }
-                    }
-                }
-
-                if (!found.isEmpty()) {
-                    chunkCache.put(key, found);
-                }
+                // Сохраняем даже пустой результат, чтобы чанк не пересканировался повторно
+                chunkCache.put(key, found);
             } catch (Exception ignored) {
             } finally {
                 scanningChunks.remove(key);
@@ -224,6 +280,14 @@ public class BlockEsp extends Module {
     @EventHandler
     public void onTick(EventTick event) {
         if (mc.world == null || mc.player == null || targetBlocks.isEmpty()) return;
+
+        // Смена мира - сбрасываем всё
+        if (mc.world != lastWorld) {
+            lastWorld = mc.world;
+            rescanAll();
+        }
+
+        processPendingUpdates();
 
         int chunkX = mc.player.getBlockX() >> 4;
         int chunkZ = mc.player.getBlockZ() >> 4;

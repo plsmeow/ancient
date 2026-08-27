@@ -10,16 +10,12 @@ public class GCDFixer implements IMinecraft {
     }
 
     public float getGCDValue() {
-        return (float) (getGCD() * 0.15);
+        return getGCD() * 0.15f;
     }
 
     public float getGCD() {
-        float f1;
-
-        double var11 = mc.options.getMouseSensitivity().getValue() / 0.15F / 8.0D;
-        double var9 = Math.cbrt(var11);
-
-        return (f1 = (float) ((var9 - 0.2f) / 0.6f * 0.6 + 0.2)) * f1 * f1 * 8;
+        float sensitivity = (float) (mc.options.getMouseSensitivity().getValue() * 0.6 + 0.2);
+        return sensitivity * sensitivity * sensitivity * 8f;
     }
 
     public float getDeltaMouse(float delta) {

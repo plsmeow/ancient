@@ -126,6 +126,7 @@ public class KillAura extends Module {
     );
     public final BooleanSetting raycastCheck = new BooleanSetting("Проверка на наведение", true);
     public final BooleanSetting smartAim = new BooleanSetting("Умное наведение", true);
+    public final BooleanSetting noWallHit = new BooleanSetting("Не бить через стены", false);
     public final BooleanSetting predictate = new BooleanSetting("Предикт на элитрах", true)
             .setVisible(() -> elytraTarget.getValue());
     public final SliderSetting predictValue = new SliderSetting("Предикт значение", 3, 1, 5, 0.1f)
@@ -187,6 +188,10 @@ public class KillAura extends Module {
     private LivingEntity target;
     public static LivingEntity lastTarget;
     public int ticksToAttack;
+
+    private BreachSwap breachSwap() {
+        return Onetap.getInstance().getModuleStorage().get(BreachSwap.class);
+    }
 
     private int razvorotikTicks;
 
@@ -465,10 +470,26 @@ public class KillAura extends Module {
 
                 // Funsky Auto: простые удары бьём текущим предметом, не триггеря AutoMace
                 boolean funskySimpleHit = maceKill.isFunskyActive() && !maceKill.isFunskyWaitingSmash();
+                boolean funskyAny = maceKill.isEnabled() && maceKill.isFunskyActive();
 
+                // Приоритет свапов: ShieldBreak (топор) > AutoMace > BreachSwap
                 int previousSlot = swapToAxe();
                 if (previousSlot == -1 && !funskySimpleHit) {
                     previousSlot = autoMace.swapToMace();
+                }
+                if (previousSlot == -1 && !funskySimpleHit) {
+                    previousSlot = breachSwap().swapToBreachMace();
+                }
+
+                // DamageSwap: работает только при включённом модуле, если другой свап
+                // реально сработал (previousSlot != -1), и без GroundSpoof / Funsky Mace
+                DamageSwap damageSwap = Onetap.getInstance().getModuleStorage().get(DamageSwap.class);
+                boolean groundSpoofActive = Onetap.getInstance().getModuleStorage()
+                        .get(tech.onetap.module.list.movement.GroundSpoof.class).isEnabled();
+                boolean damageSwapMoved = false;
+                if (damageSwap != null && damageSwap.isEnabled()
+                        && previousSlot == -1 && !groundSpoofActive && !funskyAny) {
+                    damageSwapMoved = damageSwap.beforeAttack();
                 }
 
                 BoatAura boatAura = Instance.get(BoatAura.class);
@@ -513,6 +534,10 @@ public class KillAura extends Module {
                     tpAura.afterAttack();
                 }
 
+                if (damageSwapMoved) {
+                    damageSwap.afterAttack();
+                }
+
                 if (previousSlot != -1) {
                     swapBack(previousSlot);
                 }
@@ -531,10 +556,6 @@ public class KillAura extends Module {
                 } else if (!autoMace.isForceAutoMaceReady(target) && !isForceBreakShieldReady()
                         && !Onetap.getInstance().getModuleStorage().get(FunskyMace.class).isEnabled()) {
                     ticksToAttack = 10;
-                }
-
-                if (rotation.is("Sloth2")) {
-                    sloth2Rotation.onAttack();
                 }
 
                 if (rotation.is("AresMine")) {
@@ -650,6 +671,9 @@ public class KillAura extends Module {
         if (!isInAttackDistance(player, target)) return false;
 
         isTurnaroundActive = false;
+        if (noWallHit.getValue() && !canReachWithPositionAura(target)
+                && !BestPoint.hasVisiblePoint(target, getAttackReach(player))) return false;
+
         if (elytraTarget.getValue() && target.isGliding() && mc.player.isGliding()) {
             Vec3d predict = PredictUtils.getPredicted(target, predictValue.getValue());
             double distToPredict = player.getEyePos().distanceTo(predict);
@@ -705,7 +729,12 @@ public class KillAura extends Module {
             // MaceKill: бьём по кастомной задержке в тиках, игнорируя кулдаун предмета
             if (maceKill.getAttackTicks() > 0) return false;
         } else if (!Onetap.getInstance().getModuleStorage().get(AutoMace.class).isForceAutoMaceReady(target)) {
-            if (mc.player.getAttackCooldownProgress(0.5f) < 0.98f) return false;
+            // BreachSwap: виртуальная задержка булавы вместо кулдауна предмета в руке
+            if (breachSwap().isActive()) {
+                if (!breachSwap().isVirtualCooldownReady()) return false;
+            } else {
+                if (mc.player.getAttackCooldownProgress(0.5f) < 0.98f) return false;
+            }
             if (ticksToAttack > 0) return false;
         }
 
@@ -722,8 +751,12 @@ public class KillAura extends Module {
         Vec3d nearestPoint = BestPoint.getNearestPoint(entity);
         if (nearestPoint == null) return false;
 
-        double attackDistance = (elytraTarget.getValue() && player.isGliding()) ? elytraDistance.getValue() : distance.getValue();
+        double attackDistance = getAttackReach(player);
         return player.getEyePos().distanceTo(nearestPoint) <= attackDistance;
+    }
+
+    private double getAttackReach(PlayerEntity player) {
+        return (elytraTarget.getValue() && player.isGliding()) ? elytraDistance.getValue() : distance.getValue();
     }
 
     private double getTargetSearchDistance(PlayerEntity player) {
@@ -888,10 +921,14 @@ public class KillAura extends Module {
 
         Vec3d eyePos = mc.player.getEyePos();
         Vec3d lookVec = mc.player.getRotationVec(1.0F);
+        double searchDistance = getTargetSearchDistance(mc.player);
+        boolean wallCheck = noWallHit.getValue();
 
         for (Entity entity : mc.world.getEntities()) {
             if (entity instanceof LivingEntity living) {
                 if (!isValidEntity(entity)) continue;
+                boolean priority = entity instanceof PlayerEntity p && TargetRepository.isTarget(p.getNameForScoreboard());
+                if (!priority && wallCheck && !BestPoint.hasVisiblePoint(living, searchDistance)) continue;
 
                 double score;
                 switch (sortBy.getValue()) {
@@ -912,7 +949,7 @@ public class KillAura extends Module {
                     best = living;
                 }
 
-                if (entity instanceof PlayerEntity p && TargetRepository.isTarget(p.getNameForScoreboard())) {
+                if (priority) {
                     if (score > bestTargetListScore) {
                         bestTargetListScore = score;
                         bestTargetList = living;
@@ -932,7 +969,7 @@ public class KillAura extends Module {
     }
 
     public Vec3d resolveMultipoint(LivingEntity target, Vec3d point, double range) {
-        if (!smartAim.getValue() || target == null) {
+        if (target == null || (!smartAim.getValue() && !noWallHit.getValue())) {
             return point;
         }
 
