@@ -10,9 +10,9 @@ import net.minecraft.client.render.Tessellator;
 import net.minecraft.client.render.VertexFormat;
 import net.minecraft.client.render.VertexFormats;
 import net.minecraft.client.util.math.MatrixStack;
+import net.minecraft.network.packet.c2s.play.PlayerMoveC2SPacket;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.LivingEntity;
-import net.minecraft.network.packet.c2s.play.PlayerMoveC2SPacket;
 import net.minecraft.util.math.Box;
 import net.minecraft.util.math.Vec3d;
 import org.joml.Matrix4f;
@@ -23,8 +23,8 @@ import tech.onetap.module.ModuleInformation;
 import tech.onetap.module.settings.BooleanSetting;
 import tech.onetap.module.settings.ModeSetting;
 import tech.onetap.module.settings.SliderSetting;
-import tech.onetap.util.block.AStarPathFinder;
 import tech.onetap.util.render.providers.ColorProvider;
+import tech.onetap.util.block.AStarPathFinder;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -87,12 +87,11 @@ public class TpAura extends Module {
         if (mc.player.hasVehicle()) return false;
         if (mc.player.distanceTo(living) > maxDistance.getValue()) return false;
 
+        Vec3d destination = living.getPos();
         origin = mc.player.getPos();
         originYaw = mc.player.getYaw();
         originPitch = mc.player.getPitch();
         target = living;
-
-        Vec3d destination = living.getPos();
 
         renderSteps.clear();
         renderDestination = destination;

@@ -53,10 +53,10 @@ public class VClipCommand extends Command {
         double y = player.getY();
         double z = player.getZ();
 
-        ClipBypass.teleport(x, y + yOffset, z, bypassArgs.mode(), bypassArgs.packets());
-
-        logDirect("Телепортировано на " + (int) yOffset + " блоков по вертикали"
-                + (bypassArgs.mode() != null ? " [" + bypassArgs.mode() + "]" : ""));
+        if (ClipBypass.teleport(this, x, y + yOffset, z, bypassArgs.mode(), bypassArgs.packets())) {
+            logDirect("Телепортировано на " + (int) yOffset + " блоков по вертикали"
+                    + (bypassArgs.mode() != null ? " [" + bypassArgs.mode() + "]" : ""));
+        }
     }
 
     private double findOffset(BlockPos pos, boolean toUp, ClientWorld world) {
@@ -105,9 +105,13 @@ public class VClipCommand extends Command {
                 "> vclip down — вниз до свободного блока",
                 "",
                 "Необязательный второй аргумент — тип байпаса:",
-                "> vclip <расстояние|up|down> [pos|bypass|vault]",
+                "> vclip <расстояние|up|down> [pos|bypass|vault|fs]",
                 "",
-                "После режима bypass можно указать количество пакетов:",
+                "fs — телепорт с полётом как в High Jump (Funsky Elytra): нужна",
+                "надетая элитра и положение не на земле, после /fly и включения",
+                "ability выполняется телепорт как в режиме bypass.",
+                "",
+                "После режимов bypass и fs можно указать количество пакетов:",
                 "> vclip <расстояние|up|down> bypass [пакеты]",
                 "",
                 "Без указания типа используется дефолтная логика (pos)."

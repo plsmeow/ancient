@@ -56,10 +56,10 @@ public class HClipCommand extends Command {
         ClipBypass.BypassArgs bypassArgs = ClipBypass.parseArgs(this, args);
         if (bypassArgs == ClipBypass.INVALID) return;
 
-        ClipBypass.teleport(x, y, z, bypassArgs.mode(), bypassArgs.packets());
-
-        logDirect("Телепортировано на " + (int) distance + " блоков по горизонтали"
-                + (bypassArgs.mode() != null ? " [" + bypassArgs.mode() + "]" : ""));
+        if (ClipBypass.teleport(this, x, y, z, bypassArgs.mode(), bypassArgs.packets())) {
+            logDirect("Телепортировано на " + (int) distance + " блоков по горизонтали"
+                    + (bypassArgs.mode() != null ? " [" + bypassArgs.mode() + "]" : ""));
+        }
     }
 
     @Override
@@ -76,9 +76,13 @@ public class HClipCommand extends Command {
                 "Положительное число — вперёд, отрицательное — назад",
                 "",
                 "Необязательный второй аргумент — тип байпаса:",
-                "> hclip <расстояние> [pos|bypass|vault]",
+                "> hclip <расстояние> [pos|bypass|vault|fs]",
                 "",
-                "После режима bypass можно указать количество пакетов:",
+                "fs — телепорт с полётом как в High Jump (Funsky Elytra): нужна",
+                "надетая элитра и положение не на земле, после /fly и включения",
+                "ability выполняется телепорт как в режиме bypass.",
+                "",
+                "После режимов bypass и fs можно указать количество пакетов:",
                 "> hclip <расстояние> bypass [пакеты]",
                 "",
                 "Без указания типа используется дефолтная логика (pos)."

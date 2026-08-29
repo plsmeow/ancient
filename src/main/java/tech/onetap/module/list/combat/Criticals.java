@@ -40,31 +40,10 @@ public class Criticals extends Module {
 
         switch (mode.getValue()) {
             case "Grim" -> {
-                if (mc.player.isOnGround()) return;
-                if (mc.player.getVelocity().y >= 0) return;
-
-                boolean inWeb = WorldUtils.isInWeb();
-                boolean hasSlowFalling = mc.player.hasStatusEffect(StatusEffects.SLOW_FALLING);
-
-                if (!inWeb && !hasSlowFalling) return;
-
-                double x = mc.player.getX();
-                double y = mc.player.getY();
-                double z = mc.player.getZ();
-
-                mc.player.fallDistance = 0.08f;
+                if (!WorldUtils.isInWeb()) return;
 
                 NetworkUtils.sendSilentPacket(new PlayerMoveC2SPacket.PositionAndOnGround(
-                        x, y + 0.0625, z, false, false
-                ));
-                NetworkUtils.sendSilentPacket(new PlayerMoveC2SPacket.PositionAndOnGround(
-                        x, y, z, false, false
-                ));
-                NetworkUtils.sendSilentPacket(new PlayerMoveC2SPacket.PositionAndOnGround(
-                        x, y + 0.0015, z, false, false
-                ));
-                NetworkUtils.sendSilentPacket(new PlayerMoveC2SPacket.PositionAndOnGround(
-                        x, y, z, false, false
+                        mc.player.getX(), mc.player.getY() - 1.0E-9, mc.player.getZ(), false, false
                 ));
             }
             case "Packet" -> {

@@ -64,10 +64,10 @@ public class TpCommand extends Command {
             ClipBypass.BypassArgs bypassArgs = ClipBypass.parseArgs(this, args);
             if (bypassArgs == ClipBypass.INVALID) return;
 
-            ClipBypass.teleport(x, y, z, bypassArgs.mode(), bypassArgs.packets());
-
-            logDirect("Телепортировано на " + formatCoord(x) + " " + formatCoord(y) + " " + formatCoord(z)
-                    + (bypassArgs.mode() != null ? " [" + bypassArgs.mode() + "]" : ""));
+            if (ClipBypass.teleport(this, x, y, z, bypassArgs.mode(), bypassArgs.packets())) {
+                logDirect("Телепортировано на " + formatCoord(x) + " " + formatCoord(y) + " " + formatCoord(z)
+                        + (bypassArgs.mode() != null ? " [" + bypassArgs.mode() + "]" : ""));
+            }
         } else if (target != null) {
             // Режим игрока: tp <player> [bypass]
             if (target == player) {
@@ -78,10 +78,10 @@ public class TpCommand extends Command {
             ClipBypass.BypassArgs bypassArgs = ClipBypass.parseArgs(this, args);
             if (bypassArgs == ClipBypass.INVALID) return;
 
-            ClipBypass.teleport(target.getX(), target.getY(), target.getZ(), bypassArgs.mode(), bypassArgs.packets());
-
-            logDirect("Телепортировано к игроку " + target.getName().getString()
-                    + (bypassArgs.mode() != null ? " [" + bypassArgs.mode() + "]" : ""));
+            if (ClipBypass.teleport(this, target.getX(), target.getY(), target.getZ(), bypassArgs.mode(), bypassArgs.packets())) {
+                logDirect("Телепортировано к игроку " + target.getName().getString()
+                        + (bypassArgs.mode() != null ? " [" + bypassArgs.mode() + "]" : ""));
+            }
         } else {
             logDirect(Formatting.RED + "Игрок " + first + " не найден.");
         }
@@ -115,10 +115,14 @@ public class TpCommand extends Command {
                 "> tp <player> — телепорт к игроку",
                 "",
                 "Необязательный последний аргумент — тип байпаса:",
-                "> tp <x> <y> <z> [pos|bypass|vault]",
-                "> tp <player> [pos|bypass|vault]",
+                "> tp <x> <y> <z> [pos|bypass|vault|fs]",
+                "> tp <player> [pos|bypass|vault|fs]",
                 "",
-                "После режима bypass можно указать количество пакетов:",
+                "fs — телепорт с полётом как в High Jump (Funsky Elytra): нужна",
+                "надетая элитра и положение не на земле, после /fly и включения",
+                "ability выполняется телепорт как в режиме bypass.",
+                "",
+                "После режимов bypass и fs можно указать количество пакетов:",
                 "> tp <x> <y> <z> bypass [пакеты]",
                 "> tp <player> bypass [пакеты]",
                 "",

@@ -1,13 +1,16 @@
 package tech.onetap.module.list.movement;
 
 import meteordevelopment.orbit.EventHandler;
+import net.minecraft.entity.EquipmentSlot;
 import net.minecraft.item.ArmorStandItem;
 import net.minecraft.item.BlockItem;
 import net.minecraft.item.FireworkRocketItem;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
+import net.minecraft.item.Items;
 import net.minecraft.item.SpawnEggItem;
 import net.minecraft.network.packet.c2s.play.PlayerMoveC2SPacket;
+import net.minecraft.network.packet.c2s.play.UpdatePlayerAbilitiesC2SPacket;
 import net.minecraft.util.ActionResult;
 import net.minecraft.util.Hand;
 import net.minecraft.util.hit.BlockHitResult;
@@ -17,6 +20,7 @@ import net.minecraft.util.math.Vec3d;
 import tech.onetap.event.list.EventPacket;
 import tech.onetap.event.list.EventPlayerUpdate;
 import tech.onetap.event.list.EventTick;
+import tech.onetap.event.list.MoveInputEvent;
 import tech.onetap.module.Module;
 import tech.onetap.module.ModuleCategory;
 import tech.onetap.module.ModuleInformation;
@@ -29,7 +33,7 @@ import tech.onetap.util.player.move.MoveUtil;
 @ModuleInformation(moduleName = "Flight", moduleCategory = ModuleCategory.MOVEMENT)
 public class Flight extends Module {
 
-    public final ModeSetting mode = new ModeSetting("Режим", "Vanilla", "Vanilla", "Vulcan", "Vulcan XZ", "FunSky");
+    public final ModeSetting mode = new ModeSetting("Режим", "Vanilla", "Vanilla", "Vulcan", "Vulcan XZ", "FunSky", "Funsky Elytra");
     public SliderSetting speed = new SliderSetting("Скорость", 1.0, 0.1, 40.0, 0.1).setVisible(() -> mode.is("Vanilla"));
     public SliderSetting vulcanXzSpeed = new SliderSetting("Скорость", 1.0, 0.1, 40.0, 0.1).setVisible(() -> mode.is("Vulcan XZ"));
     public final SliderSetting vulcanXzBlockInterval = new SliderSetting("Блок каждые N тиков", 20.0, 10.0, 80.0, 5.0).setVisible(() -> mode.is("Vulcan XZ"));
@@ -37,6 +41,11 @@ public class Flight extends Module {
     public final SliderSetting airJumpRiseSpeed = new SliderSetting("Скорость подъёма", 0.4, 0.05, 1.5, 0.05).setVisible(() -> mode.is("FunSky"));
     public final SliderSetting airJumpSpeed = new SliderSetting("Скорость", 1.0, 0.1, 40.0, 0.1).setVisible(() -> mode.is("FunSky"));
     public final SliderSetting airJumpDescendSpeed = new SliderSetting("Скорость спуска", 0.04, 0.01, 1.0, 0.01).setVisible(() -> mode.is("FunSky"));
+    public final SliderSetting funskySpeedX = new SliderSetting("Скорость X", 2.0, 0.5, 10.0, 0.5).setVisible(() -> mode.is("Funsky Elytra"));
+    public final SliderSetting funskySpeedY = new SliderSetting("Скорость Y", 2.0, 0.5, 40.0, 0.5).setVisible(() -> mode.is("Funsky Elytra"));
+    public final BooleanSetting funskyInstantMotion = new BooleanSetting("Резкие движения", true).setVisible(() -> mode.is("Funsky Elytra"));
+    public final SliderSetting funskyRepeatTicks = new SliderSetting("Повтор каждые N тиков", 100, 1, 600, 1).setVisible(() -> mode.is("Funsky Elytra"));
+    public final SliderSetting funskyDelay = new SliderSetting("Funsky Задержка", 2, 1, 10, 1).setVisible(() -> mode.is("Funsky Elytra"));
 
     public final BooleanSetting antiKick = new BooleanSetting("Анти-кик", true);
 
@@ -53,10 +62,15 @@ public class Flight extends Module {
 
     private double vulcanXzLockedY;
     private int vulcanXzBlockTickCounter;
+    private int funskyRefreshCounter;
+    private boolean funskyAfterCommand;
+    private boolean funskyStarted;
+    private boolean funskyFlyingActive;
 
     @Override
     public void onEnable() {
         super.onEnable();
+        resetFunskyState();
         resetVulcanState();
         resetAntiKickState();
         resetVulcanXzState();
@@ -69,6 +83,14 @@ public class Flight extends Module {
     @Override
     public void onDisable() {
         super.onDisable();
+        if (mc.player != null && mc.player.networkHandler != null && funskyFlyingActive) {
+            mc.player.getAbilities().flying = false;
+            mc.player.networkHandler.sendPacket(new UpdatePlayerAbilitiesC2SPacket(mc.player.getAbilities()));
+        }
+        resetFunskyState();
+        if (mc.player != null) {
+            mc.player.getAbilities().setFlySpeed(0.05f);
+        }
         resetVulcanState();
         resetAntiKickState();
         resetVulcanXzState();
@@ -126,6 +148,92 @@ public class Flight extends Module {
         if (!mode.is("FunSky")) return;
 
         handleAirJumpMode();
+    }
+
+    @EventHandler
+    public void onUpdateFunskyRefresh(EventTick event) {
+        if (mc.player == null || mc.player.networkHandler == null) return;
+        if (!mode.is("Funsky Elytra")) {
+            funskyStarted = false;
+            return;
+        }
+
+        if (mc.player.getEquippedStack(EquipmentSlot.CHEST).getItem() != Items.ELYTRA) {
+            setEnabled(false);
+            return;
+        }
+
+        if (!funskyStarted) {
+            // Первый запуск — /fly сразу, как в High Jump (Funsky Elytra)
+            funskyStarted = true;
+            funskyAfterCommand = true;
+            funskyRefreshCounter = 0;
+            mc.player.networkHandler.sendChatCommand("fly");
+            return;
+        }
+
+        if (funskyAfterCommand) {
+            funskyRefreshCounter++;
+            if (funskyRefreshCounter >= funskyDelay.getIntValue()) {
+                mc.player.getAbilities().flying = true;
+                mc.player.networkHandler.sendPacket(new UpdatePlayerAbilitiesC2SPacket(mc.player.getAbilities()));
+                funskyFlyingActive = true;
+                funskyAfterCommand = false;
+                funskyRefreshCounter = 0;
+            }
+            return;
+        }
+
+        funskyRefreshCounter++;
+        if (funskyRefreshCounter >= funskyRepeatTicks.getIntValue()) {
+            mc.player.networkHandler.sendChatCommand("fly");
+            funskyAfterCommand = true;
+            funskyRefreshCounter = 0;
+        }
+    }
+
+    @EventHandler
+    public void onFunskyPlayerUpdate(EventPlayerUpdate event) {
+        if (mc.player == null) return;
+        if (!mode.is("Funsky Elytra")) return;
+
+        if (mc.player.getAbilities().flying) {
+            mc.player.getAbilities().setFlySpeed((float) (funskySpeedX.getValue() * 0.05f));
+        } else {
+            mc.player.getAbilities().setFlySpeed(0.05f);
+        }
+    }
+
+    @EventHandler
+    public void onFunskyStrafe(MoveInputEvent event) {
+        if (mc.player == null) return;
+        if (!mode.is("Funsky Elytra")) return;
+        if (!mc.player.getAbilities().flying || !funskyInstantMotion.getValue()) return;
+
+        Vec3d velocity = mc.player.getVelocity();
+
+        float forward = mc.player.input.movementForward;
+        float sideways = mc.player.input.movementSideways;
+
+        if (forward == 0 && sideways == 0) {
+            mc.player.setVelocity(0, velocity.y, 0);
+        } else {
+            double speedVal = funskySpeedX.getValue();
+
+            Vec3d forwardVec = Vec3d.fromPolar(0, mc.player.getYaw()).normalize();
+            Vec3d rightVec = Vec3d.fromPolar(0, mc.player.getYaw() - 90).normalize();
+
+            double velX = forwardVec.x * forward * speedVal + rightVec.x * sideways * speedVal;
+            double velZ = forwardVec.z * forward * speedVal + rightVec.z * sideways * speedVal;
+
+            mc.player.setVelocity(velX, velocity.y, velZ);
+        }
+
+        if (mc.options.jumpKey.isPressed()) {
+            mc.player.setVelocity(mc.player.getVelocity().x, funskySpeedY.getValue() * 0.2, mc.player.getVelocity().z);
+        } else if (mc.options.sneakKey.isPressed()) {
+            mc.player.setVelocity(mc.player.getVelocity().x, -funskySpeedY.getValue() * 0.2, mc.player.getVelocity().z);
+        }
     }
 
     @EventHandler
@@ -266,6 +374,13 @@ public class Flight extends Module {
     private void resetAntiKickState() {
         antiKickDelayLeft = 0;
         antiKickOffLeft = 0;
+    }
+
+    private void resetFunskyState() {
+        funskyRefreshCounter = 0;
+        funskyAfterCommand = false;
+        funskyStarted = false;
+        funskyFlyingActive = false;
     }
 
     private void resetVulcanXzState() {

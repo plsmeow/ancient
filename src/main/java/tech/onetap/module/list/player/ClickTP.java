@@ -33,7 +33,7 @@ import tech.onetap.util.render.providers.ColorProvider;
 
 @ModuleInformation(moduleName = "Click TP", moduleDesc = "Телепорт по ЛКМ в точку прицела", moduleCategory = ModuleCategory.PLAYER)
 public class ClickTP extends Module {
-    private final ModeSetting mode = new ModeSetting("Режим", "Simple", "Simple", "Vault");
+    private final ModeSetting mode = new ModeSetting("Режим", "Simple", "Simple", "Vault", "FS");
     private final SliderSetting distance = new SliderSetting("Дистанция", 100.0, 10.0, 500.0, 5.0);
     private final SliderSetting airDistance = new SliderSetting("Дистанция в воздух", 10.0, 2.0, 100.0, 0.5);
 
@@ -62,6 +62,8 @@ public class ClickTP extends Module {
         Vec3d pos = target != null ? getTeleportPos() : getAirTeleportPos();
         if (mode.is("Vault")) {
             ClipBypass.teleport(pos.x, pos.y, pos.z, "vault");
+        } else if (mode.is("FS")) {
+            ClipBypass.teleport(this, pos.x, pos.y, pos.z, "fs");
         } else {
             mc.player.setPosition(pos.x, pos.y, pos.z);
         }

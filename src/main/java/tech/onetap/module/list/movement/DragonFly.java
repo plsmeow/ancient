@@ -3,6 +3,7 @@ package tech.onetap.module.list.movement;
 import meteordevelopment.orbit.EventHandler;
 import net.minecraft.util.math.Vec3d;
 import tech.onetap.event.list.EventPlayerUpdate;
+import tech.onetap.Onetap;
 import tech.onetap.event.list.MoveInputEvent;
 import tech.onetap.module.Module;
 import tech.onetap.module.ModuleCategory;
@@ -39,9 +40,14 @@ public final class DragonFly extends Module {
     }
 
 
+    private boolean flightFunskyActive() {
+        Flight flight = Onetap.getInstance().getModuleStorage().get(Flight.class);
+        return flight != null && flight.isEnabled() && flight.mode.is("Funsky Elytra");
+    }
+
     @EventHandler
     private void onUpdate(EventPlayerUpdate e) {
-        if (mc.player == null) return;
+        if (mc.player == null || flightFunskyActive()) return;
 
         if (mc.player.getAbilities().flying) {
             float flySpeed = (float) (speedX.getValue() * 0.05f);
@@ -54,7 +60,7 @@ public final class DragonFly extends Module {
 
     @EventHandler
     private void onStrafe(MoveInputEvent e) {
-        if (mc.player == null) return;
+        if (mc.player == null || flightFunskyActive()) return;
         if (!mc.player.getAbilities().flying) return;
         if (!instantMotion.getValue()) return;
 
