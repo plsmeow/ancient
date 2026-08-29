@@ -23,7 +23,7 @@ import tech.onetap.util.rotation.Rotation;
 import tech.onetap.util.rotation.RotationComponent;
 import tech.onetap.util.render.math.GCDFixer;
 
-@ModuleInformation(moduleName = "AutoFlyMace", moduleDesc = "Автоматически встаёт в воздухе над целью для удара булавой", moduleCategory = ModuleCategory.COMBAT)
+@ModuleInformation(moduleName = "AutoFlyMace", moduleDesc = "Зависает над целью, чтобы ударить булавой с высоты", moduleCategory = ModuleCategory.COMBAT)
 public class AutoFlyMace extends Module {
 
     private final SliderSetting threshold = new SliderSetting("Порог точности", 0.2, 0.05, 1.0, 0.05);

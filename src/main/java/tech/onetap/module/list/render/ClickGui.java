@@ -8,7 +8,7 @@ import tech.onetap.module.settings.ModeSetting;
 import tech.onetap.ui.ClickGuiFrame;
 import tech.onetap.ui.Panel;
 
-@ModuleInformation(moduleName = "Click Gui", moduleCategory = ModuleCategory.RENDER, moduleKeybind = GLFW.GLFW_KEY_RIGHT_SHIFT)
+@ModuleInformation(moduleName = "Click Gui", moduleDesc = "Открывает клик-гуй клиента", moduleCategory = ModuleCategory.RENDER, moduleKeybind = GLFW.GLFW_KEY_RIGHT_SHIFT)
 public class ClickGui extends Module {
 
     public final ModeSetting mode = new ModeSetting("Режим", "Dropdown", "Dropdown", "Panel", "New");

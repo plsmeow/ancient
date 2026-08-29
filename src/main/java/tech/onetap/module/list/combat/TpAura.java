@@ -29,7 +29,7 @@ import tech.onetap.util.block.AStarPathFinder;
 import java.util.ArrayList;
 import java.util.List;
 
-@ModuleInformation(moduleName = "TpAura", moduleDesc = "Телепортирует игрока к цели перед ударом KillAura и возвращает обратно", moduleCategory = ModuleCategory.COMBAT)
+@ModuleInformation(moduleName = "TpAura", moduleDesc = "Killaura на 200 блоков", moduleCategory = ModuleCategory.COMBAT)
 public class TpAura extends Module {
     private final ModeSetting tpMode = new ModeSetting("TP Mode", "Simple", "Simple", "Bypass", "Vault");
     private final ModeSetting simpleMode = new ModeSetting("Режим", "TP", "TP", "Steps")

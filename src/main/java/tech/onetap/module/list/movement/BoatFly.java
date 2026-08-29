@@ -18,7 +18,7 @@ import tech.onetap.module.ModuleInformation;
 import tech.onetap.module.settings.BooleanSetting;
 import tech.onetap.module.settings.SliderSetting;
 
-@ModuleInformation(moduleName = "BoatFly", moduleDesc = "Позволяет двигаться на лодке сквозь блоки", moduleCategory = ModuleCategory.MOVEMENT)
+@ModuleInformation(moduleName = "BoatFly", moduleDesc = "Полет на лодке", moduleCategory = ModuleCategory.MOVEMENT)
 public final class BoatFly extends Module {
 
     private static final int BYPASS_IDLE_REMOUNT_TICKS = 15;

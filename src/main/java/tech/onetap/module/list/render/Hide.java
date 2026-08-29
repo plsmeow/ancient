@@ -15,7 +15,7 @@ import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 
-@ModuleInformation(moduleName = "Hide", moduleDesc = "Анхук", moduleCategory = ModuleCategory.RENDER)
+@ModuleInformation(moduleName = "Hide", moduleDesc = "Скрывает клиент", moduleCategory = ModuleCategory.RENDER)
 public class Hide extends Module {
 
     public static volatile boolean isActive = false;

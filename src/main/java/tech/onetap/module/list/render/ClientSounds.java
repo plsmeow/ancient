@@ -9,7 +9,7 @@ import tech.onetap.module.ModuleCategory;
 import tech.onetap.module.ModuleInformation;
 import tech.onetap.module.settings.ModeSetting;
 
-@ModuleInformation(moduleName = "Client Sounds", moduleDesc = "Создает звук при включении/выключении функции", moduleCategory = ModuleCategory.RENDER)
+@ModuleInformation(moduleName = "Client Sounds", moduleDesc = "Звук при вкл/выкл модулей", moduleCategory = ModuleCategory.RENDER)
 public class ClientSounds extends Module {
 
     private static ClientSounds INSTANCE;

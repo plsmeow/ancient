@@ -8,7 +8,7 @@ import tech.onetap.module.Module;
 import tech.onetap.module.ModuleCategory;
 import tech.onetap.module.ModuleInformation;
 
-@ModuleInformation(moduleName = "Teleport Back", moduleCategory = ModuleCategory.PLAYER)
+@ModuleInformation(moduleName = "Teleport Back", moduleDesc = "Телепорт назад на точку смерти после респавна", moduleCategory = ModuleCategory.PLAYER)
 public class TeleportBack extends Module {
 
     private boolean dead;

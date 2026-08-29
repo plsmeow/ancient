@@ -11,7 +11,7 @@ import tech.onetap.module.list.combat.KillAura;
 import tech.onetap.util.base.Instance;
 import tech.onetap.util.player.combat.PredictUtils;
 
-@ModuleInformation(moduleName = "Elytra Motion", moduleCategory = ModuleCategory.MOVEMENT)
+@ModuleInformation(moduleName = "Elytra Motion", moduleDesc = "Стопит перед целью на элитре", moduleCategory = ModuleCategory.MOVEMENT)
 public class ElytraMotion extends Module {
     private boolean waitTarget;
 

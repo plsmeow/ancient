@@ -16,7 +16,7 @@ import tech.onetap.module.ModuleCategory;
 import tech.onetap.module.ModuleInformation;
 import tech.onetap.module.settings.BindSetting;
 
-@ModuleInformation(moduleName = "Crystal Spammer", moduleCategory = ModuleCategory.COMBAT)
+@ModuleInformation(moduleName = "Crystal Spammer", moduleDesc = "По зажатой клавише спамит кристаллы и сразу их взрывает", moduleCategory = ModuleCategory.COMBAT)
 public class CrystalSpammer extends Module {
     private final BindSetting key = new BindSetting("Клавиша спама", -1);
 

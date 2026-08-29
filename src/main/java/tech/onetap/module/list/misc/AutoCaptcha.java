@@ -32,7 +32,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
-@ModuleInformation(moduleName = "Auto Captcha", moduleDesc = "Решает капчу через Bare API", moduleCategory = ModuleCategory.MISC)
+@ModuleInformation(moduleName = "Auto Captcha", moduleDesc = "Решает капчу", moduleCategory = ModuleCategory.MISC)
 public class AutoCaptcha extends Module {
 
     private final ModeSetting apiVersion = new ModeSetting(

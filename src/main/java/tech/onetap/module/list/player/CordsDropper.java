@@ -7,7 +7,7 @@ import tech.onetap.module.ModuleCategory;
 import tech.onetap.module.ModuleInformation;
 import tech.onetap.module.settings.BindSetting;
 
-@ModuleInformation(moduleName = "Cords Dropper", moduleCategory = ModuleCategory.PLAYER)
+@ModuleInformation(moduleName = "Cords Dropper", moduleDesc = "Отправляет свои координаты в чат по бинду", moduleCategory = ModuleCategory.PLAYER)
 public class CordsDropper extends Module {
 
     private final BindSetting bind = new BindSetting("Key",-1);

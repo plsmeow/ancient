@@ -13,7 +13,7 @@ import tech.onetap.module.settings.ModeSetting;
 import tech.onetap.module.settings.SliderSetting;
 import tech.onetap.util.QuickLogger;
 
-@ModuleInformation(moduleName = "ElytraBooster", moduleCategory = ModuleCategory.MOVEMENT)
+@ModuleInformation(moduleName = "ElytraBooster", moduleDesc = "Усиливает буст феерверка на элитре", moduleCategory = ModuleCategory.MOVEMENT)
 public class ElytraBooster extends Module implements QuickLogger {
     private final ModeSetting mode = new ModeSetting("Режим", "Basic", "Basic", "Bravo");
     private final SliderSetting speedSetting = new SliderSetting("Скорость", 2.35f, 1.6f, 5.0f, 0.05f)

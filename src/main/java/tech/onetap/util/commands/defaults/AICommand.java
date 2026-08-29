@@ -76,6 +76,7 @@ public class AICommand extends Command {
             }
 
             case "cancel" -> TrainingLauncher.cancel();
+            case "setup" -> TrainingLauncher.setup();
 
             case "benchmark" -> NeuroBenchmark.run();
 
@@ -162,6 +163,7 @@ public class AICommand extends Command {
         ChatUtil.send("§f.ai train <ds> [model] [ep] §7- Обучить модель");
         ChatUtil.send("§f.ai improve <model> <ds> [ep] §7- Дообучить модель");
         ChatUtil.send("§f.ai cancel §7- Остановить обучение");
+        ChatUtil.send("§f.ai setup §7- Скачать Python и библиотеки");
         ChatUtil.send("§f.ai load <model> §7- Загрузить модель");
         ChatUtil.send("§f.ai unload §7- Выгрузить модель");
         ChatUtil.send("§f.ai delete <model> §7- Удалить модель");
@@ -190,6 +192,7 @@ public class AICommand extends Command {
                 ".ai train <ds> [model] [epochs] - обучить модель",
                 ".ai improve <model> <ds> [epochs] - дообучить модель",
                 ".ai cancel - остановить обучение",
+                ".ai setup - скачать Python и библиотеки",
                 ".ai load <model> - загрузить модель",
                 ".ai unload - выгрузить модель",
                 ".ai delete <model> - удалить модель",
@@ -205,7 +208,7 @@ public class AICommand extends Command {
     public Stream<String> tabComplete(String label, IArgConsumer args) throws CommandException {
         if (args.hasExactlyOne()) {
             return Stream.of("save", "load", "unload", "train", "improve", "cancel",
-                    "delete", "list", "models", "dump", "benchmark", "dir");
+                    "setup", "delete", "list", "models", "dump", "benchmark", "dir");
         }
         return Stream.empty();
     }

@@ -10,7 +10,7 @@ import tech.onetap.module.ModuleInformation;
 import tech.onetap.module.settings.ModeSetting;
 import tech.onetap.module.settings.SliderSetting;
 
-@ModuleInformation(moduleName = "Swing Animations", moduleCategory = ModuleCategory.RENDER)
+@ModuleInformation(moduleName = "Swing Animations", moduleDesc = "Анимация рук", moduleCategory = ModuleCategory.RENDER)
 public class SwingAnimations extends Module {
     private final ModeSetting mode = new ModeSetting("Мод", "Никакой", "Никакой", "Smooth", "Self", "Self 2", "Down", "Forward", "Touch", "BlockHit", "Pander", "Curt");
     private final SliderSetting power = new SliderSetting("Сила",3, 0F, 10F, 1F).setVisible(() -> !mode.getValue().equals("Pander") && !mode.is("BlockHit") && !mode.getValue().equals("Forward") && !mode.getValue().equals("Curt") && !mode.getValue().equals("Никакой"));

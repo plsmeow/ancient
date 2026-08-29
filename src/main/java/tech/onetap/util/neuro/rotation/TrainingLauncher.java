@@ -14,6 +14,7 @@ import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Запускает внешний Python-тренер и стримит его вывод в чат.
@@ -26,6 +27,10 @@ import java.util.List;
  * только с этой копией, поэтому клиент работает из любой папки, а не
  * только из корня проекта. Распаковка всегда перезаписывает файлы, чтобы
  * скрипты не расходились с версией клиента.
+ *
+ * Python-окружение (интерпретатор и библиотеки) подготавливается само — на
+ * первом .ai train / .ai setup в фоновом потоке: системный Python превращается
+ * в venv, а на Windows без Python скачивается embeddable-сборка (~11 МБ).
  */
 public final class TrainingLauncher implements IMinecraft {
 
@@ -37,13 +42,13 @@ public final class TrainingLauncher implements IMinecraft {
     private static volatile Process currentProcess = null;
 
     private static Path toolsDir = null;
+    private static final AtomicBoolean busy = new AtomicBoolean(false);
 
     private TrainingLauncher() {
     }
 
     public static boolean isRunning() {
-        Process p = currentProcess;
-        return p != null && p.isAlive();
+return busy.get();
     }
 
     /**
@@ -61,7 +66,7 @@ public final class TrainingLauncher implements IMinecraft {
      */
     public static void train(String datasetName, String modelName, int epochs, String baseModel) {
         if (isRunning()) {
-            ChatUtil.send("§cОбучение уже идёт. Остановите его: §f.ai cancel");
+            ChatUtil.send("§cОбучение/подготовка уже идёт. Остановить: §f.ai cancel");
             return;
         }
 
@@ -83,33 +88,86 @@ public final class TrainingLauncher implements IMinecraft {
             return;
         }
 
-        String python = findPython();
-        if (python == null) {
-            printManualInstructions(scriptPath, datasetPath, modelName, epochs, baseModel);
-            return;
-        }
 
-        List<String> command = new ArrayList<>();
-        command.add(python);
-        command.add(scriptPath.toString());
-        command.add("--dataset");
-        command.add(datasetPath.toString());
-        command.add("--out");
-        command.add(modelName);
-        command.add("--epochs");
-        command.add(String.valueOf(epochs));
-        // Из игры обучаем до конца без early stopping — пользователь сам
-        // выбирает число эпох и ждёт именно столько.
-        command.add("--patience");
-        command.add("0");
-        if (baseModel != null) {
-            command.add("--base");
-            command.add(baseModel);
-        }
-
-        Thread thread = new Thread(() -> runProcess(command, scriptPath, modelName), "NeuroTraining");
+        Thread thread = new Thread(
+                () -> trainWorker(datasetPath, modelName, epochs, baseModel, scriptPath),
+                "NeuroTraining");
         thread.setDaemon(true);
         thread.start();
+    }
+
+    /**
+     * Готовит Python-окружение без запуска обучения (.ai setup).
+     * Прогресс скачивания виден в чате; занимает busy, как обучение.
+     */
+    public static void setup() {
+        if (isRunning()) {
+            ChatUtil.send("§cОбучение/подготовка уже идёт");
+            return;
+        }
+        Thread thread = new Thread(() -> {
+            if (!busy.compareAndSet(false, true)) {
+                ChatUtil.send("§cОбучение/подготовка уже идёт");
+                return;
+            }
+            try {
+                Path toolsDirPath = resolveScript();
+                if (toolsDirPath == null) {
+                    ChatUtil.send("§cНе удалось подготовить trainer (см. лог выше)");
+                    return;
+                }
+                Path python = TrainerEnvironment.ensure(
+                        toolsDirPath.getParent().resolve("requirements.txt"), ChatUtil::send);
+                if (python != null) {
+                    ChatUtil.send("§aОкружение готово: §f" + python);
+                    ChatUtil.send("§7Теперь можно обучать: §f.ai train <датасет>");
+                } else {
+                    ChatUtil.send("§cОкружение не готово — см. ошибки выше");
+                }
+            } finally {
+                busy.set(false);
+            }
+        }, "NeuroSetup");
+        thread.setDaemon(true);
+        thread.start();
+    }
+
+    private static void trainWorker(Path datasetPath, String modelName, int epochs,
+                                    String baseModel, Path scriptPath) {
+        if (!busy.compareAndSet(false, true)) {
+            ChatUtil.send("§cОбучение/подготовка уже идёт");
+            return;
+        }
+        try {
+            Path python = TrainerEnvironment.ensure(
+                    scriptPath.getParent().resolve("requirements.txt"), ChatUtil::send);
+            if (python == null) {
+                printManualInstructions(scriptPath, datasetPath, modelName, epochs, baseModel);
+                return;
+            }
+
+            List<String> command = new ArrayList<>();
+            command.add(python.toString());
+            command.add(scriptPath.toString());
+            command.add("--dataset");
+            command.add(datasetPath.toString());
+            command.add("--out");
+            command.add(modelName);
+            command.add("--epochs");
+            command.add(String.valueOf(epochs));
+            // Из игры обучаем до конца без early stopping — пользователь сам
+            // выбирает число эпох и ждёт именно столько.
+            command.add("--patience");
+            command.add("0");
+            if (baseModel != null) {
+                command.add("--base");
+                command.add(baseModel);
+            }
+
+            runProcess(command, scriptPath, modelName);
+        } finally {
+            busy.set(false);
+        }
     }
 
     /**
@@ -173,14 +231,11 @@ public final class TrainingLauncher implements IMinecraft {
 
     private static void runProcess(List<String> command, Path scriptPath, String modelName) {
         try {
-            ProcessBuilder pb = new ProcessBuilder(command);
+            ProcessBuilder pb = TrainerEnvironment.newProcess(command);
             // Рабочая папка — игровая: скрипт пишет модели в .options/ai/models
             // относительно неё. Импорт соседних модулей обеспечивает PYTHONPATH.
             pb.directory(Paths.get("").toAbsolutePath().toFile());
-            pb.redirectErrorStream(true);
             pb.environment().put("PYTHONPATH", scriptPath.getParent().toString());
-            pb.environment().put("PYTHONIOENCODING", "utf-8");
-            pb.environment().put("PYTHONUNBUFFERED", "1");
 
             Process process = pb.start();
             currentProcess = process;
@@ -253,43 +308,32 @@ public final class TrainingLauncher implements IMinecraft {
     }
 
     /**
-     * Останавливает обучение.
+     * Останавливает обучение или подготовку окружения.
      */
     public static void cancel() {
+        boolean stopped = false;
         Process process = currentProcess;
-        if (process == null || !process.isAlive()) {
+        if (process != null && process.isAlive()) {
+            process.destroy();
+            stopped = true;
+        }
+        if (TrainerEnvironment.cancelProvisioning()) {
+            stopped = true;
+        }
+        if (stopped) {
+            ChatUtil.send("§eОстанавливаю...");
+        } else {
             ChatUtil.send("§7Обучение не запущено");
-            return;
         }
-        process.destroy();
-        ChatUtil.send("§eОстанавливаю обучение...");
     }
 
     /**
-     * Ищет доступный интерпретатор Python.
-     */
-    private static String findPython() {
-        for (String candidate : new String[]{"python", "py", "python3"}) {
-            try {
-                Process p = new ProcessBuilder(candidate, "--version")
-                        .redirectErrorStream(true)
-                        .start();
-                if (p.waitFor() == 0) {
-                    return candidate;
-                }
-            } catch (Exception ignored) {
-            }
-        }
-        return null;
-    }
-
-    /**
-     * Python не найден — печатаем готовую команду, а не падаем.
+     * Авто-подготовка не сработала — печатаем ручной сценарий, а не падаем.
      */
     private static void printManualInstructions(Path scriptPath, Path datasetPath,
                                                 String modelName, int epochs, String baseModel) {
-        ChatUtil.send("§cPython не найден в PATH");
-        ChatUtil.send("§7Установите Python 3.9+ и зависимости:");
+        ChatUtil.send("§cАвто-подготовка окружения не сработала — нужен Python 3.9+");
+        ChatUtil.send("§7После установки Python библиотеки доедут сами при следующем запуске:");
         ChatUtil.send("§f  pip install -r " + scriptPath.getParent().resolve("requirements.txt").toAbsolutePath());
         ChatUtil.send("§7Затем запустите обучение вручную:");
 

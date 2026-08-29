@@ -25,7 +25,7 @@ import tech.onetap.util.rotation.Rotation;
 import tech.onetap.util.rotation.RotationComponent;
 import tech.onetap.util.text.ValueUnit;
 
-@ModuleInformation(moduleName = "AutoPot", moduleCategory = ModuleCategory.COMBAT)
+@ModuleInformation(moduleName = "AutoPot", moduleDesc = "Автоматически кидает зелья", moduleCategory = ModuleCategory.COMBAT)
 public class AutoPot extends Module {
 
     private final BooleanSetting strength = new BooleanSetting("Strength", true);

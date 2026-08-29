@@ -10,7 +10,7 @@ import tech.onetap.module.ModuleCategory;
 import tech.onetap.module.ModuleInformation;
 import tech.onetap.module.settings.SliderSetting;
 
-@ModuleInformation(moduleName = "ElytraFly", moduleDesc = "Gives you more control over your elytra", moduleCategory = ModuleCategory.MOVEMENT)
+@ModuleInformation(moduleName = "ElytraFly", moduleDesc = "Флай с элитрой", moduleCategory = ModuleCategory.MOVEMENT)
 public class ElytraFly extends Module {
 
     public final SliderSetting horizontalSpeed = new SliderSetting("Горизонт. скорость", 1.0, 0, 5, 0.1);

@@ -34,7 +34,7 @@ import tech.onetap.module.settings.BooleanSetting;
 import tech.onetap.module.settings.SliderSetting;
 import tech.onetap.util.render.providers.ColorProvider;
 
-@ModuleInformation(moduleName = "Air Place", moduleDesc = "Ставит блок в точку прицела в воздухе", moduleCategory = ModuleCategory.PLAYER)
+@ModuleInformation(moduleName = "Air Place", moduleDesc = "Ставит блоки в воздух", moduleCategory = ModuleCategory.PLAYER)
 public class AirPlace extends Module {
     private final BooleanSetting render = new BooleanSetting("Рендер", true);
     private final BooleanSetting customRange = new BooleanSetting("Своя дистанция", false);

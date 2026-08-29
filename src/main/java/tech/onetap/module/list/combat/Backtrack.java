@@ -16,7 +16,7 @@ import tech.onetap.module.settings.SliderSetting;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
-@ModuleInformation(moduleName = "Backtrack", moduleDesc = "Delays target movement packets", moduleCategory = ModuleCategory.COMBAT)
+@ModuleInformation(moduleName = "Backtrack", moduleDesc = "Задержка позиции цели", moduleCategory = ModuleCategory.COMBAT)
 public class Backtrack extends Module {
     private static final long DELAY_MS = 100L;
 

@@ -19,7 +19,7 @@ import tech.onetap.util.player.other.InventoryUtil;
  * (button=40 = swap с offhand), работает из любого слота инвентаря без
  * промежуточного обмена. Учитывает режим обхода GuiMove.
  */
-@ModuleInformation(moduleName = "Damage Swap", moduleDesc = "Свап лучшего по урону предмета в offhand на время удара KillAura", moduleCategory = ModuleCategory.COMBAT)
+@ModuleInformation(moduleName = "Damage Swap", moduleDesc = "Свапает в offhand предмет с максимальным уроном на удар KillAura", moduleCategory = ModuleCategory.COMBAT)
 public class DamageSwap extends Module {
 
     private static final double EPSILON = 1.0E-4;

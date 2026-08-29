@@ -11,7 +11,7 @@ import tech.onetap.module.ModuleInformation;
 import tech.onetap.util.math.StopWatch;
 import tech.onetap.util.player.other.InventoryUtil;
 
-@ModuleInformation(moduleName = "Auto Armor", moduleDesc = "Автоматически экипирует броню", moduleCategory = ModuleCategory.COMBAT)
+@ModuleInformation(moduleName = "Auto Armor", moduleDesc = "Автоматически надевает лучшую броню", moduleCategory = ModuleCategory.COMBAT)
 public class AutoArmor extends Module {
 
     private final StopWatch equipArmorCooldownHelmet = new StopWatch();

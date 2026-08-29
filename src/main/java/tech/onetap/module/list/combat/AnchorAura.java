@@ -43,7 +43,7 @@ import tech.onetap.util.rotation.MoveFixMode;
 import tech.onetap.util.rotation.Rotation;
 import tech.onetap.util.rotation.RotationComponent;
 
-@ModuleInformation(moduleName = "AnchorAura", moduleCategory = ModuleCategory.COMBAT)
+@ModuleInformation(moduleName = "AnchorAura", moduleDesc = "Автоматически ставит и взрывает якоря возрождения по цели", moduleCategory = ModuleCategory.COMBAT)
 public class AnchorAura extends Module {
     private final BooleanSetting autoPlace = new BooleanSetting("Размещение", true);
     private final BooleanSetting autoBreak = new BooleanSetting("Взрыв", true);

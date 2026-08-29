@@ -26,7 +26,7 @@ import tech.onetap.util.render.providers.ColorProvider;
 import java.util.ArrayList;
 import java.util.List;
 
-@ModuleInformation(moduleName = "BoatAura", moduleDesc = "Перемещает лодку к цели перед ударом KillAura и возвращает назад", moduleCategory = ModuleCategory.COMBAT)
+@ModuleInformation(moduleName = "BoatAura", moduleDesc = "TpAura в лодке", moduleCategory = ModuleCategory.COMBAT)
 public class BoatAura extends Module {
     private final ModeSetting mode = new ModeSetting("Режим", "TP", "TP", "Steps");
     private final SliderSetting step = new SliderSetting("Шаг", 9.9, 0.5, 10.0, 0.1)

@@ -6,7 +6,7 @@ import tech.onetap.module.Module;
 import tech.onetap.module.ModuleCategory;
 import tech.onetap.module.ModuleInformation;
 
-@ModuleInformation(moduleName = "No Jump Delay", moduleCategory = ModuleCategory.MOVEMENT)
+@ModuleInformation(moduleName = "No Jump Delay", moduleDesc = "Убирает задержку между прыжками", moduleCategory = ModuleCategory.MOVEMENT)
 public class NoJumpDelay extends Module {
 
     @EventHandler

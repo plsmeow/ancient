@@ -14,7 +14,7 @@ import tech.onetap.module.list.combat.KillAura;
 import tech.onetap.util.base.Instance;
 import tech.onetap.util.packet.NetworkUtils;
 
-@ModuleInformation(moduleName = "Elytra Jump", moduleDesc = "Fly =D", moduleCategory = ModuleCategory.MOVEMENT)
+@ModuleInformation(moduleName = "Elytra Jump", moduleDesc = "Полет вверх на элитре", moduleCategory = ModuleCategory.MOVEMENT)
 public class ElytraJump extends Module {
 
     @EventHandler

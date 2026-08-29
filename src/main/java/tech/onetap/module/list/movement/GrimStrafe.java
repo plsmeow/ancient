@@ -13,7 +13,7 @@ import tech.onetap.util.rotation.MoveFixMode;
 import tech.onetap.util.rotation.Rotation;
 import tech.onetap.util.rotation.RotationComponent;
 
-@ModuleInformation(moduleName = "GrimStrafe", moduleDesc = "Стрейф на земле через поворот yaw", moduleCategory = ModuleCategory.MOVEMENT)
+@ModuleInformation(moduleName = "GrimStrafe", moduleDesc = "Стрэйфы через ротацию", moduleCategory = ModuleCategory.MOVEMENT)
 public class GrimStrafe extends Module {
 
     @EventHandler

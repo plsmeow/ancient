@@ -16,7 +16,7 @@ import tech.onetap.module.settings.ModeSetting;
 import tech.onetap.util.packet.NetworkUtils;
 import tech.onetap.util.player.other.WorldUtils;
 
-@ModuleInformation(moduleName = "Criticals", moduleCategory = ModuleCategory.COMBAT)
+@ModuleInformation(moduleName = "Criticals", moduleDesc = "Пакетные криты", moduleCategory = ModuleCategory.COMBAT)
 public class Criticals extends Module {
 
     public final ModeSetting mode = new ModeSetting("Режим", "Grim", "Grim", "Packet", "UpdatedNCP", "Strict");

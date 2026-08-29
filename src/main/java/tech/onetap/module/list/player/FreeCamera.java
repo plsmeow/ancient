@@ -18,7 +18,7 @@ import tech.onetap.module.ModuleInformation;
 import tech.onetap.module.settings.BooleanSetting;
 import tech.onetap.module.settings.SliderSetting;
 
-@ModuleInformation(moduleName = "Free Camera", moduleCategory = ModuleCategory.PLAYER)
+@ModuleInformation(moduleName = "Free Camera", moduleDesc = "Свободная камера", moduleCategory = ModuleCategory.PLAYER)
 public class FreeCamera extends Module {
     public final SliderSetting speed = new SliderSetting("Скорость", 1.0, 0.1, 5.0, 0.1);
     private final BooleanSetting reloadChunks = new BooleanSetting("Перезагрузка чанков", true);

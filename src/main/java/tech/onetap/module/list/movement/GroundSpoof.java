@@ -8,7 +8,7 @@ import tech.onetap.module.ModuleCategory;
 import tech.onetap.module.ModuleInformation;
 import tech.onetap.module.settings.ModeSetting;
 
-@ModuleInformation(moduleName = "GroundSpoof", moduleCategory = ModuleCategory.MOVEMENT)
+@ModuleInformation(moduleName = "GroundSpoof", moduleDesc = "Спуф OnGround пакетов", moduleCategory = ModuleCategory.MOVEMENT)
 public class GroundSpoof extends Module {
 
     public final ModeSetting mode = new ModeSetting("Режим", "False", "True", "False");

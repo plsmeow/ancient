@@ -35,7 +35,7 @@ import java.awt.*;
 import java.util.ArrayList;
 import java.util.List;
 
-@ModuleInformation(moduleName = "Tracers", moduleCategory = ModuleCategory.RENDER)
+@ModuleInformation(moduleName = "Tracers", moduleDesc = "Линии к игрокам от прицела", moduleCategory = ModuleCategory.RENDER)
 public class Tracers extends Module {
     private final BooleanSetting onlyWhenNotVisible = new BooleanSetting("Не в поле зрения", false);
     private final BooleanSetting onlyNetherite = new BooleanSetting("Незеритовая броня", false);

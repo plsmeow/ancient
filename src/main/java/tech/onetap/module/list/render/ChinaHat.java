@@ -9,7 +9,7 @@ import tech.onetap.module.Module;
 import tech.onetap.module.ModuleCategory;
 import tech.onetap.module.ModuleInformation;
 
-@ModuleInformation(moduleName = "China Hat", moduleCategory = ModuleCategory.RENDER)
+@ModuleInformation(moduleName = "China Hat", moduleDesc = "Китай шапка", moduleCategory = ModuleCategory.RENDER)
 public class ChinaHat extends Module {
 
     private static ChinaHat instance;

@@ -12,7 +12,7 @@ import tech.onetap.module.ModuleInformation;
 import tech.onetap.module.settings.BooleanSetting;
 
 @SuppressWarnings("all")
-@ModuleInformation(moduleName = "Trigger Bot", moduleCategory = ModuleCategory.COMBAT)
+@ModuleInformation(moduleName = "Trigger Bot", moduleDesc = "Автоматически бьёт сущность под прицелом", moduleCategory = ModuleCategory.COMBAT)
 public class TriggerBot extends Module {
     public final BooleanSetting pauseEating = new BooleanSetting("Остановка при еде",true);
     public final BooleanSetting onlyCriticals = new BooleanSetting("Только криты",true);

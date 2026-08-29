@@ -9,7 +9,7 @@ import tech.onetap.module.ModuleInformation;
 
 import static net.minecraft.entity.effect.StatusEffects.NIGHT_VISION;
 
-@ModuleInformation(moduleName = "Full Bright", moduleCategory = ModuleCategory.RENDER)
+@ModuleInformation(moduleName = "Full Bright", moduleDesc = "Гамма", moduleCategory = ModuleCategory.RENDER)
 public class FullBright extends Module {
 
     @EventHandler

@@ -14,7 +14,7 @@ import tech.onetap.util.player.combat.PredictUtils;
 
 import java.util.Comparator;
 
-@ModuleInformation(moduleName = "Troll", moduleCategory = ModuleCategory.MOVEMENT)
+@ModuleInformation(moduleName = "Troll", moduleDesc = "troll", moduleCategory = ModuleCategory.MOVEMENT)
 public class Troll extends Module {
     private final SliderSetting range = new SliderSetting("Радиус", 30.0, 1.0, 100.0, 1.0);
     private final SliderSetting predict = new SliderSetting("Предикт", 3.0, 0.0, 10.0, 0.1);

@@ -11,7 +11,7 @@ import tech.onetap.module.settings.ModeSetting;
 import tech.onetap.module.settings.SliderSetting;
 import tech.onetap.util.friend.FriendRepository;
 
-@ModuleInformation(moduleName = "Auto Leave", moduleCategory = ModuleCategory.PLAYER)
+@ModuleInformation(moduleName = "Auto Leave", moduleDesc = "Ливает при обнаружении игрока", moduleCategory = ModuleCategory.PLAYER)
 public class AutoLeave extends Module {
 
     private final SliderSetting distance = new SliderSetting("Дистанция", 8, 1, 64, 1);

@@ -7,7 +7,7 @@ import tech.onetap.module.ModuleCategory;
 import tech.onetap.module.ModuleInformation;
 import tech.onetap.module.settings.ModeSetting;
 
-@ModuleInformation(moduleName = "Custom Cape", moduleCategory = ModuleCategory.RENDER)
+@ModuleInformation(moduleName = "Custom Cape", moduleDesc = "Кастомные плащи на выбор", moduleCategory = ModuleCategory.RENDER)
 public class CustomCape extends Module {
 
     private static final String CLIENT = "Client";

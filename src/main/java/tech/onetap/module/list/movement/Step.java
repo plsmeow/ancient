@@ -8,7 +8,7 @@ import tech.onetap.module.ModuleCategory;
 import tech.onetap.module.ModuleInformation;
 import tech.onetap.module.settings.SliderSetting;
 
-@ModuleInformation(moduleName = "Step", moduleDesc = "Позволяет подниматься на блоки как по ступенькам", moduleCategory = ModuleCategory.MOVEMENT)
+@ModuleInformation(moduleName = "Step", moduleDesc = "Поднимается на блоки без прыжка", moduleCategory = ModuleCategory.MOVEMENT)
 public class Step extends Module {
 
     private final SliderSetting height = new SliderSetting("Высота", 1.25, 1.0, 10.0, 0.5);

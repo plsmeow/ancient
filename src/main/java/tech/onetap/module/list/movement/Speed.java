@@ -45,7 +45,7 @@ import tech.onetap.util.render.providers.ColorProvider;
 import tech.onetap.util.text.ValueUnit;
 
 
-@ModuleInformation(moduleName = "Speed", moduleCategory = ModuleCategory.MOVEMENT)
+@ModuleInformation(moduleName = "Speed", moduleDesc = "Ускоренная ходьба", moduleCategory = ModuleCategory.MOVEMENT)
 public class Speed extends Module {
 
     private final ModeSetting mode = new ModeSetting("Режим", "Contact", "Contact", "Vulcan", "Vanilla", "Polar", "MetaHVH");

@@ -29,7 +29,7 @@ import tech.onetap.util.rotation.RotationComponent;
 import tech.onetap.util.text.ValueUnit;
 import net.minecraft.registry.tag.ItemTags;
 
-@ModuleInformation(moduleName = "InstantRebreak", moduleCategory = ModuleCategory.PLAYER)
+@ModuleInformation(moduleName = "InstantRebreak", moduleDesc = "Мгновенно ломает блок повторно", moduleCategory = ModuleCategory.PLAYER)
 public class InstantRebreak extends Module {
 
     private final SliderSetting tickDelay = new SliderSetting("Задержка", ValueUnit.countable("тик", "тика", "тиков"), 0, 0, 20, 1);

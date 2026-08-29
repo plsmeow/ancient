@@ -23,7 +23,7 @@ import tech.onetap.util.packet.NetworkUtils;
 import tech.onetap.util.player.other.InventoryUtil;
 import tech.onetap.util.player.other.SlownessManager;
 
-@ModuleInformation(moduleName = "Gui Move", moduleCategory = ModuleCategory.MOVEMENT)
+@ModuleInformation(moduleName = "Gui Move", moduleDesc = "Двигается при открытом инвентаре и GUI", moduleCategory = ModuleCategory.MOVEMENT)
 public class GuiMove extends Module {
 
     private static String bypassMode = "Vanilla";

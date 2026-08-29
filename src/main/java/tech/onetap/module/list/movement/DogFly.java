@@ -18,7 +18,7 @@ import tech.onetap.util.math.StopWatch;
 import tech.onetap.util.packet.NetworkUtils;
 import tech.onetap.util.player.other.InventoryUtil;
 
-@ModuleInformation(moduleName = "Dog Fly", moduleDesc = "Позволяет летать на нагруднике", moduleCategory = ModuleCategory.MOVEMENT)
+@ModuleInformation(moduleName = "Dog Fly", moduleDesc = "Флай на нагруднике", moduleCategory = ModuleCategory.MOVEMENT)
 public class DogFly extends Module {
 
     StopWatch stopWatch = new StopWatch();

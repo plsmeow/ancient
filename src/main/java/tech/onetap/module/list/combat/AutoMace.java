@@ -20,7 +20,7 @@ import tech.onetap.module.settings.ModeSetting;
 import tech.onetap.module.settings.SliderSetting;
 import tech.onetap.util.base.Instance;
 
-@ModuleInformation(moduleName = "AutoMace", moduleDesc = "Автоматически берёт булаву в руку при атаке KillAura", moduleCategory = ModuleCategory.COMBAT)
+@ModuleInformation(moduleName = "AutoMace", moduleDesc = "Свапает булаву в руку перед ударом KillAura", moduleCategory = ModuleCategory.COMBAT)
 public class AutoMace extends Module {
 
     private static final float SMASH_MIN_FALL_DISTANCE = 1.5F;

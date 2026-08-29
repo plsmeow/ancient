@@ -15,7 +15,7 @@ import tech.onetap.module.settings.SliderSetting;
 import tech.onetap.util.packet.NetworkUtils;
 import tech.onetap.util.text.ValueUnit;
 
-@ModuleInformation(moduleName = "Fast Crossbow", moduleDesc = "Превращает арбалет в пулемёт", moduleCategory = ModuleCategory.PLAYER)
+@ModuleInformation(moduleName = "Fast Crossbow", moduleDesc = "Эксплойт для арбалета", moduleCategory = ModuleCategory.PLAYER)
 public class FastCrossbow extends Module {
 
     /** Сдвиг хотбара в контейнере инвентаря игрока (слоты 36-44). */

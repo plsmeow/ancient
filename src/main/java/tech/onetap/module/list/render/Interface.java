@@ -84,7 +84,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
-@ModuleInformation(moduleName = "Interface", moduleCategory = ModuleCategory.RENDER)
+@ModuleInformation(moduleName = "Interface", moduleDesc = "Интерфейс клиента", moduleCategory = ModuleCategory.RENDER)
 public class Interface extends Module {
 
     public static final Identifier TARGET_HUD_GLOW_TEXTURE = Identifier.of("mre", "images/glow.png");

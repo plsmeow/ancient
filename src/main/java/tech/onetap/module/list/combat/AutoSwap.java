@@ -13,7 +13,7 @@ import tech.onetap.module.settings.BindSetting;
 import tech.onetap.module.settings.ModeSetting;
 import tech.onetap.util.player.other.InventoryUtil;
 
-@ModuleInformation(moduleName = "Auto Swap", moduleCategory = ModuleCategory.COMBAT)
+@ModuleInformation(moduleName = "Auto Swap", moduleDesc = "Меняет предметы в offhand", moduleCategory = ModuleCategory.COMBAT)
 public class AutoSwap extends Module {
     private final BindSetting swapKey = new BindSetting("Клавиша свапа", -1);
     private final ModeSetting firstItem = new ModeSetting("Свапать с", "Шар", "Гепл", "Щит", "Талисман", "Шар");

@@ -6,7 +6,7 @@ import tech.onetap.module.Module;
 import tech.onetap.module.ModuleCategory;
 import tech.onetap.module.ModuleInformation;
 
-@ModuleInformation(moduleName = "Death Coords", moduleCategory = ModuleCategory.PLAYER)
+@ModuleInformation(moduleName = "Death Coords", moduleDesc = "Пишет координаты смерти в чат", moduleCategory = ModuleCategory.PLAYER)
 public class DeathCoords extends Module {
 
     private boolean send;

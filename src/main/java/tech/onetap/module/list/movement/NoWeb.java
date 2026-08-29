@@ -12,7 +12,7 @@ import tech.onetap.module.ModuleCategory;
 import tech.onetap.module.ModuleInformation;
 import tech.onetap.module.settings.SliderSetting;
 
-@ModuleInformation(moduleName = "No Web", moduleCategory = ModuleCategory.MOVEMENT)
+@ModuleInformation(moduleName = "No Web", moduleDesc = "Игнорирует замедление от паутины", moduleCategory = ModuleCategory.MOVEMENT)
 public class NoWeb extends Module {
 
     private final SliderSetting strength = new SliderSetting("Strength", 0.8, 0.3, 1.05, 0.05);

@@ -71,7 +71,7 @@ import tech.onetap.module.list.combat.rotations.*;
 import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
 
-@ModuleInformation(moduleName = "KillAura", moduleCategory = ModuleCategory.COMBAT)
+@ModuleInformation(moduleName = "KillAura", moduleDesc = "Автоматически атакует цель", moduleCategory = ModuleCategory.COMBAT)
 public class KillAura extends Module {
 
     public final ModeSetting rotation = new ModeSetting(

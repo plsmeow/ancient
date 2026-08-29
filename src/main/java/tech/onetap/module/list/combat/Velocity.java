@@ -15,7 +15,7 @@ import tech.onetap.module.settings.BooleanSetting;
 import tech.onetap.util.text.ValueUnit;
 import java.util.Optional;
 
-@ModuleInformation(moduleName = "Velocity", moduleCategory = ModuleCategory.COMBAT)
+@ModuleInformation(moduleName = "Velocity", moduleDesc = "Отменяет отталкивание", moduleCategory = ModuleCategory.COMBAT)
 public class Velocity extends Module {
 
     private final ModeSetting mode = new ModeSetting("Режим", "Grim", "Custom", "Grim");

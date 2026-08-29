@@ -9,7 +9,7 @@ import tech.onetap.module.ModuleCategory;
 import tech.onetap.module.ModuleInformation;
 import tech.onetap.util.packet.NetworkUtils;
 
-@ModuleInformation(moduleName = "RP Spoofer", moduleCategory = ModuleCategory.MISC)
+@ModuleInformation(moduleName = "RP Spoofer", moduleDesc = "Не качает ресурспак", moduleCategory = ModuleCategory.MISC)
 public class RPSpoofer extends Module {
 
     @EventHandler

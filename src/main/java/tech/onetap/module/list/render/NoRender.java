@@ -10,7 +10,7 @@ import tech.onetap.module.ModuleInformation;
 import tech.onetap.module.settings.BooleanSetting;
 import tech.onetap.module.settings.ModeListSetting;
 
-@ModuleInformation(moduleName = "Removals", moduleCategory = ModuleCategory.RENDER)
+@ModuleInformation(moduleName = "Removals", moduleDesc = "Отключает мешающие эффекты и анимации", moduleCategory = ModuleCategory.RENDER)
 public class NoRender extends Module {
 
     public final ModeListSetting elements = new ModeListSetting("Убрать элементы",

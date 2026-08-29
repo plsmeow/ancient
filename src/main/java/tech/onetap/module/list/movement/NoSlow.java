@@ -13,7 +13,7 @@ import tech.onetap.module.list.combat.KillAura;
 import tech.onetap.module.settings.ModeSetting;
 import tech.onetap.util.player.simulate.SimulatedPlayer;
 
-@ModuleInformation(moduleName = "No Slow", moduleCategory = ModuleCategory.MOVEMENT)
+@ModuleInformation(moduleName = "No Slow", moduleDesc = "Убирает замедление при использовании предметов", moduleCategory = ModuleCategory.MOVEMENT)
 public class NoSlow extends Module {
 
     private final ModeSetting mode = new ModeSetting("Mode", "Vanilla", "Vanilla", "Grim", "Grim2");

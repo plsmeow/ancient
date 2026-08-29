@@ -16,7 +16,7 @@ import tech.onetap.util.math.StopWatch;
 import tech.onetap.util.player.other.InventoryUtil;
 import tech.onetap.util.text.ValueUnit;
 
-@ModuleInformation(moduleName = "Auto Totem", moduleCategory = ModuleCategory.COMBAT)
+@ModuleInformation(moduleName = "Auto Totem", moduleDesc = "Автоматически берет тотем", moduleCategory = ModuleCategory.COMBAT)
 public class AutoTotem extends Module {
 
     private final SliderSetting health =

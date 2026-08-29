@@ -21,7 +21,7 @@ import tech.onetap.util.rotation.MoveFixMode;
 import tech.onetap.util.rotation.Rotation;
 import tech.onetap.util.rotation.RotationComponent;
 
-@ModuleInformation(moduleName = "AutoTrap", moduleCategory = ModuleCategory.COMBAT)
+@ModuleInformation(moduleName = "AutoTrap", moduleDesc = "Ставит паутину или ягоды под цель", moduleCategory = ModuleCategory.COMBAT)
 public class AutoTrap extends Module {
 
     private final ModeSetting mode = new ModeSetting("Режим", "Паутина", "Паутина", "Ягоды", "Общий");

@@ -62,7 +62,7 @@ import tech.onetap.util.server.Server;
 import java.util.ArrayList;
 import java.util.List;
 
-@ModuleInformation(moduleName = "CrystalAura", moduleCategory = ModuleCategory.COMBAT)
+@ModuleInformation(moduleName = "CrystalAura", moduleDesc = "Автоматически ставит и ломает кристаллы", moduleCategory = ModuleCategory.COMBAT)
 public class CrystalAura extends Module {
     private final BooleanSetting autoPlace = new BooleanSetting("AutoPlace", true);
     private final BooleanSetting autoBreak = new BooleanSetting("AutoBreak", true);

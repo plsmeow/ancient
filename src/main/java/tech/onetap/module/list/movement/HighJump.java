@@ -16,7 +16,7 @@ import tech.onetap.module.ModuleInformation;
 import tech.onetap.module.settings.ModeSetting;
 import tech.onetap.module.settings.SliderSetting;
 
-@ModuleInformation(moduleName = "High Jump", moduleCategory = ModuleCategory.MOVEMENT)
+@ModuleInformation(moduleName = "High Jump", moduleDesc = "Высокий прыжок", moduleCategory = ModuleCategory.MOVEMENT)
 public class HighJump extends Module {
 
     private final ModeSetting mode = new ModeSetting("Режим", "Funtime", "Funtime", "Grim Shulker", "Funsky Elytra");

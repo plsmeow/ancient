@@ -17,7 +17,7 @@ import tech.onetap.module.settings.BooleanSetting;
 import tech.onetap.util.base.Instance;
 import tech.onetap.util.chat.ChatUtil;
 
-@ModuleInformation(moduleName = "Air Stuck", moduleCategory = ModuleCategory.MOVEMENT)
+@ModuleInformation(moduleName = "Air Stuck", moduleDesc = "Стопит в воздухе", moduleCategory = ModuleCategory.MOVEMENT)
 public class AirStuck extends Module {
     private static final String SWAP_MODE = "Polar";
 

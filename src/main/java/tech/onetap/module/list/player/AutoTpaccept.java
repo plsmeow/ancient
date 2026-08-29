@@ -16,7 +16,7 @@ import tech.onetap.util.friend.Friend;
 import tech.onetap.util.friend.FriendRepository;
 import tech.onetap.util.packet.NetworkUtils;
 
-@ModuleInformation(moduleName = "Auto Tpaccept", moduleCategory = ModuleCategory.PLAYER)
+@ModuleInformation(moduleName = "Auto Tpaccept", moduleDesc = "Автоматически принимает запросы телепортации", moduleCategory = ModuleCategory.PLAYER)
 public class AutoTpaccept extends Module {
 
     public ActionResult interactBlock(ClientPlayerEntity player, Hand hand, BlockHitResult hitResult) {

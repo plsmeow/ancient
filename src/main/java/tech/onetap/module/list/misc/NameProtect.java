@@ -10,7 +10,7 @@ import tech.onetap.util.friend.FriendRepository;
 import java.util.ArrayList;
 import java.util.List;
 
-@ModuleInformation(moduleName = "Animated Name", moduleCategory = ModuleCategory.MISC)
+@ModuleInformation(moduleName = "Animated Name", moduleDesc = "Анимирует ник", moduleCategory = ModuleCategory.MISC)
 public class NameProtect extends Module {
 
     public final BooleanSetting hideFriends = new BooleanSetting("Скрыть друзей", false);

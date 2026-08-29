@@ -7,7 +7,7 @@ import tech.onetap.module.ModuleInformation;
 import tech.onetap.ui.ClickGuiFrame;
 import tech.onetap.util.base.Instance;
 
-@ModuleInformation(moduleName = "Optimization", moduleCategory = ModuleCategory.RENDER)
+@ModuleInformation(moduleName = "Optimization", moduleDesc = "Оптимизация рендера клиента", moduleCategory = ModuleCategory.RENDER)
 public class Optimization extends Module {
     public static boolean isActive() {
         try {

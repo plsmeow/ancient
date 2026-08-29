@@ -21,7 +21,7 @@ import tech.onetap.util.chat.ChatUtil;
 import tech.onetap.util.packet.NetworkUtils;
 import tech.onetap.util.text.ValueUnit;
 
-@ModuleInformation(moduleName = "MaceKill", moduleDesc = "Усиливает булаву через packet criticals", moduleCategory = ModuleCategory.COMBAT)
+@ModuleInformation(moduleName = "MaceKill", moduleDesc = "Эксплойт на урон булавы", moduleCategory = ModuleCategory.COMBAT)
 public final class MaceKill extends Module {
     private final ModeSetting mode = new ModeSetting("Режим", "Default", "Default", "Custom", "Calculate", "Matrix", "NCP", "Sample");
     private final SliderSetting fallHeight = new SliderSetting("Fall Height", 20, 5, 150, 1);

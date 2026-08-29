@@ -8,7 +8,7 @@ import tech.onetap.module.Module;
 import tech.onetap.module.ModuleCategory;
 import tech.onetap.module.ModuleInformation;
 
-@ModuleInformation(moduleName = "Crystal Optimizer", moduleCategory = ModuleCategory.MISC)
+@ModuleInformation(moduleName = "Crystal Optimizer", moduleDesc = "Оптимизирует взрывы кристаллов", moduleCategory = ModuleCategory.MISC)
 public class CrystalOptimizer extends Module {
     @EventHandler
     private void onAttack(EventAttack e) {

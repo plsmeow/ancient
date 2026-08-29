@@ -17,7 +17,7 @@ import tech.onetap.util.render.msdf.MsdfFont;
 import tech.onetap.util.render.providers.ColorProvider;
 import tech.onetap.util.render.renderers.DrawUtil;
 
-@ModuleInformation(moduleName = "GapFix", moduleDesc = "Не даёт съесть золотое яблоко раньше серверной задержки", moduleCategory = ModuleCategory.PLAYER)
+@ModuleInformation(moduleName = "GapFix", moduleDesc = "Фикс гэпла на MetaHVH", moduleCategory = ModuleCategory.PLAYER)
 public class GapFix extends Module {
 
     private final SliderSetting delay = new SliderSetting("Задержка", 10, 0, 40, 1);

@@ -14,7 +14,7 @@ import tech.onetap.module.settings.BooleanSetting;
 import tech.onetap.util.packet.NetworkUtils;
 import tech.onetap.util.player.other.InventoryUtil;
 
-@ModuleInformation(moduleName = "RW Helper", moduleCategory = ModuleCategory.MISC)
+@ModuleInformation(moduleName = "RW Helper", moduleDesc = "Reallyworld", moduleCategory = ModuleCategory.MISC)
 public class RWHelper extends Module {
 
     public final BooleanSetting antipolet = new BooleanSetting("Анти-полет обход",false);

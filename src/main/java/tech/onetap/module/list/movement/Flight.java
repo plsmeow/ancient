@@ -30,7 +30,7 @@ import tech.onetap.module.settings.SliderSetting;
 import tech.onetap.util.packet.NetworkUtils;
 import tech.onetap.util.player.move.MoveUtil;
 
-@ModuleInformation(moduleName = "Flight", moduleCategory = ModuleCategory.MOVEMENT)
+@ModuleInformation(moduleName = "Flight", moduleDesc = "Полет", moduleCategory = ModuleCategory.MOVEMENT)
 public class Flight extends Module {
 
     public final ModeSetting mode = new ModeSetting("Режим", "Vanilla", "Vanilla", "Vulcan", "Vulcan XZ", "FunSky", "Funsky Elytra");

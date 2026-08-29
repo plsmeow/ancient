@@ -17,7 +17,7 @@ import tech.onetap.util.rotation.MoveFixMode;
 import tech.onetap.util.rotation.Rotation;
 import tech.onetap.util.rotation.RotationComponent;
 
-@ModuleInformation(moduleName = "KB Displacement", moduleDesc = "Displaces sprint-hit knockback direction", moduleCategory = ModuleCategory.COMBAT)
+@ModuleInformation(moduleName = "KB Displacement", moduleDesc = "Меняет вектор откидывания", moduleCategory = ModuleCategory.COMBAT)
 public class KBDisplacement extends Module {
     private static final String OWNER = "KB Displacement";
     private static final int TARGET_TIMEOUT = 8;

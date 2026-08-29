@@ -26,7 +26,7 @@ import tech.onetap.util.render.providers.ColorProvider;
 import java.awt.Color;
 import java.util.*;
 
-@ModuleInformation(moduleName = "Trails", moduleDesc = "Оставляет след за сущностями", moduleCategory = ModuleCategory.RENDER)
+@ModuleInformation(moduleName = "Trails", moduleDesc = "Трэйлы", moduleCategory = ModuleCategory.RENDER)
 public class Trails extends Module {
 
     private final SliderSetting duration = new SliderSetting("Длительность", 1000.0f, 500.0f, 2000.0f, 100.0f);

@@ -21,7 +21,7 @@ import tech.onetap.module.ModuleCategory;
 import tech.onetap.module.ModuleInformation;
 import tech.onetap.module.settings.ModeSetting;
 
-@ModuleInformation(moduleName = "Auto Cart", moduleCategory = ModuleCategory.COMBAT)
+@ModuleInformation(moduleName = "Auto Cart", moduleDesc = "Ставит рельсу и ТНТ-вагонетку по блоку в прицеле", moduleCategory = ModuleCategory.COMBAT)
 public class AutoCart extends Module {
 
     final ModeSetting modeSetting = new ModeSetting("Режим", "Pre-Rail", "Pre-Rail", "Insta-Cart");

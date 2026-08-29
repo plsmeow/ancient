@@ -22,7 +22,7 @@ import tech.onetap.util.chat.ChatUtil;
 import tech.onetap.util.packet.NetworkUtils;
 import tech.onetap.util.player.other.InventoryUtil;
 
-@ModuleInformation(moduleName = "Elytra Helper", moduleCategory = ModuleCategory.PLAYER)
+@ModuleInformation(moduleName = "Elytra Helper", moduleDesc = "Бинды на элитры и феерверки", moduleCategory = ModuleCategory.PLAYER)
 public class ElytraHelper extends Module {
     private final BindSetting swapKey = new BindSetting("Кнопка свапа", -1);
     private final BindSetting fireworkKey = new BindSetting("Кнопка феерверка", -1);

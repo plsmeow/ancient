@@ -12,7 +12,7 @@ import tech.onetap.module.settings.ModeSetting;
 import java.util.ArrayList;
 import java.util.List;
 
-@ModuleInformation(moduleName = "Anti Bot", moduleCategory = ModuleCategory.COMBAT)
+@ModuleInformation(moduleName = "Anti Bot", moduleDesc = "Определяет серверных ботов и исключает их из целей", moduleCategory = ModuleCategory.COMBAT)
 public class AntiBot extends Module {
 
     private final ModeSetting mode = new ModeSetting("Режим", "Normal", "Normal", "Test");

@@ -21,7 +21,7 @@ import tech.onetap.util.packet.NetworkUtils;
 
 import java.util.Random;
 
-@ModuleInformation(moduleName = "BowBomb", moduleCategory = ModuleCategory.COMBAT)
+@ModuleInformation(moduleName = "BowBomb", moduleDesc = "Эксплойт для увеличения урона лука", moduleCategory = ModuleCategory.COMBAT)
 public class BowBomb extends Module {
 
     private final BooleanSetting rotation = new BooleanSetting("Ротация", false);

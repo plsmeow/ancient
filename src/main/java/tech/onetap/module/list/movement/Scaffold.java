@@ -19,7 +19,7 @@ import tech.onetap.util.rotation.MoveFixMode;
 import tech.onetap.util.rotation.Rotation;
 import tech.onetap.util.rotation.RotationComponent;
 
-@ModuleInformation(moduleName = "Scaffold", moduleCategory = ModuleCategory.MOVEMENT)
+@ModuleInformation(moduleName = "Scaffold", moduleDesc = "Автоматически ставит блоки под игрока", moduleCategory = ModuleCategory.MOVEMENT)
 public class Scaffold extends Module {
 
     private final BooleanSetting clientLook = new BooleanSetting("Клиент лук", true);

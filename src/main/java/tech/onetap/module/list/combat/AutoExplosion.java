@@ -30,7 +30,7 @@ import tech.onetap.util.rotation.RotationComponent;
 import java.util.HashSet;
 import java.util.Set;
 
-@ModuleInformation(moduleName = "Auto Explosion", moduleCategory = ModuleCategory.COMBAT)
+@ModuleInformation(moduleName = "Auto Explosion", moduleDesc = "Ставит кристалл на обсидиан и мгновенно взрывает", moduleCategory = ModuleCategory.COMBAT)
 public class AutoExplosion extends Module {
 
     private final BooleanSetting saveSelf = new BooleanSetting("Не бабах себя", false);

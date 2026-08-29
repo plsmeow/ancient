@@ -8,7 +8,7 @@ import tech.onetap.module.ModuleInformation;
 import tech.onetap.util.friend.Friend;
 import tech.onetap.util.friend.FriendRepository;
 
-@ModuleInformation(moduleName = "No Friend Damage", moduleCategory = ModuleCategory.COMBAT)
+@ModuleInformation(moduleName = "No Friend Damage", moduleDesc = "Не даёт атаковать друзей", moduleCategory = ModuleCategory.COMBAT)
 public class NoFriendDamage extends Module {
 
     @EventHandler

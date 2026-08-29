@@ -13,7 +13,7 @@ import tech.onetap.module.settings.ModeSetting;
 import tech.onetap.util.player.other.InventoryUtil;
 import tech.onetap.util.rotation.FreeLookComponent;
 
-@ModuleInformation(moduleName = "Click Pearl", moduleCategory = ModuleCategory.PLAYER)
+@ModuleInformation(moduleName = "Click Pearl", moduleDesc = "Бросает эндер-перл по клавише", moduleCategory = ModuleCategory.PLAYER)
 public class ClickPearl extends Module {
     private final ModeSetting mode = new ModeSetting("Мод", "Обычный", "Обычный", "Легитный");
     private final BindSetting key = new BindSetting("Клавиша броска", -98);

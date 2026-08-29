@@ -7,7 +7,7 @@ import tech.onetap.module.Module;
 import tech.onetap.module.ModuleCategory;
 import tech.onetap.module.ModuleInformation;
 
-@ModuleInformation(moduleName = "Fast Exp", moduleCategory = ModuleCategory.PLAYER)
+@ModuleInformation(moduleName = "Fast Exp", moduleDesc = "Кидает бутылки опыта без задержки", moduleCategory = ModuleCategory.PLAYER)
 public class FastExp extends Module {
 
     @EventHandler

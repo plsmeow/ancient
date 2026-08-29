@@ -13,7 +13,7 @@ import tech.onetap.module.Module;
 import tech.onetap.module.ModuleCategory;
 import tech.onetap.module.ModuleInformation;
 
-@ModuleInformation(moduleName = "Breach Swap", moduleDesc = "Свап на булаву с Breach при ударе KillAura и виртуальная задержка булавы", moduleCategory = ModuleCategory.COMBAT)
+@ModuleInformation(moduleName = "Breach Swap", moduleDesc = "Свапает на булаву перед ударом", moduleCategory = ModuleCategory.COMBAT)
 public class BreachSwap extends Module {
 
     // Ванильная скорость атаки булавы: полная зарядка занимает 20 / 0.6 ≈ 33.3 тика

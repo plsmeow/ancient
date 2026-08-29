@@ -7,7 +7,7 @@ import tech.onetap.module.ModuleCategory;
 import tech.onetap.module.ModuleInformation;
 import tech.onetap.module.settings.SliderSetting;
 
-@ModuleInformation(moduleName = "View Model", moduleCategory = ModuleCategory.RENDER)
+@ModuleInformation(moduleName = "View Model", moduleDesc = "Настройка позиции рук от первого лица", moduleCategory = ModuleCategory.RENDER)
 public class ViewModel extends Module {
     private final SliderSetting offsetLeftX = new SliderSetting("Левая рука по X",0.0F, -2F, 2F, 0.1F);
     private final SliderSetting offsetLeftY = new SliderSetting("Левая рука по Y",0.0F, -2F, 2F, 0.1F);

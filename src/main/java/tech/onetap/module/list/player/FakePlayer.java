@@ -9,7 +9,7 @@ import tech.onetap.module.ModuleInformation;
 
 import java.util.UUID;
 
-@ModuleInformation(moduleName = "Fake Player", moduleCategory = ModuleCategory.MISC)
+@ModuleInformation(moduleName = "Fake Player", moduleDesc = "Спавнит игрока", moduleCategory = ModuleCategory.MISC)
 public class FakePlayer extends Module {
     private OtherClientPlayerEntity fakePlayer;
 

@@ -10,7 +10,7 @@ import tech.onetap.module.ModuleCategory;
 import tech.onetap.module.ModuleInformation;
 import tech.onetap.module.settings.SliderSetting;
 
-@ModuleInformation(moduleName = "Auto Eat", moduleDesc = "Автоматически ест когда голод ниже порога", moduleCategory = ModuleCategory.PLAYER)
+@ModuleInformation(moduleName = "Auto Eat", moduleDesc = "Ест еду автоматически при голоде", moduleCategory = ModuleCategory.PLAYER)
 public class AutoEat extends Module {
 
     private final SliderSetting hungerThreshold = new SliderSetting("Порог голода", 14, 1, 20, 1);

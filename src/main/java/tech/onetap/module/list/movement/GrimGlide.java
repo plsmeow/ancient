@@ -10,7 +10,7 @@ import tech.onetap.module.ModuleInformation;
 import tech.onetap.util.render.math.MathUtil;
 
 
-@ModuleInformation(moduleName = "GrimGlide", moduleCategory = ModuleCategory.MOVEMENT, moduleDesc = ":/")
+@ModuleInformation(moduleName = "GrimGlide", moduleCategory = ModuleCategory.MOVEMENT, moduleDesc = "Буст на элитре под GrimAC")
 public class GrimGlide extends Module {
     private int tickCounter = 0;
     private int ticksTwo = 0;
