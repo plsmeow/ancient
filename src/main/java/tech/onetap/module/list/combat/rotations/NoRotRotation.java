@@ -48,7 +48,7 @@ public class NoRotRotation extends RotationMode {
         var smoothRot = new Rotation(newYaw, newPitch);
 
         if (mc.player.isGliding() && target.isGliding())
-            RotationComponent.update(smoothRot, 360, 360, 360, 360, 0, 1, ka.clientLook.getValue(), ka.getMoveFixMode(), "KillAura");
+            RotationComponent.update(smoothRot, 360, 360, 360, 360, 0, 1, ka.clientLook.getValue(), ka.getMoveFixMode());
         ka.lastYaw = smoothRot.getYaw();
         ka.lastPitch = smoothRot.getPitch();
     }

@@ -478,7 +478,7 @@ public class AnchorAura extends Module {
         if (rotationMode.is("None")) return;
 
         Rotation rotation = new Rotation(RotationUtil.calculate(vec));
-        RotationComponent.update(rotation, 360, 360, 360, 360, 0, place ? 61 : 62, false, getMoveFixMode(), "AnchorAura");
+        RotationComponent.update(rotation, 360, 360, 360, 360, 0, place ? 61 : 62, false, getMoveFixMode());
     }
 
     private MoveFixMode getMoveFixMode() {
@@ -608,7 +608,6 @@ public class AnchorAura extends Module {
     @Override
     public void onDisable() {
         super.onDisable();
-        RotationComponent.getInstance().clearMoveFixMode("AnchorAura");
         RotationComponent.getInstance().stopRotation();
         bestTarget = null;
         resetActionState();

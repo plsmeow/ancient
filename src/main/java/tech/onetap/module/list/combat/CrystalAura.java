@@ -638,7 +638,7 @@ public class CrystalAura extends Module {
         if (rotationMode.is("None")) return;
 
         Rotation rotation = new Rotation(RotationUtil.calculate(vec));
-        RotationComponent.update(rotation, 360, 360, 360, 360, 0, place ? 51 : 52, false, getMoveFixMode(), "CrystalAura");
+        RotationComponent.update(rotation, 360, 360, 360, 360, 0, place ? 51 : 52, false, getMoveFixMode());
     }
 
     private MoveFixMode getMoveFixMode() {
@@ -656,7 +656,6 @@ public class CrystalAura extends Module {
     @Override
     public void onDisable() {
         super.onDisable();
-        RotationComponent.getInstance().clearMoveFixMode("CrystalAura");
         RotationComponent.getInstance().stopRotation();
         tracker.reset();
         target = null;

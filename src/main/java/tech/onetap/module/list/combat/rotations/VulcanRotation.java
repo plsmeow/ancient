@@ -19,7 +19,7 @@ public class VulcanRotation extends RotationMode {
         boolean isAttackReady = mc.player.getAttackCooldownProgress(0.5f) >= 0.9f;
 
         if (!isAttackReady) {
-            RotationComponent.update(new Rotation(mc.player.getYaw(), mc.player.getPitch()), 360, 360, 360, 360, 0, 1, false, ka.getMoveFixMode(), "KillAura");
+            RotationComponent.update(new Rotation(mc.player.getYaw(), mc.player.getPitch()), 360, 360, 360, 360, 0, 1, false, ka.getMoveFixMode());
             return;
         }
 
@@ -43,6 +43,6 @@ public class VulcanRotation extends RotationMode {
         }
 
         var VulcanRot = new Rotation(targetYaw, targetPitch);
-        RotationComponent.update(VulcanRot, 360, 360, 360, 360, 0, 1, false, ka.getMoveFixMode(), "KillAura");
+        RotationComponent.update(VulcanRot, 360, 360, 360, 360, 0, 1, false, ka.getMoveFixMode());
     }
 }

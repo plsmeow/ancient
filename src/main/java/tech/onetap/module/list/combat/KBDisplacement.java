@@ -19,7 +19,6 @@ import tech.onetap.util.rotation.RotationComponent;
 
 @ModuleInformation(moduleName = "KB Displacement", moduleDesc = "Меняет вектор откидывания", moduleCategory = ModuleCategory.COMBAT)
 public class KBDisplacement extends Module {
-    private static final String OWNER = "KB Displacement";
     private static final int TARGET_TIMEOUT = 8;
     private static final int HIT_TIMEOUT = 5;
 
@@ -91,7 +90,7 @@ public class KBDisplacement extends Module {
             return;
         }
         RotationComponent.update(Rotation.from(mc.player, target), 360, 360, 360, 360, TARGET_TIMEOUT, 2, false,
-                MoveFixMode.CORRECT, OWNER);
+                MoveFixMode.CORRECT);
         if (new Rotation(mc.player).getDelta(Rotation.from(mc.player, target)) < 2) {
             state = State.PREPARE_DISPLACEMENT;
             stateTicks = 0;
@@ -107,7 +106,7 @@ public class KBDisplacement extends Module {
         }
         float yaw = targetYaw(target) + displacementAngle();
         RotationComponent.update(new Rotation(MathHelper.wrapDegrees(yaw), mc.player.getPitch()), 360, 360, 360, 360,
-                HIT_TIMEOUT, 2, false, MoveFixMode.CORRECT, OWNER);
+                HIT_TIMEOUT, 2, false, MoveFixMode.CORRECT);
         state = State.WAITING_FOR_SPRINT_HIT;
         stateTicks = 0;
     }
@@ -189,7 +188,7 @@ public class KBDisplacement extends Module {
     }
 
     private void clearOwner() {
-        RotationComponent.getInstance().clearMoveFixMode(OWNER);
+        RotationComponent.getInstance().clearMoveFixMode();
     }
 
     private void reset() {

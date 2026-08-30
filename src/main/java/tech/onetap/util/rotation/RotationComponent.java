@@ -9,9 +9,6 @@ import tech.onetap.event.list.EventTick;
 import tech.onetap.event.list.MoveInputEvent;
 import tech.onetap.util.render.math.GCDFixer;
 
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-
 @Getter
 @Setter
 @Accessors(fluent = true)
@@ -30,14 +27,17 @@ public class RotationComponent extends Component {
     private int idleTicks;
     private Rotation targetRotation;
 
-    // Режимы коррекции движения по модулям. Ключ — имя модуля-владельца.
-    // При обработке MoveInputEvent выбирается режим с наивысшим приоритетом (FREE > CORRECT).
-    private final Map<String, MoveFixMode> moveFixModes = new ConcurrentHashMap<>();
-    private String currentOwner;
+    // Рампа плавного входа/возврата: пока она идёт, шаг ограничен растущим
+    // капом RAMP_MAX_SPEED * smoothstep, поэтому наведение на цель и отвод
+    // обратно к взгляду игрока идут плавно, а не одним кадром. По завершении
+    // рампы скорость снова полностью определяется запросом модуля.
+    private static final int RAMP_TICKS = 8;
+    private static final float RAMP_MAX_SPEED = 45.0F;
+    private int rampTicks;
 
-    public void currentOwner(String owner) {
-        this.currentOwner = owner;
-    }
+    // Текущий режим коррекции движения. Ставится модулем через update(),
+    // сбрасывается при остановке/завершении ротации.
+    private MoveFixMode moveFixMode;
 
     public static double direction(float rotationYaw, final float moveForward, final float moveStrafing) {
         if (moveForward < 0F) rotationYaw += 180F;
@@ -84,39 +84,17 @@ public class RotationComponent extends Component {
     }
 
     /**
-     * Текущий эффективный режим коррекции — наивысший приоритет среди всех активных модулей.
+     * Снимает текущий режим коррекции движения.
      */
-    public MoveFixMode getEffectiveMoveFixMode() {
-        MoveFixMode result = null;
-        for (MoveFixMode mode : moveFixModes.values()) {
-            result = MoveFixMode.highest(result, mode);
-        }
-        return result;
-    }
-
-    /**
-     * Регистрирует режим коррекции для модуля-владельца.
-     */
-    public void setMoveFixMode(String owner, MoveFixMode mode) {
-        if (mode == null) {
-            moveFixModes.remove(owner);
-        } else {
-            moveFixModes.put(owner, mode);
-        }
-    }
-
-    /**
-     * Снимает регистрацию режима коррекции для модуля-владельца.
-     */
-    public void clearMoveFixMode(String owner) {
-        moveFixModes.remove(owner);
+    public void clearMoveFixMode() {
+        moveFixMode = null;
     }
 
     @EventHandler
     public void onEvent(MoveInputEvent event) {
         if (!isRotating() || mc.player == null) return;
 
-        MoveFixMode effective = getEffectiveMoveFixMode();
+        MoveFixMode effective = moveFixMode;
         if (effective == null) return;
 
         final float forward = event.getForward();
@@ -139,16 +117,19 @@ public class RotationComponent extends Component {
      */
     public boolean isFreelookMovement() {
         return isRotating()
-                && getEffectiveMoveFixMode() == MoveFixMode.NONE
+                && moveFixMode == MoveFixMode.NONE
                 && FreeLookComponent.interactionActive();
     }
 
     private void resetRotation() {
         Rotation targetRotation = new Rotation(FreeLookComponent.getFreeYaw(), FreeLookComponent.getFreePitch());
-        if (updateRotation(targetRotation, currentYawReturnSpeed(), currentPitchReturnSpeed())) {
+        float factor = advanceRamp();
+        if (updateRotation(targetRotation,
+                rampedSpeed(currentYawReturnSpeed(), factor),
+                rampedSpeed(currentPitchReturnSpeed(), factor))) {
             currentTask(RotationTask.IDLE);
             currentPriority(0);
-            currentOwner = null;
+            moveFixMode = null;
             FreeLookComponent.setActive(false);
         }
     }
@@ -156,6 +137,8 @@ public class RotationComponent extends Component {
     @EventHandler
     public void onEvent(EventTick event) {
         if (currentTask().equals(RotationTask.AIM) && idleTicks() > currentTimeout()) {
+            // Цель пропала — отводим взгляд обратно плавно, с начала рампы.
+            rampTicks = 0;
             currentTask(RotationTask.RESET);
         }
 
@@ -166,10 +149,10 @@ public class RotationComponent extends Component {
     }
 
     public static void update(Rotation target, float yawSpeed, float pitchSpeed, float yawReturnSpeed, float pitchReturnSpeed, int timeout, int priority, boolean clientRotation) {
-        update(target, yawSpeed, pitchSpeed, yawReturnSpeed, pitchReturnSpeed, timeout, priority, clientRotation, null, null);
+        update(target, yawSpeed, pitchSpeed, yawReturnSpeed, pitchReturnSpeed, timeout, priority, clientRotation, null);
     }
 
-    public static void update(Rotation target, float yawSpeed, float pitchSpeed, float yawReturnSpeed, float pitchReturnSpeed, int timeout, int priority, boolean clientRotation, MoveFixMode moveFixMode, String owner) {
+    public static void update(Rotation target, float yawSpeed, float pitchSpeed, float yawReturnSpeed, float pitchReturnSpeed, int timeout, int priority, boolean clientRotation, MoveFixMode moveFixMode) {
         final RotationComponent instance = RotationComponent.getInstance();
 
         if (instance.currentPriority() > priority) {
@@ -186,31 +169,57 @@ public class RotationComponent extends Component {
         instance.currentPitchReturnSpeed(pitchReturnSpeed);
         instance.currentTimeout(timeout);
         instance.currentPriority(priority);
+        // Рампу обнуляем только при свежем захвате: пока наведение держится,
+        // update() приходит каждый тик и рампа должна продолжать набираться.
+        if (!instance.currentTask().equals(RotationTask.AIM)) {
+            instance.rampTicks = 0;
+        }
         instance.currentTask(RotationTask.AIM);
         instance.targetRotation(target);
 
-        if (moveFixMode != null && owner != null) {
-            instance.setMoveFixMode(owner, moveFixMode);
-            instance.currentOwner(owner);
+        if (moveFixMode != null) {
+            instance.moveFixMode(moveFixMode);
         }
 
-        instance.updateRotation(target, yawSpeed, pitchSpeed);
+        instance.applyAim(target, yawSpeed, pitchSpeed);
     }
 
     public static void update(Rotation targetRotation, float turnSpeed, float returnSpeed, int timeout, int priority) {
-        update(targetRotation, turnSpeed, turnSpeed, returnSpeed, returnSpeed, timeout, priority, false, null, null);
+        update(targetRotation, turnSpeed, turnSpeed, returnSpeed, returnSpeed, timeout, priority, false, null);
     }
 
-    public static void update(Rotation targetRotation, float turnSpeed, float returnSpeed, int timeout, int priority, MoveFixMode moveFixMode, String owner) {
-        update(targetRotation, turnSpeed, turnSpeed, returnSpeed, returnSpeed, timeout, priority, false, moveFixMode, owner);
+    public static void update(Rotation targetRotation, float turnSpeed, float returnSpeed, int timeout, int priority, MoveFixMode moveFixMode) {
+        update(targetRotation, turnSpeed, turnSpeed, returnSpeed, returnSpeed, timeout, priority, false, moveFixMode);
     }
 
     public static void update(Rotation targetRotation, float yawSpeed, float pitchSpeed, float returnSpeed, int timeout, int priority) {
-        update(targetRotation, yawSpeed, pitchSpeed, returnSpeed, returnSpeed, timeout, priority, false, null, null);
+        update(targetRotation, yawSpeed, pitchSpeed, returnSpeed, returnSpeed, timeout, priority, false, null);
     }
 
-    public static void update(Rotation targetRotation, float yawSpeed, float pitchSpeed, float returnSpeed, int timeout, int priority, MoveFixMode moveFixMode, String owner) {
-        update(targetRotation, yawSpeed, pitchSpeed, returnSpeed, returnSpeed, timeout, priority, false, moveFixMode, owner);
+    public static void update(Rotation targetRotation, float yawSpeed, float pitchSpeed, float returnSpeed, int timeout, int priority, MoveFixMode moveFixMode) {
+        update(targetRotation, yawSpeed, pitchSpeed, returnSpeed, returnSpeed, timeout, priority, false, moveFixMode);
+    }
+
+    /**
+     * Наводит игрока на цель с учётом рампы входа: первые RAMP_TICKS тиков
+     * после захвата скорость наращивается плавно, а не прыгает сразу на max.
+     */
+    private void applyAim(Rotation target, float yawSpeed, float pitchSpeed) {
+        float factor = advanceRamp();
+        updateRotation(target, rampedSpeed(yawSpeed, factor), rampedSpeed(pitchSpeed, factor));
+    }
+
+    /** Smoothstep-рампа 0..1 за RAMP_TICKS тиков; после — всегда 1. */
+    private float advanceRamp() {
+        if (rampTicks >= RAMP_TICKS) return 1.0F;
+        float t = (float) ++rampTicks / RAMP_TICKS;
+        return t * t * (3.0F - 2.0F * t);
+    }
+
+    /** Во время рампы шаг ограничен растущим капом, после — запрос модуля. */
+    private static float rampedSpeed(float requested, float factor) {
+        if (factor >= 1.0F) return requested;
+        return Math.min(requested, RAMP_MAX_SPEED * factor);
     }
 
     private boolean updateRotation(Rotation targetRotation, float yawSpeed, float pitchSpeed) {
@@ -233,15 +242,16 @@ public class RotationComponent extends Component {
     }
 
     public void stopRotation() {
+        moveFixMode = null;
         // Возвращаем игрока к камере плавно через RESET-задачу, а не обрываем резко.
         if (FreeLookComponent.isActive() && mc.player != null) {
             if (currentYawReturnSpeed() <= 0) currentYawReturnSpeed(180);
             if (currentPitchReturnSpeed() <= 0) currentPitchReturnSpeed(180);
+            rampTicks = 0;
             currentTask(RotationTask.RESET);
         } else {
             currentTask(RotationTask.IDLE);
             currentPriority(0);
-            currentOwner = null;
             FreeLookComponent.setActive(false);
         }
     }

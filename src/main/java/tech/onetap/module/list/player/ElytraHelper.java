@@ -1,10 +1,13 @@
 package tech.onetap.module.list.player;
 
 import meteordevelopment.orbit.EventHandler;
+import net.minecraft.component.DataComponentTypes;
 import net.minecraft.entity.EquipmentSlot;
+import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
 import net.minecraft.item.consume.UseAction;
 import net.minecraft.network.packet.c2s.play.ClientCommandC2SPacket;
+import net.minecraft.network.packet.c2s.play.UpdateSelectedSlotC2SPacket;
 import net.minecraft.screen.slot.SlotActionType;
 import net.minecraft.util.Hand;
 import net.minecraft.util.Formatting;
@@ -25,6 +28,7 @@ import tech.onetap.util.player.other.InventoryUtil;
 @ModuleInformation(moduleName = "Elytra Helper", moduleDesc = "Бинды на элитры и феерверки", moduleCategory = ModuleCategory.PLAYER)
 public class ElytraHelper extends Module {
     private final BindSetting swapKey = new BindSetting("Кнопка свапа", -1);
+    private final BooleanSetting hotbarSwap = new BooleanSetting("Hotbar", true);
     private final BindSetting fireworkKey = new BindSetting("Кнопка феерверка", -1);
     private final ModeSetting throwFireworkMode = new ModeSetting("Мод пуска феера", "Обычный", "Обычный", "Легитный");
     private final BooleanSetting autoTakeoff = new BooleanSetting("Автовзлёт", true);
@@ -45,6 +49,7 @@ public class ElytraHelper extends Module {
         swapped = false;
         swap(mc.player.getEquippedStack(EquipmentSlot.CHEST).getItem() == Items.ELYTRA);
     }
+
 
     @EventHandler
     private void onTick(EventTick e) {
@@ -95,6 +100,8 @@ public class ElytraHelper extends Module {
     }
 
     public void swap(String mode, boolean chestplate) {
+        if (hotbarSwap.getValue() && swapFromHotbar(chestplate)) return;
+
         var slot = chestplate ? InventoryUtil.findBestChestplateSlot() : InventoryUtil.findBestElytraSlot();
 
         if (slot == -1) {
@@ -113,6 +120,32 @@ public class ElytraHelper extends Module {
                 mc.interactionManager.clickSlot(0, slot, 8, SlotActionType.SWAP, mc.player);
             });
         }
+    }
+
+    private boolean swapFromHotbar(boolean chestplate) {
+        if (mc.player == null || mc.getNetworkHandler() == null) return false;
+
+        var slot = chestplate ? InventoryUtil.findBestChestplateSlot(0, 9) : InventoryUtil.findBestElytraSlot(0, 9);
+        if (slot == -1) return false;
+        if (!canEquipByUse(mc.player.getInventory().getStack(slot))) return false;
+
+        var previousSlot = mc.player.getInventory().selectedSlot;
+        var switched = previousSlot != slot;
+
+        if (switched) mc.getNetworkHandler().sendPacket(new UpdateSelectedSlotC2SPacket(slot));
+        InventoryUtil.useItemSilently(Hand.MAIN_HAND);
+        if (switched) mc.getNetworkHandler().sendPacket(new UpdateSelectedSlotC2SPacket(previousSlot));
+
+        return true;
+    }
+
+    private boolean canEquipByUse(ItemStack stack) {
+        var equippable = stack.get(DataComponentTypes.EQUIPPABLE);
+
+        return equippable != null
+                && equippable.swappable()
+                && equippable.slot() == EquipmentSlot.CHEST
+                && !ItemStack.areItemsAndComponentsEqual(stack, mc.player.getEquippedStack(EquipmentSlot.CHEST));
     }
 
     private boolean isEatingWithMainHand() {

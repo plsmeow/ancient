@@ -44,7 +44,6 @@ public class Scaffold extends Module {
         super.onDisable();
         lastRotationBlock = null;
         lastRotation = null;
-        RotationComponent.getInstance().clearMoveFixMode("Scaffold");
         RotationComponent.getInstance().stopRotation();
     }
 
@@ -123,7 +122,7 @@ public class Scaffold extends Module {
         if (!rotation.getValue()) {
             // Если ротация выключена — снимаем задачу Scaffold с RotationComponent,
             // чтобы не блокировать другие модули (например KillAura).
-            RotationComponent.getInstance().clearMoveFixMode("Scaffold");
+            RotationComponent.getInstance().clearMoveFixMode();
             return;
         }
 
@@ -134,7 +133,7 @@ public class Scaffold extends Module {
 
         // Держим ротацию, чтобы Scaffold не отводил взгляд между постановками.
         // Приоритет 2 — выше чем у KillAura (1), чтобы Scaffold мог перехватить ротацию.
-        RotationComponent.update(lastRotation, 45, 45, 180, 180, 999999, 2, clientLook.getValue(), MoveFixMode.FREE, "Scaffold");
+        RotationComponent.update(lastRotation, 45, 45, 180, 180, 999999, 2, clientLook.getValue(), MoveFixMode.FREE);
     }
 
     private Rotation createRotation(BlockData blockData) {

@@ -18,6 +18,6 @@ public class VanillaRotation extends RotationMode {
         Vec3d targetPoint = ka.resolveMultipoint(target, BestPoint.getNearestPoint(target), ka.distance.getValue());
         var rotation = new Rotation(RotationUtil.calculate(targetPoint));
 
-        RotationComponent.update(rotation, 360, 360, 360, 360, 0, 1, ka.clientLook.getValue(), ka.getMoveFixMode(), "KillAura");
+        RotationComponent.update(rotation, 360, 360, 360, 360, 0, 1, ka.clientLook.getValue(), ka.getMoveFixMode());
     }
 }

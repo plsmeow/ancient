@@ -275,6 +275,10 @@ public class InventoryUtil implements IMinecraft {
     }
 
     public static int findBestElytraSlot() {
+        return findBestElytraSlot(0, 36);
+    }
+
+    public static int findBestElytraSlot(int start, int end) {
         var bestSlot = -1;
         var bestScore = -1.0;
 
@@ -285,7 +289,7 @@ public class InventoryUtil implements IMinecraft {
         RegistryEntry<Enchantment> mending = MinecraftClient.getInstance().world.getRegistryManager()
                 .getOptional(RegistryKeys.ENCHANTMENT).get().getEntry(Enchantments.MENDING.getValue()).orElseThrow();
 
-        for (int slot = 0; slot < 36; slot++) {
+        for (int slot = start; slot < end; slot++) {
             ItemStack stack = mc.player.getInventory().getStack(slot);
             if (stack.isOf(Items.ELYTRA)) {
                 int protLevel = EnchantmentHelper.getLevel(protection, stack);
@@ -312,6 +316,10 @@ public class InventoryUtil implements IMinecraft {
     }
 
     public static int findBestChestplateSlot() {
+        return findBestChestplateSlot(0, 36);
+    }
+
+    public static int findBestChestplateSlot(int start, int end) {
         var bestSlot = -1;
         var bestScore = -1.0;
 
@@ -325,29 +333,30 @@ public class InventoryUtil implements IMinecraft {
                 .getOptional(RegistryKeys.ENCHANTMENT).get()
                 .getEntry(Enchantments.MENDING.getValue()).orElseThrow();
 
-        for (var slot = 0; slot < 36; slot++) {
+        for (var slot = start; slot < end; slot++) {
             var stack = mc.player.getInventory().getStack(slot);
-            if (stack.getItem() instanceof ArmorItem armor) {
-                var protLevel = EnchantmentHelper.getLevel(protection, stack);
-                var unbLevel = EnchantmentHelper.getLevel(unbreaking, stack);
-                var mendLevel = EnchantmentHelper.getLevel(mending, stack);
+            if (!(stack.getItem() instanceof ArmorItem armor)) continue;
 
-                var armorTypePriority = getChestplatePriority(armor);
+            var armorTypePriority = getChestplatePriority(armor);
+            if (armorTypePriority == 0) continue;
 
-                var maxDurability = stack.getMaxDamage();
-                var currentDamage = stack.getDamage();
-                var durabilityRatio = (maxDurability - currentDamage) / (double) maxDurability;
+            var protLevel = EnchantmentHelper.getLevel(protection, stack);
+            var unbLevel = EnchantmentHelper.getLevel(unbreaking, stack);
+            var mendLevel = EnchantmentHelper.getLevel(mending, stack);
 
-                var score = armorTypePriority * 10000 +
-                        protLevel * 100 +
-                        unbLevel * 10 +
-                        (mendLevel > 0 ? 1 : 0) +
-                        durabilityRatio * 10;
+            var maxDurability = stack.getMaxDamage();
+            var currentDamage = stack.getDamage();
+            var durabilityRatio = (maxDurability - currentDamage) / (double) maxDurability;
 
-                if (score > bestScore) {
-                    bestScore = score;
-                    bestSlot = slot;
-                }
+            var score = armorTypePriority * 10000 +
+                    protLevel * 100 +
+                    unbLevel * 10 +
+                    (mendLevel > 0 ? 1 : 0) +
+                    durabilityRatio * 10;
+
+            if (score > bestScore) {
+                bestScore = score;
+                bestSlot = slot;
             }
         }
 

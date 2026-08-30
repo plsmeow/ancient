@@ -133,7 +133,7 @@ public class MlsacRotation extends RotationMode implements IMinecraft {
         float newPitch = MathHelper.clamp(curPitch + emitPitch, -90f, 90f);
 
         Rotation out = new Rotation(newYaw, newPitch);
-        RotationComponent.update(out, 360, 360, 360, 360, 0, 1, ka.clientLook.getValue(), ka.getMoveFixMode(), "KillAura");
+        RotationComponent.update(out, 360, 360, 360, 360, 0, 1, ka.clientLook.getValue(), ka.getMoveFixMode());
 
         ka.lastYaw = out.getYaw();
         ka.lastPitch = out.getPitch();

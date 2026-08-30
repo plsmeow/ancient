@@ -134,7 +134,7 @@ public class SlothRotation extends RotationMode {
         newPitch = MathHelper.clamp(newPitch, -90.0F, 90.0F);
 
         Rotation rot = new Rotation(newYaw, newPitch);
-        RotationComponent.update(rot, 360.0F, 360.0F, 360.0F, 360.0F, 0, 1, ka.clientLook.getValue(), ka.getMoveFixMode(), "KillAura");
+        RotationComponent.update(rot, 360.0F, 360.0F, 360.0F, 360.0F, 0, 1, ka.clientLook.getValue(), ka.getMoveFixMode());
 
         slothNew_currentYaw = newYaw;
         slothNew_currentPitch = newPitch;

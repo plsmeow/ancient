@@ -54,7 +54,6 @@ public class AutoTrap extends Module {
     @Override
     public void onDisable() {
         super.onDisable();
-        RotationComponent.getInstance().clearMoveFixMode("AutoTrap");
         RotationComponent.getInstance().stopRotation();
     }
 
@@ -144,7 +143,7 @@ public class AutoTrap extends Module {
 
         RotationComponent.update(
                 new Rotation(yaw, pitch),
-                360, 360, 360, 360, 0, 1, false, MoveFixMode.FREE, "AutoTrap"
+                360, 360, 360, 360, 0, 1, false, MoveFixMode.FREE
         );
     }
 

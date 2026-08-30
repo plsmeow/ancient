@@ -187,7 +187,7 @@ public class SpookyTimeRotation extends RotationMode {
 
         var rot = new Rotation(newYaw, newPitch);
         float rotSpeed = mc.player.isGliding() && target.isGliding() ? 360.0F : 35.0F;
-        RotationComponent.update(rot, rotSpeed, rotSpeed, rotSpeed, rotSpeed, 0, 1, ka.clientLook.getValue(), ka.getMoveFixMode(), "KillAura");
+        RotationComponent.update(rot, rotSpeed, rotSpeed, rotSpeed, rotSpeed, 0, 1, ka.clientLook.getValue(), ka.getMoveFixMode());
 
         ka.lastYaw = rot.getYaw();
         ka.lastPitch = rot.getPitch();

@@ -202,23 +202,7 @@ public class RotationHelper {
             rot, 360f, 360f, 360f, 360f,
             0, 1,
             ka.clientLook.getValue(),
-            ka.getMoveFixMode(),
-            "KillAura"
-        );
-    }
-
-    /**
-     * Применить ротацию с настраиваемой скоростью (для Sloth2-стиля).
-     */
-    public static void apply(Rotation rot, KillAura ka,
-                             float yawSpeed, float pitchSpeed,
-                             float yawReturn, float pitchReturn) {
-        RotationComponent.update(
-            rot, yawSpeed, pitchSpeed, yawReturn, pitchReturn,
-            0, 1,
-            ka.clientLook.getValue(),
-            ka.getMoveFixMode(),
-            "KillAura"
+            ka.getMoveFixMode()
         );
     }
 }

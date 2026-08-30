@@ -51,7 +51,7 @@ public class GrimStrafe extends Module {
         RotationComponent.update(
                 new Rotation(moveYaw, 0),
                 360, 360, 360, 360,
-                0, 0, false, MoveFixMode.CORRECT, "GrimStrafe"
+                0, 0, false, MoveFixMode.CORRECT
         );
 
         RotationComponent.fixMovement(e, moveYaw);
@@ -63,7 +63,6 @@ public class GrimStrafe extends Module {
     @Override
     public void onDisable() {
         super.onDisable();
-        RotationComponent.getInstance().clearMoveFixMode("GrimStrafe");
         RotationComponent.getInstance().stopRotation();
     }
 }

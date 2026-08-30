@@ -114,7 +114,6 @@ public class Speed extends Module {
         renderLeaveTarget = null;
         if (polarLastSlot != -1 && mc.player != null) mc.player.getInventory().selectedSlot = polarLastSlot;
         polarLastSlot = -1;
-        RotationComponent.getInstance().clearMoveFixMode("Speed");
         RotationComponent.getInstance().stopRotation();
         super.onDisable();
     }
@@ -301,7 +300,7 @@ public class Speed extends Module {
         if (polarDive.getValue()) {
             float yaw = mc.gameRenderer.getCamera().getYaw();
             if (mc.options.getPerspective().isFrontView()) yaw -= 180;
-            RotationComponent.update(new Rotation(yaw, 55), 360, 360, 360, 360, 0, 1, false, MoveFixMode.FREE, "Speed");
+            RotationComponent.update(new Rotation(yaw, 55), 360, 360, 360, 360, 0, 1, false, MoveFixMode.FREE);
         }
 
         if (mc.player.isOnGround()

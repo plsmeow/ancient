@@ -45,7 +45,7 @@ public class SnapRotation extends RotationMode {
         }
 
         var aimRotation = new Rotation(RotationUtil.calculate(targetPoint));
-        RotationComponent.update(aimRotation, 360, 360, 360, 360, 0, 1, ka.clientLook.getValue(), ka.getMoveFixMode(), "KillAura");
+        RotationComponent.update(aimRotation, 360, 360, 360, 360, 0, 1, ka.clientLook.getValue(), ka.getMoveFixMode());
 
         ka.snapTimer++;
     }

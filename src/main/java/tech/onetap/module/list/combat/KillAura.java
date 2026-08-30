@@ -80,7 +80,6 @@ public class KillAura extends Module {
             "Vanilla",
             "Snap",
             "Sloth",
-            "Sloth2",
             "Sloth3",
             "Wellmine old",
             "NoRot",
@@ -91,8 +90,7 @@ public class KillAura extends Module {
             "Universal",
             "GrimFun",
             "Grim 1.20.4",
-            "Neuro",
-            "AresMine"
+            "Neuro"
     );
     public final ModeSetting sortBy = new ModeSetting("Сортировка", "FOV", "FOV", "Дистанция", "Здоровье");
     private final ModeListSetting targets = new ModeListSetting("Таргеты",
@@ -155,7 +153,6 @@ public class KillAura extends Module {
     // Экземпляры ротаций (каждая хранит своё внутреннее состояние)
     private final VanillaRotation vanillaRotation = new VanillaRotation();
     private final SnapRotation snapRotation = new SnapRotation();
-    private final Sloth2Rotation sloth2Rotation = new Sloth2Rotation();
     private final Sloth3Rotation sloth3Rotation = new Sloth3Rotation();
     private final SlothRotation slothRotation = new SlothRotation();
     private final WellmineRotation wellmineRotation = new WellmineRotation();
@@ -168,7 +165,6 @@ public class KillAura extends Module {
     private final GrimFunRotation grimFunRotation = new GrimFunRotation();
     private final Grim1204Rotation grim1204Rotation = new Grim1204Rotation();
     private final NeuroRotation neuroRotation = new NeuroRotation();
-    private final AresMineRotation aresMineRotation = new AresMineRotation();
 
     private boolean interpolationRotationInitialized;
     private LivingEntity interpolationRotationTarget;
@@ -405,7 +401,7 @@ public class KillAura extends Module {
                         ? PredictUtils.getPredicted(target, predictValue.getValue())
                         : target.getBoundingBox().getCenter();
                 var rot = new Rotation(RotationUtil.calculate(point));
-                RotationComponent.update(rot, 360, 360, 360, 360, 0, 1, clientLook.getValue(), getMoveFixMode(), "KillAura");
+                RotationComponent.update(rot, 360, 360, 360, 360, 0, 1, clientLook.getValue(), getMoveFixMode());
                 lastYaw = rot.getYaw();
                 lastPitch = rot.getPitch();
             }
@@ -413,7 +409,6 @@ public class KillAura extends Module {
             switch (rotation.getValue()) {
                 case "Vanilla" -> vanillaRotation.update(this, target);
                 case "Snap" -> snapRotation.update(this, target);
-                case "Sloth2" -> sloth2Rotation.update(this, target);
                 case "Sloth3" -> sloth3Rotation.update(this, target);
                 case "Sloth" -> slothRotation.update(this, target);
                 case "Wellmine old" -> wellmineRotation.update(this, target);
@@ -430,7 +425,6 @@ public class KillAura extends Module {
                 }
                 case "GrimFun" -> grimFunRotation.update(this, target);
                 case "Neuro" -> neuroRotation.update(this, target);
-                case "AresMine" -> aresMineRotation.update(this, target);
             }
         }
     }
@@ -558,10 +552,6 @@ public class KillAura extends Module {
                     ticksToAttack = 10;
                 }
 
-                if (rotation.is("AresMine")) {
-                    aresMineRotation.onAttack();
-                }
-
                 if (rotation.is("Snap")) {
                     snapActive = false;
                     snapTimer = 0;
@@ -575,14 +565,12 @@ public class KillAura extends Module {
             snapTimer = 0;
             shieldPhase = 0;
             slothRotation.reset(this);
-            sloth2Rotation.reset(this);
             if (!rotation.is("Universal")) {
                 universalRotation.reset(this);
             }
             grimFunRotation.reset(this);
             grim1204Rotation.reset(this);
             neuroRotation.reset(this);
-            aresMineRotation.reset(this);
         }
 
         updateFreeze();
@@ -1164,10 +1152,8 @@ public class KillAura extends Module {
         shieldPhase = 0;
         neuroRotation.reset(this);
         grim1204Rotation.reset(this);
-        aresMineRotation.reset(this);
         Onetap.getInstance().getModuleStorage().setSpeedAcceleration(0);
         Onetap.getInstance().getModuleStorage().setRandomness(1);
-        RotationComponent.getInstance().clearMoveFixMode("KillAura");
         RotationComponent.getInstance().stopRotation();
         stopFreeze();
         super.onDisable();

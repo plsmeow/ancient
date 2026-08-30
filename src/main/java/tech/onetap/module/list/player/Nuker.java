@@ -46,7 +46,6 @@ public class Nuker extends Module {
 
     @Override
     public void onDisable() {
-        RotationComponent.getInstance().clearMoveFixMode("Nuker");
         RotationComponent.getInstance().stopRotation();
         super.onDisable();
     }
@@ -59,7 +58,7 @@ public class Nuker extends Module {
         if (target == null) return;
         Direction side = sideFor(target);
         if (rotate.getValue()) {
-            RotationComponent.update(new Rotation(RotationUtil.calculate(Vec3d.ofCenter(target))), 180, 180, 180, 0, 2, MoveFixMode.FREE, "Nuker");
+            RotationComponent.update(new Rotation(RotationUtil.calculate(Vec3d.ofCenter(target))), 180, 180, 180, 0, 2, MoveFixMode.FREE);
         }
         if (packetInstamine.getValue() && isFastBlock(target)) {
             minePacket(target, side);

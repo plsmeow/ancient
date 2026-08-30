@@ -162,7 +162,7 @@ public class NeuroRotation extends RotationMode {
                 mc.player.getPitch()
         );
         RotationComponent.update(current, 360, 360, 360, 360, 0, 1,
-                ka.clientLook.getValue(), ka.getMoveFixMode(), "KillAura");
+                ka.clientLook.getValue(), ka.getMoveFixMode());
     }
 
     /**
@@ -312,7 +312,7 @@ public class NeuroRotation extends RotationMode {
 
         Rotation rotation = new Rotation(nextYaw, nextPitch);
         RotationComponent.update(rotation, 360, 360, 360, 360, 0, 1,
-                ka.clientLook.getValue(), ka.getMoveFixMode(), "KillAura");
+                ka.clientLook.getValue(), ka.getMoveFixMode());
 
         ka.lastYaw = rotation.getYaw();
         ka.lastPitch = rotation.getPitch();

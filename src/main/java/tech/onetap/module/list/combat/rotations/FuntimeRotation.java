@@ -38,7 +38,7 @@ public class FuntimeRotation extends RotationMode {
 
         if (total < 0.001f) {
             var rot = new Rotation(ka.lastYaw, ka.lastPitch);
-            RotationComponent.update(rot, 360, 360, 360, 360, 0, 1, ka.clientLook.getValue(), ka.getMoveFixMode(), "KillAura");
+            RotationComponent.update(rot, 360, 360, 360, 360, 0, 1, ka.clientLook.getValue(), ka.getMoveFixMode());
             return;
         }
 
@@ -87,7 +87,7 @@ public class FuntimeRotation extends RotationMode {
         nextPitch = ka.lastPitch + Math.round((nextPitch - ka.lastPitch) / gcd) * gcd;
 
         var funRot = new Rotation(nextYaw, nextPitch);
-        RotationComponent.update(funRot, 360, 360, 360, 360, 0, 1, ka.clientLook.getValue(), ka.getMoveFixMode(), "KillAura");
+        RotationComponent.update(funRot, 360, 360, 360, 360, 0, 1, ka.clientLook.getValue(), ka.getMoveFixMode());
 
         ka.lastYaw = funRot.getYaw();
         ka.lastPitch = funRot.getPitch();

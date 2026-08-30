@@ -68,7 +68,6 @@ public class InstantRebreak extends Module {
     @Override
     public void onDisable() {
         blockPos = null;
-        RotationComponent.getInstance().clearMoveFixMode("InstantRebreak");
         RotationComponent.getInstance().stopRotation();
         super.onDisable();
     }
@@ -91,7 +90,7 @@ public class InstantRebreak extends Module {
             if (!shouldMine()) return;
             if (rotate.getValue()) {
                 Rotation target = new Rotation(RotationUtil.calculate(Vec3d.ofCenter(blockPos)));
-                RotationComponent.update(target, 360, 360, 180, 180, 2, 1, false, MoveFixMode.FREE, "InstantRebreak");
+                RotationComponent.update(target, 360, 360, 180, 180, 2, 1, false, MoveFixMode.FREE);
                 if (new Rotation(mc.player).getDelta(target) > 1.5f) return;
             }
             sendPacket();

@@ -36,7 +36,7 @@ public class GrimFunRotation extends RotationMode {
         }
 
         Rotation rotation = new Rotation(aim.getYaw(), pitch);
-        RotationComponent.update(rotation, 360, 360, 360, 360, 0, 1, ka.clientLook.getValue(), ka.getMoveFixMode(), "KillAura");
+        RotationComponent.update(rotation, 360, 360, 360, 360, 0, 1, ka.clientLook.getValue(), ka.getMoveFixMode());
         ka.lastYaw = rotation.getYaw();
         ka.lastPitch = rotation.getPitch();
     }
