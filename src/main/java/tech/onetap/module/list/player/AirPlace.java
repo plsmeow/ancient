@@ -22,6 +22,7 @@ import net.minecraft.util.hit.HitResult;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Direction;
 import net.minecraft.util.math.Vec3d;
+import net.minecraft.world.RaycastContext;
 import org.joml.Matrix4f;
 import org.lwjgl.glfw.GLFW;
 import tech.onetap.event.list.EventKeyInput;
@@ -32,6 +33,7 @@ import tech.onetap.module.ModuleCategory;
 import tech.onetap.module.ModuleInformation;
 import tech.onetap.module.settings.BooleanSetting;
 import tech.onetap.module.settings.SliderSetting;
+import tech.onetap.util.base.Instance;
 import tech.onetap.util.render.providers.ColorProvider;
 
 @ModuleInformation(moduleName = "Air Place", moduleDesc = "Ставит блоки в воздух", moduleCategory = ModuleCategory.PLAYER)
@@ -52,13 +54,26 @@ public class AirPlace extends Module {
         if (!placeable(mc.player.getMainHandStack()) && !placeable(mc.player.getOffHandStack())) return;
 
         double distance = customRange.getValue() ? range.getValue() : mc.player.getBlockInteractionRange();
-        HitResult picked = mc.player.raycast(distance, 0.0f, false);
+
+        FreeCamera freeCamera = Instance.get(FreeCamera.class);
+        boolean freecam = freeCamera != null && freeCamera.isEnabled();
+
+        Vec3d eye = freecam ? freeCamera.getCameraPos(0.0f) : mc.player.getCameraPosVec(0.0f);
+        Vec3d direction = freecam ? freeCamera.getCameraDirection(0.0f) : mc.player.getRotationVec(0.0f);
+        Vec3d end = eye.add(direction.multiply(distance));
+        HitResult picked = mc.world.raycast(new RaycastContext(
+                eye,
+                end,
+                RaycastContext.ShapeType.OUTLINE,
+                RaycastContext.FluidHandling.NONE,
+                mc.player));
         if (!(picked instanceof BlockHitResult blockHitResult)) return;
 
         BlockPos pos = blockHitResult.getBlockPos();
         if (!mc.world.getBlockState(pos).isReplaceable()) return;
 
-        hitResult = new BlockHitResult(Vec3d.ofCenter(pos), mc.player.getHorizontalFacing().getOpposite(), pos, false);
+        double facingYaw = freecam ? freeCamera.getYaw(0.0f) : mc.player.getYaw();
+        hitResult = new BlockHitResult(Vec3d.ofCenter(pos), Direction.fromHorizontalDegrees(facingYaw).getOpposite(), pos, false);
     }
 
     @EventHandler

@@ -203,4 +203,12 @@ public class FreeCamera extends Module {
     public double getPitch(float tickDelta) {
         return MathHelper.lerp((double) tickDelta, prevPitch, pitch);
     }
+
+    public Vec3d getCameraPos(float tickDelta) {
+        return new Vec3d(getX(tickDelta), getY(tickDelta), getZ(tickDelta));
+    }
+
+    public Vec3d getCameraDirection(float tickDelta) {
+        return Vec3d.fromPolar((float) getPitch(tickDelta), (float) getYaw(tickDelta));
+    }
 }

@@ -5,25 +5,21 @@ import net.minecraft.network.packet.s2c.play.EntityVelocityUpdateS2CPacket;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.network.packet.s2c.common.CommonPingS2CPacket;
 import tech.onetap.event.list.EventPacket;
-import tech.onetap.mixin.EntityVelocityUpdateS2CPacketAccessor;
 import tech.onetap.module.Module;
 import tech.onetap.module.ModuleCategory;
 import tech.onetap.module.ModuleInformation;
 import tech.onetap.module.settings.SliderSetting;
 import tech.onetap.module.settings.ModeSetting;
 import tech.onetap.module.settings.BooleanSetting;
-import tech.onetap.util.text.ValueUnit;
+
 import java.util.Optional;
 
 @ModuleInformation(moduleName = "Velocity", moduleDesc = "Отменяет отталкивание", moduleCategory = ModuleCategory.COMBAT)
 public class Velocity extends Module {
 
-    private final ModeSetting mode = new ModeSetting("Режим", "Grim", "Custom", "Grim");
+    private final ModeSetting mode = new ModeSetting("Режим", "Grim", "Cancel", "Grim");
     private final BooleanSetting fix = new BooleanSetting("Fix", false).setVisible(() -> mode.is("Grim"));
     private final SliderSetting fixDelay = new SliderSetting("Fix Delay", 100, 0, 1000, 10).setVisible(() -> mode.is("Grim") && fix.getValue());
-
-    private final SliderSetting horizontal = new SliderSetting("Horizontal", 0, 0, 100, 1);
-    private final SliderSetting vertical = new SliderSetting("Vertical", 0, 0, 100, 1);
 
     private long lastVelocityTime = 0;
     private boolean velocityCanceled = false;
@@ -75,36 +71,17 @@ public class Velocity extends Module {
             return;
         }
 
-        // --- РЕЖИМ CUSTOM ---
-        if (mode.is("Custom")) {
+        // --- РЕЖИМ CANCEL ---
+        if (mode.is("Cancel")) {
             if (e.getPacket() instanceof EntityVelocityUpdateS2CPacket packet) {
-                int hPct = (int) horizontal.getValue();
-                int vPct = (int) vertical.getValue();
-
-                if (hPct == 0 && vPct == 0) {
+                if (packet.getEntityId() == mc.player.getId()) {
                     e.cancelEvent();
-                } else {
-                    EntityVelocityUpdateS2CPacketAccessor accessor = (EntityVelocityUpdateS2CPacketAccessor) packet;
-
-                    int newX = (int) (packet.getVelocityX() * (hPct / 100.0f));
-                    int newY = (int) (packet.getVelocityY() * (vPct / 100.0f));
-                    int newZ = (int) (packet.getVelocityZ() * (hPct / 100.0f));
-
-                    accessor.setVelocityX(newX);
-                    accessor.setVelocityY(newY);
-                    accessor.setVelocityZ(newZ);
                 }
             }
         }
     }
 
-    public Optional<Vec3d> modifyExplosionKnockback(Vec3d knockback) {
-        if (mode.is("Grim")) return Optional.empty();
-
-        double hPct = horizontal.getValue() / 100.0;
-        double vPct = vertical.getValue() / 100.0;
-        if (hPct == 0 && vPct == 0) return Optional.empty();
-
-        return Optional.of(new Vec3d(knockback.x * hPct, knockback.y * vPct, knockback.z * hPct));
+    public Optional<Vec3d> modifyExplosionKnockback() {
+        return Optional.empty();
     }
 }

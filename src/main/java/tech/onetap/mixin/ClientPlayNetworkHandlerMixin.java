@@ -76,6 +76,6 @@ public class ClientPlayNetworkHandlerMixin {
     private Optional<Vec3d> modifyExplosionKnockback(Optional<Vec3d> original) {
         Velocity velocity = Instance.get(Velocity.class);
         if (velocity == null || !velocity.isEnabled() || original.isEmpty()) return original;
-        return velocity.modifyExplosionKnockback(original.get());
+        return velocity.modifyExplosionKnockback();
     }
 }
