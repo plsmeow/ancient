@@ -106,6 +106,20 @@ public class UniversalRotation extends RotationMode {
     private double aimOffsetTargetZ = 0.0;
     private long nextAimOffsetUpdate = 0L;
 
+    // Сегмент кривой траектории: каждое крупное движение идёт по своей дуге
+    private boolean hasSegment = false;
+    private float segStartDist = 0f;
+    private float segProgress = 0f;
+    private float arcDirYaw = 0f;
+    private float arcDirPitch = 0f;
+    private float arcMag = 0f;
+    private float arcPeak = 0.5f;
+    private boolean arcSShape = false;
+    private float arcSkew = 1f;
+
+    // Тик следующей смены «характера» движения
+    private int personalityRefreshAt = 0;
+
     @Override
     public void update(KillAura ka, LivingEntity target) {
         var mc = ka.mc;
@@ -113,10 +127,10 @@ public class UniversalRotation extends RotationMode {
 
         long now = System.currentTimeMillis();
         ThreadLocalRandom r = ThreadLocalRandom.current();
-
         if (!init) {
             init = true;
             pickPersonality(r);
+            personalityRefreshAt = mc.player.age + 300 + r.nextInt(600);
             lastPlanAge = Integer.MIN_VALUE;
         }
 
@@ -174,6 +188,11 @@ public class UniversalRotation extends RotationMode {
         refractoryTicks = 0;
         flickCooldown = 0;
         holdTicks = 0;
+        hasSegment = false;
+        segStartDist = 0f;
+        segProgress = 0f;
+        arcMag = 0f;
+        personalityRefreshAt = ka.mc.player.age + 300 + r.nextInt(600);
         reactionTicks = target != null ? 1 + r.nextInt(3) : 0;
 
         pickPersonality(r);
@@ -286,6 +305,14 @@ public class UniversalRotation extends RotationMode {
         var mc = ka.mc;
         applyCustom(ka);
 
+        // Периодическая смена «характера» между движениями: скорость, тремор,
+        // инерция со временем дрейфуют — долгий бой не выглядит зацикленным.
+        // Со своими значениями параметры закреплены пользователем — не трогаем.
+        if (!ka.universalCustom.getValue() && !hasSegment && mc.player.age >= personalityRefreshAt) {
+            pickPersonality(r);
+            personalityRefreshAt = mc.player.age + 300 + r.nextInt(600);
+        }
+
         if (now >= nextAimOffsetUpdate) {
             pickNewOffsets(target, r);
             nextAimOffsetUpdate = now + r.nextLong(2500L, 5000L);
@@ -384,8 +411,15 @@ public class UniversalRotation extends RotationMode {
 
         float curYaw = mc.player.getYaw();
         float curPitch = mc.player.getPitch();
-        float errorYaw = RotationHelper.angleDelta(curYaw, lagYaw + noiseYaw);
-        float errorPitch = (lagPitch + noisePitch) - curPitch;
+        float directYaw = RotationHelper.angleDelta(curYaw, lagYaw + noiseYaw);
+        float directPitch = (lagPitch + noisePitch) - curPitch;
+        float directDist = (float) Math.hypot(directYaw, directPitch);
+        // Дуга: виртуальная цель смещается в сторону от прямой и возвращается к концу
+        // движения — камера идёт по кривой, а не по лучу к цели.
+        updateArcSegment(ka, r, directYaw, directPitch, directDist);
+        float arcScale = hasSegment ? arcHump(segProgress) * arcMag : 0f;
+        float errorYaw = directYaw + arcDirYaw * arcScale;
+        float errorPitch = directPitch + arcDirPitch * arcScale;
         float errorDist = (float) Math.hypot(errorYaw, errorPitch);
 
         if (stopCooldown > 0) stopCooldown--;
@@ -452,6 +486,85 @@ public class UniversalRotation extends RotationMode {
 
         planYaw = emitYaw;
         planPitch = emitPitch;
+    }
+
+    /**
+     * Жизненный цикл дуги: сегмент живёт, пока идёт крупное движение к цели.
+     * Дошли до зоны доводки — сегмент закрывается, следующее движение получит
+     * новую случайную дугу. Ошибка резко выросла (цель ушла/флик) — сегмент
+     * перерождается с новой кривой.
+     */
+    private void updateArcSegment(KillAura ka, ThreadLocalRandom r, float errYaw, float errPitch,
+                                  float errDist) {
+        float strengthScale = ka.universalCurveStrength.getFloatValue();
+        boolean curveOn = ka.universalCurve.getValue() && strengthScale > 0f;
+
+        if (!curveOn) {
+            hasSegment = false;
+            return;
+        }
+
+        if (hasSegment) {
+            if (errDist > segStartDist * 1.3f + 3f) {
+                // Цель резко ушла — старая дуга неактуальна, начинаем новую
+                hasSegment = false;
+            } else if (errDist < Math.max(finishZoneYaw, finishZonePitch)) {
+                // Дошли до зоны доводки — сегмент завершён
+                hasSegment = false;
+                return;
+            } else {
+                float t = 1f - errDist / segStartDist;
+                segProgress = Math.max(segProgress, MathHelper.clamp(t, 0f, 1f));
+                return;
+            }
+        }
+
+        // Дуга включается только на заметных движениях: мелкое слежение
+        // за стрейфящей целью остаётся на шуме и лаге.
+        if (errDist > 6f) {
+            startArcSegment(r, errYaw, errPitch, errDist, strengthScale);
+        }
+    }
+
+    /** Новая случайная дуга: сторона, сила, форма и перекос не повторяются. */
+    private void startArcSegment(ThreadLocalRandom r, float errYaw, float errPitch,
+                                 float errDist, float strengthScale) {
+        hasSegment = true;
+        segStartDist = Math.max(errDist, 1.0E-3f);
+        segProgress = 0f;
+
+        // Сила изгиба — доля от начальной ошибки с абсолютным потолком;
+        // изредка почти прямое движение, чтобы «всегда кривая» сама
+        // по себе не стала паттерном.
+        float roll = r.nextFloat();
+        float frac = roll < 0.15f ? r.nextFloat(0.02f, 0.08f) : r.nextFloat(0.10f, 0.42f);
+        arcMag = Math.min(frac * segStartDist, r.nextFloat(3.5f, 9.0f)) * strengthScale;
+
+        // Направление: перпендикуляр к прямому пути + случайный наклон,
+        // сторона изгиба случайна.
+        float len = (float) Math.hypot(errYaw, errPitch);
+        float pathYaw = len < 1.0E-4f ? 1f : errYaw / len;
+        float pathPitch = len < 1.0E-4f ? 0f : errPitch / len;
+        float tilt = (r.nextFloat() - 0.5f) * 0.6f;
+        float side = r.nextBoolean() ? 1f : -1f;
+        arcDirYaw = side * (-pathPitch + tilt * pathYaw);
+        arcDirPitch = side * (pathYaw + tilt * pathPitch);
+
+        // Форма горба: асимметричный пик или S-кривая со своим перекосом.
+        arcPeak = r.nextFloat(0.25f, 0.75f);
+        arcSShape = r.nextFloat() < 0.25f;
+        arcSkew = r.nextFloat(0.6f, 1.7f);
+    }
+
+    /** Профиль дуги: 0 в начале и в конце движения, посередине — отклонение. */
+    private float arcHump(float t) {
+        if (arcSShape) {
+            return (float) Math.sin(2.0 * Math.PI * Math.pow(t, arcSkew));
+        }
+        if (t < arcPeak) {
+            return (float) Math.sin(0.5 * Math.PI * (t / arcPeak));
+        }
+        return (float) Math.sin(0.5 * Math.PI * (1f - (t - arcPeak) / (1f - arcPeak)));
     }
 
     private static float clampAbs(float value, float limit) {
@@ -579,5 +692,12 @@ public class UniversalRotation extends RotationMode {
         aimOffsetTargetX = 0.0;
         aimOffsetTargetZ = 0.0;
         nextAimOffsetUpdate = 0L;
+        hasSegment = false;
+        segStartDist = 0f;
+        segProgress = 0f;
+        arcDirYaw = 0f;
+        arcDirPitch = 0f;
+        arcMag = 0f;
+        personalityRefreshAt = 0;
     }
 }

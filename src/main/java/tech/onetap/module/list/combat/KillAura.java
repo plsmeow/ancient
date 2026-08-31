@@ -231,6 +231,10 @@ public class KillAura extends Module {
             .setVisible(() -> rotation.is("Universal") && universalCustom.getValue());
     public final SliderSetting universalHoldJitterPitch = new SliderSetting("Удержание: дрожь Pitch", 0.04, 0, 0.5, 0.01)
             .setVisible(() -> rotation.is("Universal") && universalCustom.getValue());
+    public final BooleanSetting universalCurve = new BooleanSetting("Кривая траектория", true)
+            .setVisible(() -> rotation.is("Universal"));
+    public final SliderSetting universalCurveStrength = new SliderSetting("Кривизна траектории", 1.0, 0, 2, 0.05)
+            .setVisible(() -> rotation.is("Universal") && universalCurve.getValue());
 
     public final BooleanSetting universalFinishHit = new BooleanSetting("Доводка перед ударом", true)
             .setVisible(() -> rotation.is("Universal"));
