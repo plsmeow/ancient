@@ -6,7 +6,9 @@ import net.minecraft.util.math.Box;
 import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.Vec3d;
 import tech.onetap.module.list.combat.KillAura;
+import tech.onetap.util.math.BestPoint;
 import tech.onetap.util.player.combat.PredictUtils;
+import tech.onetap.util.player.combat.RaytraceUtil;
 import tech.onetap.util.render.math.GCDFixer;
 import tech.onetap.util.rotation.Rotation;
 import tech.onetap.util.rotation.RotationHelper;
@@ -54,30 +56,48 @@ public class UniversalRotation extends RotationMode {
     private int reactionTicks = 0;
     private int refractoryTicks = 0;
     private int flickCooldown = 0;
+    private int holdTicks = 0;
 
-    private float lagLerp = 0.30f;
+    private float lagLerp = 0.55f;
     private float velLerp = 0.65f;
-    private float feedForward = 0.20f;
+    private float feedForward = 0.25f;
     private float inertiaYaw = 0.28f;
     private float inertiaPitch = 0.20f;
     private float noiseSigmaYaw = 0.45f;
     private float noiseSigmaPitch = 0.90f;
-    private float gainYaw = 0.95f;
-    private float gainPitch = 0.65f;
     private float gainRho = 0.30f;
     private float gainSigma = 0.10f;
-    private float deliverFraction = 0.35f;
     private float stopChance = 0.035f;
     private float stopMinError = 4.0f;
     private float overMinError = 25.0f;
     private float overChance = 0.10f;
-    private float speedCapYaw = 26.0f;
-    private float speedCapPitch = 10.0f;
-    private float trackRateYaw = 28.0f;
-    private float trackRatePitch = 11.0f;
+    private float trackRateYaw = 40.0f;
+    private float trackRatePitch = 15.0f;
     private float flickMinError = 65.0f;
     private float flickRateYaw = 110.0f;
     private float flickCapYaw = 105.0f;
+
+    private float speedKYaw = 0.52f;
+    private float speedKPitch = 0.42f;
+    private float minSpeedYaw = 1.6f;
+    private float minSpeedPitch = 1.1f;
+    private float capMinYaw = 4.0f;
+    private float capMinPitch = 2.6f;
+    private float capMaxYaw = 65.0f;
+    private float capMaxPitch = 30.0f;
+    private float rampNearYaw = 8.0f;
+    private float rampNearPitch = 6.0f;
+    private float rampFarYaw = 48.0f;
+    private float rampFarPitch = 30.0f;
+    private float finishZoneYaw = 2.4f;
+    private float finishZonePitch = 1.8f;
+    private float flickSpeedK = 0.75f;
+    private float holdShiftChance = 0.15f;
+    private int holdShiftDelay = 3;
+    private float holdShiftYaw = 1.0f;
+    private float holdShiftPitch = 0.5f;
+    private float holdJitterYaw = 0.06f;
+    private float holdJitterPitch = 0.04f;
 
     private double aimOffsetX = 0.0;
     private double aimOffsetY = 0.0;
@@ -126,6 +146,7 @@ public class UniversalRotation extends RotationMode {
                 reactionTicks = 0;
                 refractoryTicks = 0;
                 flickCooldown = 0;
+                holdTicks = 0;
             }
         }
     }
@@ -152,6 +173,7 @@ public class UniversalRotation extends RotationMode {
         overDelta = 0f;
         refractoryTicks = 0;
         flickCooldown = 0;
+        holdTicks = 0;
         reactionTicks = target != null ? 1 + r.nextInt(3) : 0;
 
         pickPersonality(r);
@@ -167,29 +189,40 @@ public class UniversalRotation extends RotationMode {
     private void pickPersonality(ThreadLocalRandom r) {
         float style = r.nextFloat();
 
-        lagLerp = r.nextFloat(0.30f, 0.50f);
+        lagLerp = r.nextFloat(0.45f, 0.65f);
         velLerp = r.nextFloat(0.55f, 0.75f);
-        feedForward = r.nextFloat(0.12f, 0.30f);
+        feedForward = r.nextFloat(0.15f, 0.35f);
         inertiaYaw = r.nextFloat(lerp(0.14f, 0.02f, style), lerp(0.24f, 0.10f, style));
         inertiaPitch = r.nextFloat(0.06f, 0.20f);
         noiseSigmaYaw = r.nextFloat(lerp(0.50f, 1.00f, style), lerp(1.10f, 1.80f, style));
         noiseSigmaPitch = r.nextFloat(0.80f, 1.50f);
-        gainYaw = r.nextFloat(0.85f, 1.05f);
-        gainPitch = r.nextFloat(0.58f, 0.80f);
         gainRho = r.nextFloat(0.20f, 0.40f);
         gainSigma = r.nextFloat(0.06f, 0.14f);
-        deliverFraction = r.nextFloat(0.30f, 0.40f);
         stopChance = r.nextFloat(0.025f, 0.050f);
         stopMinError = r.nextFloat(3.0f, 5.0f);
         overMinError = r.nextFloat(20.0f, 30.0f);
         overChance = r.nextFloat(0.06f, 0.14f);
-        speedCapYaw = r.nextFloat(22.0f, 32.0f);
-        speedCapPitch = r.nextFloat(8.0f, 12.0f);
-        trackRateYaw = r.nextFloat(24.0f, 32.0f);
-        trackRatePitch = r.nextFloat(9.0f, 13.0f);
+        trackRateYaw = r.nextFloat(34.0f, 48.0f);
+        trackRatePitch = r.nextFloat(13.0f, 17.0f);
         flickMinError = r.nextFloat(55.0f, 75.0f);
         flickRateYaw = r.nextFloat(90.0f, 130.0f);
         flickCapYaw = r.nextFloat(85.0f, 125.0f);
+
+        speedKYaw = r.nextFloat(0.45f, 0.60f);
+        speedKPitch = r.nextFloat(0.35f, 0.50f);
+        minSpeedYaw = r.nextFloat(1.2f, 2.0f);
+        minSpeedPitch = r.nextFloat(0.8f, 1.4f);
+        capMinYaw = r.nextFloat(3.0f, 5.0f);
+        capMinPitch = r.nextFloat(2.0f, 3.2f);
+        capMaxYaw = r.nextFloat(55.0f, 80.0f);
+        capMaxPitch = r.nextFloat(25.0f, 38.0f);
+        rampNearYaw = r.nextFloat(6.0f, 10.0f);
+        rampNearPitch = r.nextFloat(4.0f, 7.0f);
+        rampFarYaw = r.nextFloat(40.0f, 55.0f);
+        rampFarPitch = r.nextFloat(24.0f, 36.0f);
+        finishZoneYaw = r.nextFloat(1.8f, 3.0f);
+        finishZonePitch = r.nextFloat(1.2f, 2.2f);
+        flickSpeedK = r.nextFloat(0.65f, 0.85f);
 
         float rhoYaw = r.nextFloat(0.75f, 0.90f);
         float periodYaw = r.nextFloat(lerp(4.5f, 2.8f, style), lerp(6.5f, 4.2f, style));
@@ -206,8 +239,52 @@ public class UniversalRotation extends RotationMode {
         return from + (to - from) * t;
     }
 
+    private void applyCustom(KillAura ka) {
+        if (!ka.universalCustom.getValue()) return;
+        speedKYaw = ka.universalSpeedYaw.getFloatValue();
+        speedKPitch = ka.universalSpeedPitch.getFloatValue();
+        minSpeedYaw = ka.universalMinSpeedYaw.getFloatValue();
+        minSpeedPitch = ka.universalMinSpeedPitch.getFloatValue();
+        capMinYaw = ka.universalCapMinYaw.getFloatValue();
+        capMinPitch = ka.universalCapMinPitch.getFloatValue();
+        capMaxYaw = ka.universalCapMaxYaw.getFloatValue();
+        capMaxPitch = ka.universalCapMaxPitch.getFloatValue();
+        rampNearYaw = ka.universalRampNearYaw.getFloatValue();
+        rampNearPitch = ka.universalRampNearPitch.getFloatValue();
+        rampFarYaw = Math.max(rampNearYaw + 1f, ka.universalRampFarYaw.getFloatValue());
+        rampFarPitch = Math.max(rampNearPitch + 1f, ka.universalRampFarPitch.getFloatValue());
+        finishZoneYaw = ka.universalFinishZoneYaw.getFloatValue();
+        finishZonePitch = ka.universalFinishZonePitch.getFloatValue();
+        lagLerp = ka.universalLagLerp.getFloatValue();
+        feedForward = ka.universalFeedForward.getFloatValue();
+        velLerp = ka.universalVelLerp.getFloatValue();
+        inertiaYaw = ka.universalInertiaYaw.getFloatValue();
+        inertiaPitch = ka.universalInertiaPitch.getFloatValue();
+        noiseSigmaYaw = ka.universalNoiseYaw.getFloatValue();
+        noiseSigmaPitch = ka.universalNoisePitch.getFloatValue();
+        gainRho = ka.universalGainRho.getFloatValue();
+        gainSigma = ka.universalGainSigma.getFloatValue();
+        stopChance = ka.universalStopChance.getFloatValue();
+        stopMinError = ka.universalStopMinError.getFloatValue();
+        overChance = ka.universalOverChance.getFloatValue();
+        overMinError = ka.universalOverMinError.getFloatValue();
+        trackRateYaw = ka.universalTrackYaw.getFloatValue();
+        trackRatePitch = ka.universalTrackPitch.getFloatValue();
+        flickMinError = ka.universalFlickMin.getFloatValue();
+        flickRateYaw = ka.universalFlickRate.getFloatValue();
+        flickCapYaw = ka.universalFlickCap.getFloatValue();
+        flickSpeedK = ka.universalFlickSpeed.getFloatValue();
+        holdShiftChance = ka.universalHoldShiftChance.getFloatValue();
+        holdShiftDelay = ka.universalHoldShiftDelay.getIntValue();
+        holdShiftYaw = ka.universalHoldShiftYaw.getFloatValue();
+        holdShiftPitch = ka.universalHoldShiftPitch.getFloatValue();
+        holdJitterYaw = ka.universalHoldJitterYaw.getFloatValue();
+        holdJitterPitch = ka.universalHoldJitterPitch.getFloatValue();
+    }
+
     private void plan(KillAura ka, LivingEntity target, long now, ThreadLocalRandom r) {
         var mc = ka.mc;
+        applyCustom(ka);
 
         if (now >= nextAimOffsetUpdate) {
             pickNewOffsets(target, r);
@@ -224,7 +301,7 @@ public class UniversalRotation extends RotationMode {
 
         Rotation aimRotation = RotationHelper.calculateRotation(aimPoint);
         float targetYaw = aimRotation.getYaw();
-        float targetPitch = aimRotation.getPitch();
+        float targetPitch = clampPitchSpan(ka, target, aimPoint, aimRotation.getPitch());
 
         if (!hasPrevTarget) {
             hasPrevTarget = true;
@@ -238,11 +315,46 @@ public class UniversalRotation extends RotationMode {
         velYaw = MathHelper.lerp(velLerp, velYaw, rawVelYaw);
         velPitch = MathHelper.lerp(velLerp, velPitch, rawVelPitch);
 
+        boolean preHit = ka.universalFinishHit.getValue()
+                && ka.ticksToAttack <= 0
+                && mc.player.getAttackCooldownProgress(0.5f) >= 0.9f
+                && mc.player.getEyePos().distanceTo(BestPoint.getNearestPoint(target)) <= ka.distance.getValue() + 1.5;
+        if (preHit) {
+            Vec3d hitPoint = ka.resolveMultipoint(target, BestPoint.getPoint2(target), 6);
+            Rotation hitRot = RotationHelper.calculateRotation(hitPoint);
+            float finSpeed = ka.universalFinishHitSpeed.getFloatValue();
+            planYaw = clampAbs(RotationHelper.angleDelta(mc.player.getYaw(), hitRot.getYaw()), finSpeed);
+            planPitch = clampAbs(clampPitchSpan(ka, target, hitPoint, hitRot.getPitch()) - mc.player.getPitch(), finSpeed);
+            stepYaw = planYaw;
+            stepPitch = planPitch;
+            return;
+        }
+
         if (reactionTicks > 0) {
             reactionTicks--;
             hasLag = false;
+            planYaw = 0f;
+            planPitch = 0f;
+            stepYaw = 0f;
+            stepPitch = 0f;
             return;
         }
+
+        boolean onTarget = RaytraceUtil.rayTrace(mc.player.getRotationVector(), 999.0, target.getBoundingBox());
+        if (onTarget) {
+            holdTicks++;
+            stepYaw *= inertiaYaw;
+            stepPitch *= inertiaPitch;
+            planYaw = (r.nextFloat() - 0.5f) * 2f * holdJitterYaw;
+            planPitch = (r.nextFloat() - 0.5f) * 2f * holdJitterPitch;
+            if (holdTicks > holdShiftDelay && r.nextFloat() < holdShiftChance) {
+                planYaw += (r.nextFloat() - 0.5f) * 2f * holdShiftYaw;
+                planPitch += (r.nextFloat() - 0.5f) * 2f * holdShiftPitch;
+            }
+            hasLag = false;
+            return;
+        }
+        holdTicks = 0;
 
         boolean flick = flickCooldown <= 0
                 && Math.abs(RotationHelper.angleDelta(mc.player.getYaw(), targetYaw)) > flickMinError;
@@ -285,6 +397,8 @@ public class UniversalRotation extends RotationMode {
             stopTicks--;
             stepYaw *= inertiaYaw;
             stepPitch *= inertiaPitch;
+            planYaw = clampAbs(stepYaw, capMinYaw);
+            planPitch = clampAbs(stepPitch, capMinPitch);
             return;
         }
 
@@ -301,36 +415,81 @@ public class UniversalRotation extends RotationMode {
         gainNoiseYaw = gainRho * gainNoiseYaw + (float) r.nextGaussian() * gainSigma;
         gainNoisePitch = gainRho * gainNoisePitch + (float) r.nextGaussian() * gainSigma;
 
-        float wantYaw = (errorYaw + overshoot) * gainYaw * (float) Math.exp(gainNoiseYaw)
-                + velYaw * feedForward;
-        float wantPitch = errorPitch * gainPitch * (float) Math.exp(gainNoisePitch)
-                + velPitch * feedForward;
+        boolean finishYaw = Math.abs(errorYaw) < finishZoneYaw;
+        boolean finishPitch = Math.abs(errorPitch) < finishZonePitch;
 
-        stepYaw = stepYaw * inertiaYaw + wantYaw * (1f - inertiaYaw);
-        stepPitch = stepPitch * inertiaPitch + wantPitch * (1f - inertiaPitch);
+        float kYaw = flick ? flickSpeedK : speedKYaw;
+        float kPitch = flick ? Math.min(1f, speedKPitch * 1.6f) : speedKPitch;
+        float wantYaw = dynamicStep(errorYaw, kYaw, minSpeedYaw, capMinYaw, capMaxYaw, rampNearYaw, rampFarYaw, finishZoneYaw);
+        float wantPitch = dynamicStep(errorPitch, kPitch, minSpeedPitch, capMinPitch, capMaxPitch, rampNearPitch, rampFarPitch, finishZonePitch);
+        if (!finishYaw) {
+            wantYaw = wantYaw * (float) Math.exp(gainNoiseYaw) + velYaw * feedForward + overshoot * kYaw;
+        }
+        if (!finishPitch) {
+            wantPitch = wantPitch * (float) Math.exp(gainNoisePitch) + velPitch * feedForward;
+        }
 
-        float capYaw = flick ? flickCapYaw : speedCapYaw;
-        float capPitch = speedCapPitch * (flick ? 2.2f : 1f);
+        stepYaw = finishYaw ? wantYaw : MathHelper.lerp(inertiaYaw, stepYaw, wantYaw);
+        stepPitch = finishPitch ? wantPitch : MathHelper.lerp(inertiaPitch, stepPitch, wantPitch);
+
+        float capYaw = dynamicCap(Math.abs(errorYaw), capMinYaw,
+                flick ? Math.max(flickCapYaw, capMaxYaw) : capMaxYaw, rampNearYaw, rampFarYaw);
+        float capPitch = dynamicCap(Math.abs(errorPitch), capMinPitch,
+                flick ? capMaxPitch * 2.2f : capMaxPitch, rampNearPitch, rampFarPitch);
         if (!flick && refractoryTicks > 0) {
             refractoryTicks--;
-            capYaw *= 0.35f;
-            capPitch *= 0.45f;
+            capYaw *= 0.45f;
+            capPitch *= 0.55f;
         }
 
         float emitYaw = clampAbs(stepYaw, capYaw);
         float emitPitch = clampAbs(stepPitch, capPitch);
-        if (flick && Math.abs(stepYaw) > speedCapYaw) {
+        if (flick && Math.abs(emitYaw) > capMaxYaw * 0.8f) {
             flickCooldown = 25 + r.nextInt(36);
-        } else if (!flick && Math.abs(emitYaw) > speedCapYaw * 0.6f) {
+        } else if (!flick && Math.abs(emitYaw) > capMaxYaw * 0.7f) {
             refractoryTicks = 1 + r.nextInt(2);
         }
 
-        planYaw = clampAbs(planYaw + emitYaw, capYaw);
-        planPitch = clampAbs(planPitch + emitPitch, capPitch);
+        planYaw = emitYaw;
+        planPitch = emitPitch;
     }
 
     private static float clampAbs(float value, float limit) {
         return Math.abs(value) > limit ? Math.copySign(limit, value) : value;
+    }
+
+    private float clampPitchSpan(KillAura ka, LivingEntity target, Vec3d point, float pitch) {
+        if (!ka.universalYawTrack.getValue()) return pitch;
+        var mc = ka.mc;
+        Vec3d eye = mc.player.getEyePos();
+        double dist = eye.distanceTo(point);
+        float threshold = ka.universalYawTrackDistance.getFloatValue();
+        if (dist <= threshold) return pitch;
+        float blend = RotationHelper.smoothStep((float) ((dist - threshold) / 0.7));
+        if (blend <= 0f) return pitch;
+
+        Box box = target.getBoundingBox();
+        double dx = point.x - eye.x;
+        double dz = point.z - eye.z;
+        double horiz = Math.sqrt(dx * dx + dz * dz);
+        if (horiz < 1.0E-4) return pitch;
+        float pitchTop = (float) -Math.toDegrees(Math.atan2(box.maxY - eye.y, horiz));
+        float pitchBottom = (float) -Math.toDegrees(Math.atan2(box.minY - eye.y, horiz));
+        float desired = MathHelper.clamp(mc.player.getPitch(), pitchTop, pitchBottom);
+        return lerp(pitch, desired, blend);
+    }
+
+    private static float dynamicCap(float absError, float capMin, float capMax, float rampNear, float rampFar) {
+        float t = MathHelper.clamp((absError - rampNear) / Math.max(1f, rampFar - rampNear), 0f, 1f);
+        return lerp(capMin, capMax, RotationHelper.smoothStep(t));
+    }
+
+    private static float dynamicStep(float error, float speedK, float minSpeed, float capMin,
+                                     float capMax, float rampNear, float rampFar, float finishZone) {
+        float absError = Math.abs(error);
+        if (absError < finishZone) return error;
+        float cap = dynamicCap(absError, capMin, capMax, rampNear, rampFar);
+        return Math.copySign(MathHelper.clamp(absError * speedK, minSpeed, cap), error);
     }
 
     private void deliver(KillAura ka) {
@@ -338,13 +497,10 @@ public class UniversalRotation extends RotationMode {
         float gcd = GCDFixer.getGCDValue();
         if (gcd <= 0f) gcd = 0.15f;
 
-        float portionYaw = planYaw * deliverFraction;
-        float portionPitch = planPitch * deliverFraction;
-        planYaw -= portionYaw;
-        planPitch -= portionPitch;
-
-        residualYaw += portionYaw;
-        residualPitch += portionPitch;
+        residualYaw += planYaw;
+        residualPitch += planPitch;
+        planYaw = 0f;
+        planPitch = 0f;
 
         float newYaw = mc.player.getYaw();
         float newPitch = mc.player.getPitch();
@@ -416,6 +572,7 @@ public class UniversalRotation extends RotationMode {
         reactionTicks = 0;
         refractoryTicks = 0;
         flickCooldown = 0;
+        holdTicks = 0;
         aimOffsetX = 0.0;
         aimOffsetY = 0.0;
         aimOffsetZ = 0.0;

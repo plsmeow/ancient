@@ -150,6 +150,98 @@ public class KillAura extends Module {
     public final BooleanSetting neuroDebug = new BooleanSetting("Neuro отладка", false)
             .setVisible(() -> rotation.is("Neuro"));
 
+    public final BooleanSetting universalCustom = new BooleanSetting("Universal: свои значения", false)
+            .setVisible(() -> rotation.is("Universal"));
+
+    public final SliderSetting universalSpeedYaw = new SliderSetting("Скорость Yaw", 0.52, 0.15, 0.95, 0.01)
+            .setVisible(() -> rotation.is("Universal") && universalCustom.getValue());
+    public final SliderSetting universalSpeedPitch = new SliderSetting("Скорость Pitch", 0.42, 0.15, 0.80, 0.01)
+            .setVisible(() -> rotation.is("Universal") && universalCustom.getValue());
+    public final SliderSetting universalMinSpeedYaw = new SliderSetting("Мин. скорость Yaw", 1.6, 0, 5, 0.05)
+            .setVisible(() -> rotation.is("Universal") && universalCustom.getValue());
+    public final SliderSetting universalMinSpeedPitch = new SliderSetting("Мин. скорость Pitch", 1.1, 0, 4, 0.05)
+            .setVisible(() -> rotation.is("Universal") && universalCustom.getValue());
+    public final SliderSetting universalCapMinYaw = new SliderSetting("Потолок у цели Yaw", 4, 1, 15, 0.1)
+            .setVisible(() -> rotation.is("Universal") && universalCustom.getValue());
+    public final SliderSetting universalCapMinPitch = new SliderSetting("Потолок у цели Pitch", 2.6, 1, 10, 0.1)
+            .setVisible(() -> rotation.is("Universal") && universalCustom.getValue());
+    public final SliderSetting universalCapMaxYaw = new SliderSetting("Потолок макс. Yaw", 65, 10, 180, 1)
+            .setVisible(() -> rotation.is("Universal") && universalCustom.getValue());
+    public final SliderSetting universalCapMaxPitch = new SliderSetting("Потолок макс. Pitch", 30, 5, 90, 1)
+            .setVisible(() -> rotation.is("Universal") && universalCustom.getValue());
+    public final SliderSetting universalRampNearYaw = new SliderSetting("Зона точности Yaw", 8, 2, 25, 0.5)
+            .setVisible(() -> rotation.is("Universal") && universalCustom.getValue());
+    public final SliderSetting universalRampNearPitch = new SliderSetting("Зона точности Pitch", 6, 2, 20, 0.5)
+            .setVisible(() -> rotation.is("Universal") && universalCustom.getValue());
+    public final SliderSetting universalRampFarYaw = new SliderSetting("Зона разгона Yaw", 48, 15, 120, 1)
+            .setVisible(() -> rotation.is("Universal") && universalCustom.getValue());
+    public final SliderSetting universalRampFarPitch = new SliderSetting("Зона разгона Pitch", 30, 10, 80, 1)
+            .setVisible(() -> rotation.is("Universal") && universalCustom.getValue());
+    public final SliderSetting universalFinishZoneYaw = new SliderSetting("Доводка: зона Yaw", 2.4, 0, 8, 0.1)
+            .setVisible(() -> rotation.is("Universal") && universalCustom.getValue());
+    public final SliderSetting universalFinishZonePitch = new SliderSetting("Доводка: зона Pitch", 1.8, 0, 6, 0.1)
+            .setVisible(() -> rotation.is("Universal") && universalCustom.getValue());
+    public final SliderSetting universalLagLerp = new SliderSetting("Лаг взгляда", 0.55, 0.1, 1, 0.01)
+            .setVisible(() -> rotation.is("Universal") && universalCustom.getValue());
+    public final SliderSetting universalFeedForward = new SliderSetting("Опережение", 0.25, 0, 0.6, 0.01)
+            .setVisible(() -> rotation.is("Universal") && universalCustom.getValue());
+    public final SliderSetting universalVelLerp = new SliderSetting("Сглаж. скорости цели", 0.65, 0.3, 0.95, 0.01)
+            .setVisible(() -> rotation.is("Universal") && universalCustom.getValue());
+    public final SliderSetting universalInertiaYaw = new SliderSetting("Инерция Yaw", 0.28, 0, 0.5, 0.01)
+            .setVisible(() -> rotation.is("Universal") && universalCustom.getValue());
+    public final SliderSetting universalInertiaPitch = new SliderSetting("Инерция Pitch", 0.2, 0, 0.5, 0.01)
+            .setVisible(() -> rotation.is("Universal") && universalCustom.getValue());
+    public final SliderSetting universalNoiseYaw = new SliderSetting("Тремор Yaw", 0.45, 0, 3, 0.05)
+            .setVisible(() -> rotation.is("Universal") && universalCustom.getValue());
+    public final SliderSetting universalNoisePitch = new SliderSetting("Тремор Pitch", 0.9, 0, 3, 0.05)
+            .setVisible(() -> rotation.is("Universal") && universalCustom.getValue());
+    public final SliderSetting universalGainRho = new SliderSetting("Вариабельность: связь", 0.3, 0, 0.9, 0.01)
+            .setVisible(() -> rotation.is("Universal") && universalCustom.getValue());
+    public final SliderSetting universalGainSigma = new SliderSetting("Вариабельность: сила", 0.1, 0, 0.3, 0.01)
+            .setVisible(() -> rotation.is("Universal") && universalCustom.getValue());
+    public final SliderSetting universalStopChance = new SliderSetting("Микростоп: шанс", 0.035, 0, 0.2, 0.005)
+            .setVisible(() -> rotation.is("Universal") && universalCustom.getValue());
+    public final SliderSetting universalStopMinError = new SliderSetting("Микростоп: мин. ошибка", 4, 0, 15, 0.5)
+            .setVisible(() -> rotation.is("Universal") && universalCustom.getValue());
+    public final SliderSetting universalOverChance = new SliderSetting("Овершут: шанс", 0.1, 0, 0.3, 0.01)
+            .setVisible(() -> rotation.is("Universal") && universalCustom.getValue());
+    public final SliderSetting universalOverMinError = new SliderSetting("Овершут: мин. ошибка", 25, 5, 60, 1)
+            .setVisible(() -> rotation.is("Universal") && universalCustom.getValue());
+    public final SliderSetting universalTrackYaw = new SliderSetting("Слежение Yaw", 40, 10, 90, 1)
+            .setVisible(() -> rotation.is("Universal") && universalCustom.getValue());
+    public final SliderSetting universalTrackPitch = new SliderSetting("Слежение Pitch", 15, 5, 40, 1)
+            .setVisible(() -> rotation.is("Universal") && universalCustom.getValue());
+    public final SliderSetting universalFlickMin = new SliderSetting("Флик: порог", 65, 0, 180, 1)
+            .setVisible(() -> rotation.is("Universal") && universalCustom.getValue());
+    public final SliderSetting universalFlickRate = new SliderSetting("Флик: слежение", 110, 30, 200, 1)
+            .setVisible(() -> rotation.is("Universal") && universalCustom.getValue());
+    public final SliderSetting universalFlickCap = new SliderSetting("Флик: потолок", 105, 30, 200, 1)
+            .setVisible(() -> rotation.is("Universal") && universalCustom.getValue());
+    public final SliderSetting universalFlickSpeed = new SliderSetting("Флик: скорость", 0.75, 0.2, 1, 0.01)
+            .setVisible(() -> rotation.is("Universal") && universalCustom.getValue());
+    public final SliderSetting universalHoldShiftChance = new SliderSetting("Удержание: шанс сдвига", 0.15, 0, 1, 0.01)
+            .setVisible(() -> rotation.is("Universal") && universalCustom.getValue());
+    public final SliderSetting universalHoldShiftDelay = new SliderSetting("Удержание: тиков до сдвига", ValueUnit.countable("тик", "тика", "тиков"), 3, 1, 20, 1)
+            .setVisible(() -> rotation.is("Universal") && universalCustom.getValue());
+    public final SliderSetting universalHoldShiftYaw = new SliderSetting("Удержание: сдвиг Yaw", 1, 0, 5, 0.1)
+            .setVisible(() -> rotation.is("Universal") && universalCustom.getValue());
+    public final SliderSetting universalHoldShiftPitch = new SliderSetting("Удержание: сдвиг Pitch", 0.5, 0, 3, 0.1)
+            .setVisible(() -> rotation.is("Universal") && universalCustom.getValue());
+    public final SliderSetting universalHoldJitterYaw = new SliderSetting("Удержание: дрожь Yaw", 0.06, 0, 0.5, 0.01)
+            .setVisible(() -> rotation.is("Universal") && universalCustom.getValue());
+    public final SliderSetting universalHoldJitterPitch = new SliderSetting("Удержание: дрожь Pitch", 0.04, 0, 0.5, 0.01)
+            .setVisible(() -> rotation.is("Universal") && universalCustom.getValue());
+
+    public final BooleanSetting universalFinishHit = new BooleanSetting("Доводка перед ударом", true)
+            .setVisible(() -> rotation.is("Universal"));
+    public final SliderSetting universalFinishHitSpeed = new SliderSetting("Скорость доводки", 30, 1, 180, 1)
+            .setVisible(() -> rotation.is("Universal") && universalFinishHit.getValue());
+
+    public final BooleanSetting universalYawTrack = new BooleanSetting("Трек по X", true)
+            .setVisible(() -> rotation.is("Universal"));
+    public final SliderSetting universalYawTrackDistance = new SliderSetting("Трек по X: дистанция", 2.3, 0, 6, 0.1)
+            .setVisible(() -> rotation.is("Universal") && universalYawTrack.getValue());
+
     // Экземпляры ротаций (каждая хранит своё внутреннее состояние)
     private final VanillaRotation vanillaRotation = new VanillaRotation();
     private final SnapRotation snapRotation = new SnapRotation();
