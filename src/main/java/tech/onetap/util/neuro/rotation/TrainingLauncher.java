@@ -36,7 +36,7 @@ public final class TrainingLauncher implements IMinecraft {
 
     private static final String RESOURCE_PREFIX = "/onetap/neuro/";
     private static final List<String> RESOURCE_FILES = List.of(
-            "train.py", "dataset.py", "model.py", "requirements.txt"
+            "train_neuro.py", "requirements.txt"
     );
 
     private static volatile Process currentProcess = null;
@@ -76,12 +76,12 @@ return busy.get();
             return;
         }
 
-        Path datasetPath = AIRotationManager.getDatasetsDir().resolve(datasetName + ".jsonl");
+        Path datasetPath = AIRotationManager.getDatasetsDir().resolve(datasetName + ".csv");
         if (!Files.exists(datasetPath)) {
-            Path legacy = AIRotationManager.getDatasetsDir().resolve(datasetName + ".json");
+            Path legacy = AIRotationManager.getDatasetsDir().resolve(datasetName + ".jsonl");
             if (Files.exists(legacy)) {
-                ChatUtil.send("§cДатасет §e" + datasetName + " §cв старом формате v1 и несовместим");
-                ChatUtil.send("§7Перезапишите его через модуль Ai Record");
+                ChatUtil.send("§cДатасет §e" + datasetName + " §cв старом формате и несовместим");
+                ChatUtil.send("§7Перезапишите его через модуль Ai Record (RAW-CSV)");
             } else {
                 ChatUtil.send("§cДатасет §e" + datasetName + " §cне найден!");
             }
@@ -181,7 +181,7 @@ return busy.get();
         if (toolsDir == null) {
             return null;
         }
-        Path script = toolsDir.resolve("train.py");
+        Path script = toolsDir.resolve("train_neuro.py");
         return Files.exists(script) ? script : null;
     }
 
@@ -221,7 +221,7 @@ return busy.get();
      * если распаковка из jar по какой-то причине недоступна.
      */
     private static Path devFallback() {
-        Path devScript = Paths.get("tools", "neuro", "train.py");
+        Path devScript = Paths.get("tools", "neuro", "train_neuro.py");
         if (Files.exists(devScript)) {
             ChatUtil.send("§7Trainer (dev): §f" + devScript.toAbsolutePath());
             return Paths.get("tools", "neuro").toAbsolutePath();

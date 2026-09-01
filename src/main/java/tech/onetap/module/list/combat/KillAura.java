@@ -102,6 +102,8 @@ public class KillAura extends Module {
     public final ModeSetting moveFix = new ModeSetting("MoveFix", "Сфокусированная", "Свободный", "Сфокусированная", "None");
     public final SliderSetting snapHoldTicks = new SliderSetting("Snap tick", ValueUnit.countable("тик", "тика", "тиков"), 2, 1, 10, 1)
             .setVisible(() -> rotation.is("Snap"));
+    public final BooleanSetting otvodka = new BooleanSetting("Отводка", true)
+            .setVisible(this::isOtvodkaRotation);
 
     public final SliderSetting distance = new SliderSetting("Дистанция", ValueUnit.countable("блок", "блока", "блоков"), 3, 2, 6, 0.1f);
     public final BooleanSetting elytraTarget = new BooleanSetting("ElytraTarget", true);
@@ -313,6 +315,15 @@ public class KillAura extends Module {
         return tech.onetap.util.rotation.MoveFixMode.CORRECT;
     }
 
+    /** Плавная отводка работает только с этими ротациями. */
+    public boolean isOtvodkaRotation() {
+        return rotation.is("Universal") || rotation.is("Sloth") || rotation.is("Wellmine old")
+                || rotation.is("LonyGrief") || rotation.is("SpookyTime") || rotation.is("Neuro");
+    }
+
+    public boolean otvodkaActive() {
+        return otvodka.getValue() && isOtvodkaRotation();
+    }
     private final StopWatch turnaroundTimer = new StopWatch();
 
     public float preddict;
@@ -434,11 +445,11 @@ public class KillAura extends Module {
 
         StringBuilder status = new StringBuilder();
         if (AIRotationRecorder.isRecording()) {
-            status.append("запись: ").append(AIRotationRecorder.getSampleCount()).append("  ");
+            status.append("запись: ").append(AIRotationRecorder.getRowCount()).append("  ");
         }
         if (RotationDumpRecorder.isRecording()) {
             status.append("дамп ").append(RotationDumpRecorder.getNamesLine())
-                    .append(": ").append(RotationDumpRecorder.getTotalSamples()).append("  ");
+                    .append(": ").append(RotationDumpRecorder.getTotalRows()).append("  ");
         }
         if (TrainingLauncher.isRunning()) {
             status.append("обучение идёт");
@@ -497,7 +508,7 @@ public class KillAura extends Module {
                         ? PredictUtils.getPredicted(target, predictValue.getValue())
                         : target.getBoundingBox().getCenter();
                 var rot = new Rotation(RotationUtil.calculate(point));
-                RotationComponent.update(rot, 360, 360, 360, 360, 0, 1, clientLook.getValue(), getMoveFixMode());
+                RotationComponent.update(rot, 360, 360, 360, 360, 0, 1, clientLook.getValue(), getMoveFixMode(), otvodkaActive());
                 lastYaw = rot.getYaw();
                 lastPitch = rot.getPitch();
             }

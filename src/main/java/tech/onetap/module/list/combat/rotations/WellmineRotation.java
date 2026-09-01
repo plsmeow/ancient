@@ -84,7 +84,7 @@ public class WellmineRotation extends RotationMode {
                 MathHelper.clamp(mc.player.getPitch() + changePitch, -90, 90)
         );
 
-        RotationComponent.update(smoothRot, 360, 360, 360, 360, 0, 1, ka.clientLook.getValue(), ka.getMoveFixMode());
+        RotationComponent.update(smoothRot, 360, 360, 360, 360, 0, 1, ka.clientLook.getValue(), ka.getMoveFixMode(), ka.otvodkaActive());
 
         ka.lastYaw = smoothRot.getYaw();
         ka.lastPitch = smoothRot.getPitch();

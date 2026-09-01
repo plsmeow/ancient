@@ -4,28 +4,33 @@ import net.minecraft.entity.LivingEntity;
 import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.Vec3d;
 import tech.onetap.module.list.combat.KillAura;
-import tech.onetap.util.math.RotationUtil;
-import tech.onetap.util.neuro.rotation.*;
-import tech.onetap.util.render.math.GCDFixer;
+import tech.onetap.util.neuro.rotation.AIRotationManager;
+import tech.onetap.util.neuro.rotation.ActiveModel;
+import tech.onetap.util.neuro.rotation.AimPointController;
+import tech.onetap.util.neuro.rotation.NeuroFeatureCollector;
+import tech.onetap.util.neuro.rotation.NeuroFeatureSchema;
+import tech.onetap.util.neuro.rotation.NeuroMdn;
+import tech.onetap.util.neuro.rotation.NeuroRotationController;
 import tech.onetap.util.rotation.Rotation;
 import tech.onetap.util.rotation.RotationComponent;
 
 /**
- * AI-ротация на ONNX-модели.
+ * Нейро-ротация: прицел ведёт TCN+MDN модель (train_neuro.py).
  *
- * Ключевое: канонический такт — игровой тик (20 Гц). Модель опрашивается ровно
- * раз в тик, результат кладётся в бюджет дельты. Вызовы из EventGameUpdate
- * (до 240 за кадр) только выплачивают долю бюджета — без inference,
- * без сбора фич и без аллокаций.
+ * Канонический такт — игровой тик (20 Гц). Раз в тик собирается RAW-строка
+ * (тот же формат, что пишется в датасет), из окна 16 тиков выводятся фичи,
+ * модель выдаёт распределение дельт, и СРЕДНЕЕ смеси становится бюджетом
+ * поворота. Никакого сведения к геометрии: предикт модели применяется как есть
+ * (кламп только в диапазоне обученных меток ±25°), поэтому траектория
+ * повторяет человеческую, а не идеальную прямую на цель.
  *
- * При отсутствии/несовместимости модели, низком confidence, исключении или
- * невалидном предсказании управление уходит в NoRotRotation (§23).
+ * При отсутствии модели, ошибке inference или невалидном выходе — откат
+ * в NoRotRotation/геометрию (§23). Прогрев (первые 16 тиков окна) —
+ * геометрическое наведение, модель на неполном окне выдаёт мусор.
  */
 public class NeuroRotation extends RotationMode {
 
-    private static final float MAX_DELTA_YAW = 75.0f;
-    private static final float MAX_DELTA_PITCH = 55.0f;
-    private static final float MIN_CONFIDENCE = 0.3f;
+    private static final int SUBSTEPS_PER_TICK = 12;
 
     /** Причина отката в fallback — для debug-панели. */
     public enum FallbackReason {
@@ -33,26 +38,21 @@ public class NeuroRotation extends RotationMode {
         NO_MODEL,
         AIM_POINT,
         INFERENCE,
-        INVALID_OUTPUT,
-        LOW_CONFIDENCE
+        INVALID_OUTPUT
     }
 
     private final NeuroFeatureCollector collector = new NeuroFeatureCollector();
     private final AimPointController aimController = new AimPointController();
-    private final RotationHistory history = new RotationHistory(
-            NeuroFeatureSchema.SEQ_LEN, NeuroFeatureSchema.FEATURE_COUNT);
     private final NeuroRotationController controller = new NeuroRotationController();
     private final NoRotRotation noRotFallback = new NoRotRotation();
 
-    /** Преаллоцированные буферы — переиспользуются каждый тик. */
-    private final float[] featureRow = new float[NeuroFeatureSchema.FEATURE_COUNT];
+    /** Преаллоцированный вход модели — переиспользуется каждый тик. */
     private final float[] flatInput =
             new float[NeuroFeatureSchema.SEQ_LEN * NeuroFeatureSchema.FEATURE_COUNT];
 
     private LivingEntity lastTarget = null;
     private long lastTickHandled = -1;
-    private float tickAppliedYaw = 0.0f;
-    private float tickAppliedPitch = 0.0f;
+    private long tickCounter = 0;
     private boolean fallbackActive = false;
 
     /** Диагностика для debug-рендера. */
@@ -89,21 +89,7 @@ public class NeuroRotation extends RotationMode {
         long currentTick = mc.world != null ? mc.world.getTime() : lastTickHandled;
         if (currentTick != lastTickHandled) {
             lastTickHandled = currentTick;
-            boolean ok = runInference(ka, target, model, targetChanged);
-            if (!ok) {
-                fallbackActive = true;
-                fallbackTicks++;
-                holdOrFallback(ka, target);
-                return;
-            }
-            if (fallbackActive) {
-                // В окне истории за время простоя образовалась дыра — сбрасываем,
-                // следующие SEQ_LEN тиков цель ведётся геометрически (warm-up)
-                history.reset();
-            }
-            fallbackActive = false;
-            fallbackReason = FallbackReason.NONE;
-            fallbackTicks = 0;
+            runInference(ka, target, model, targetChanged);
         }
 
         if (fallbackActive) {
@@ -117,12 +103,9 @@ public class NeuroRotation extends RotationMode {
     /**
      * Обработка тика, когда модель есть, но предсказание непригодно.
      *
-     * В полёте делегируем NoRot (он там реально крутит). На земле NoRot не
-     * вызывает RotationComponent.update вообще — и раньше такой «пустой» тик
-     * заканчивался RESET-задачей RotationComponent, которая мгновенно
-     * (return speed 360) снапила поворот на взгляд игрока, после чего Neuro
-     * заново доворачивался на цель. Вместо этого держим текущий поворот
-     * keep-alive пингом, пока модель не восстановится.
+     * В полёте делегируем NoRot (он там реально крутит). На земле держим
+     * текущий поворот keep-alive пингом, пока модель не восстановится,
+     * чтобы RotationComponent не снапнул поворот на взгляд игрока.
      */
     private void holdOrFallback(KillAura ka, LivingEntity target) {
         var mc = ka.mc;
@@ -162,93 +145,105 @@ public class NeuroRotation extends RotationMode {
                 mc.player.getPitch()
         );
         RotationComponent.update(current, 360, 360, 360, 360, 0, 1,
-                ka.clientLook.getValue(), ka.getMoveFixMode());
+                ka.clientLook.getValue(), ka.getMoveFixMode(), ka.otvodkaActive());
     }
 
     /**
-     * Раз в тик: собрать фичи, нормализовать, спросить модель, положить бюджет.
-     * @return false если предсказание невалидно и нужен fallback
+     * Раз в тик: RAW-строка -> окно фич -> предсказание модели -> бюджет.
+     * Модель непригодна только при реальной ошибке (нет точки, сбой inference,
+     * мусорный выход) — предикт по направлению НЕ корректируется, иначе
+     * ротация вырождается в ванильную.
      */
-    private boolean runInference(KillAura ka, LivingEntity target, ActiveModel model, boolean targetChanged) {
+    private void runInference(KillAura ka, LivingEntity target, ActiveModel model, boolean targetChanged) {
         var mc = ka.mc;
-
-        float currentYaw = MathHelper.wrapDegrees(mc.player.getYaw());
-        float currentPitch = mc.player.getPitch();
-        Rotation currentRotation = new Rotation(currentYaw, currentPitch);
 
         Vec3d aimPoint = aimController.update(ka, target, targetChanged);
         if (aimPoint == null || aimPoint.equals(Vec3d.ZERO)) {
-            fallbackReason = FallbackReason.AIM_POINT;
-            return false;
+            fail(FallbackReason.AIM_POINT);
+            return;
         }
         debugAimPoint = aimPoint;
 
-        collector.collect(featureRow, 0, mc.player, target, currentRotation, aimPoint, targetChanged);
-        featureRow[NeuroFeatureSchema.PREV_DELTA_YAW] = tickAppliedYaw;
-        featureRow[NeuroFeatureSchema.PREV_DELTA_PITCH] = tickAppliedPitch;
-        tickAppliedYaw = 0.0f;
-        tickAppliedPitch = 0.0f;
+        // RAW-строка текущего тика: dyaw/dpitch коллектор берёт из своей истории —
+        // это ровно дельта, применённая на прошлом тике, как и в датасете
+        collector.pushFrame(mc.player, target, aimPoint, !targetChanged, tickCounter++);
 
-        debugGeoYaw = featureRow[NeuroFeatureSchema.TARGET_DELTA_YAW];
-        debugGeoPitch = featureRow[NeuroFeatureSchema.TARGET_DELTA_PITCH];
-
-        history.push(featureRow);
-
-        // Пока история не набрана, ведём цель геометрически — модель на неполном
-        // окне выдаёт мусор, а padding нулями сместил бы распределение.
-        if (!history.isWarm()) {
-            setBudget(ka, debugGeoYaw * 0.5f, debugGeoPitch * 0.5f);
-            debugPredYaw = debugGeoYaw * 0.5f;
-            debugPredPitch = debugGeoPitch * 0.5f;
+        // Пока окно не набрано, ведём цель геометрически — модель на неполном
+        // окне выдаёт мусор, а padding нулями сместил бы распределение
+        if (!collector.isWarm()) {
+            warmUpBudget(ka, target);
             debugConfidence = 1.0f;
-            return true;
+            debugPredYaw = 0.0f;
+            debugPredPitch = 0.0f;
+            return;
         }
 
-        history.fillFlat(flatInput);
-        model.getNormalizer().normalize(flatInput);
+        collector.collect(flatInput);
+        int last = (NeuroFeatureSchema.SEQ_LEN - 1) * NeuroFeatureSchema.FEATURE_COUNT;
+        debugGeoYaw = flatInput[last + NeuroFeatureSchema.F_ERR_YAW];
+        debugGeoPitch = flatInput[last + NeuroFeatureSchema.F_ERR_PITCH];
 
         float[] output;
         long start = System.nanoTime();
         try {
             output = model.getEngine().predict(flatInput);
         } catch (Throwable t) {
-            fallbackReason = FallbackReason.INFERENCE;
-            return false;
+            fail(FallbackReason.INFERENCE);
+            return;
         }
         debugInferenceNanos = System.nanoTime() - start;
 
-        if (output == null || output.length < 2
-                || !Float.isFinite(output[0]) || !Float.isFinite(output[1])) {
-            fallbackReason = FallbackReason.INVALID_OUTPUT;
-            return false;
+        NeuroMdn.Prediction pred = NeuroMdn.decode(output);
+        if (pred == null) {
+            fail(FallbackReason.INVALID_OUTPUT);
+            return;
         }
 
-        float deltaYaw = MathHelper.clamp(output[0], -MAX_DELTA_YAW, MAX_DELTA_YAW);
-        float deltaPitch = MathHelper.clamp(output[1], -MAX_DELTA_PITCH, MAX_DELTA_PITCH);
+        // Кламп только в диапазоне обученных меток — форму движения задаёт модель
+        float deltaYaw = MathHelper.clamp(pred.deltaYaw(), -NeuroFeatureSchema.LABEL_CLIP_DEG,
+                NeuroFeatureSchema.LABEL_CLIP_DEG);
+        float deltaPitch = MathHelper.clamp(pred.deltaPitch(), -NeuroFeatureSchema.LABEL_CLIP_DEG,
+                NeuroFeatureSchema.LABEL_CLIP_DEG);
 
-        // Срезаем выбросы магнитуды: модель не должна крутить сильнее, чем
-        // требует геометрия, иначе прицел перелетает цель и уходит в небо
-        float predMag = (float) Math.hypot(deltaYaw, deltaPitch);
-        float geoMag = (float) Math.hypot(debugGeoYaw, debugGeoPitch);
-        float maxMag = geoMag * 1.5f + 10.0f;
-        if (predMag > maxMag) {
-            float scale = maxMag / predMag;
-            deltaYaw *= scale;
-            deltaPitch *= scale;
-        }
         debugPredYaw = deltaYaw;
+        debugPredPitch = deltaPitch;
+        debugConfidence = NeuroMdn.confidence(pred.sigma());
 
-        // Confidence выводится из согласия с геометрической дельтой (§12):
-        // метки confidence в датасете нет, поэтому оцениваем на inference.
-        debugConfidence = estimateConfidence(deltaYaw, deltaPitch, debugGeoYaw, debugGeoPitch);
-
-        if (debugConfidence < MIN_CONFIDENCE) {
-            fallbackReason = FallbackReason.LOW_CONFIDENCE;
-            return false;
+        if (fallbackActive) {
+            // В окне истории за время простоя образовалась дыра — сбрасываем,
+            // следующие SEQ_LEN тиков цель ведётся геометрически (warm-up)
+            collector.reset();
         }
+        fallbackActive = false;
+        fallbackReason = FallbackReason.NONE;
+        fallbackTicks = 0;
 
         setBudget(ka, deltaYaw, deltaPitch);
-        return true;
+    }
+
+    /**
+     * Прогрев: геометрическое наведение, пока окно истории не набрано.
+     */
+    private void warmUpBudget(KillAura ka, LivingEntity target) {
+        var mc = ka.mc;
+        Vec3d aimPoint = debugAimPoint;
+        if (aimPoint == null) return;
+        Rotation targetRotation = new Rotation(aimPoint);
+        float dYaw = MathHelper.wrapDegrees(targetRotation.getYaw() - mc.player.getYaw());
+        float dPitch = targetRotation.getPitch() - mc.player.getPitch();
+        setBudget(ka,
+                MathHelper.clamp(dYaw * 0.5f, -20.0f, 20.0f),
+                MathHelper.clamp(dPitch * 0.5f, -15.0f, 15.0f));
+    }
+
+    private void fail(FallbackReason reason) {
+        if (!fallbackActive) {
+            collector.reset();
+        }
+        fallbackActive = true;
+        fallbackReason = reason;
+        fallbackTicks++;
+        debugConfidence = 0.0f;
     }
 
     private void setBudget(KillAura ka, float deltaYaw, float deltaPitch) {
@@ -258,41 +253,13 @@ public class NeuroRotation extends RotationMode {
     }
 
     /**
-     * Оценка уверенности: насколько предсказание согласуется с геометрией.
-     * Модель, тянущая прицел прочь от цели, доверия не заслуживает.
-     */
-    private float estimateConfidence(float predYaw, float predPitch, float geoYaw, float geoPitch) {
-        float geoMagnitude = (float) Math.hypot(geoYaw, geoPitch);
-
-        // Цель почти под прицелом — любое малое движение приемлемо
-        if (geoMagnitude < 1.0f) {
-            return 1.0f;
-        }
-
-        float predMagnitude = (float) Math.hypot(predYaw, predPitch);
-        if (predMagnitude < 1e-4f) {
-            // Модель стоит на месте при заметной ошибке — это и есть stall
-            return 0.0f;
-        }
-
-        // Косинус между предсказанным и геометрическим направлением.
-        // Перпендикулярное предсказание (косинус ~0) раньше проходило порог
-        // и уводило прицел вбок/в небо — засчитываем только сонаправленное
-        float dot = predYaw * geoYaw + predPitch * geoPitch;
-        float cosine = dot / (predMagnitude * geoMagnitude);
-
-        return MathHelper.clamp(cosine, 0.0f, 1.0f);
-    }
-
-    /**
      * Каждый субшаг: выплатить долю бюджета. Без inference и аллокаций.
      */
     private void applySubStep(KillAura ka) {
         var mc = ka.mc;
         if (!controller.hasBudget()) return;
 
-        // EventGameUpdate идёт ~240 Гц против 20 Гц тика — примерно 12 субшагов на тик
-        float[] step = controller.getStepDelta(12, true);
+        float[] step = controller.getStepDelta(SUBSTEPS_PER_TICK, true);
         float stepYaw = step[0];
         float stepPitch = step[1];
 
@@ -312,13 +279,10 @@ public class NeuroRotation extends RotationMode {
 
         Rotation rotation = new Rotation(nextYaw, nextPitch);
         RotationComponent.update(rotation, 360, 360, 360, 360, 0, 1,
-                ka.clientLook.getValue(), ka.getMoveFixMode());
+                ka.clientLook.getValue(), ka.getMoveFixMode(), ka.otvodkaActive());
 
         ka.lastYaw = rotation.getYaw();
         ka.lastPitch = rotation.getPitch();
-
-        tickAppliedYaw += stepYaw;
-        tickAppliedPitch += stepPitch;
     }
 
     /**
@@ -327,25 +291,20 @@ public class NeuroRotation extends RotationMode {
      */
     private void onTargetSwitch(LivingEntity newTarget) {
         lastTarget = newTarget;
-        history.reset();
         collector.reset();
         controller.reset();
         aimController.reset();
-        tickAppliedYaw = 0.0f;
-        tickAppliedPitch = 0.0f;
     }
 
     @Override
     public void reset(KillAura ka) {
-        history.reset();
         collector.reset();
         controller.reset();
         aimController.reset();
         noRotFallback.reset(ka);
         lastTarget = null;
         lastTickHandled = -1;
-        tickAppliedYaw = 0.0f;
-        tickAppliedPitch = 0.0f;
+        tickCounter = 0;
         fallbackActive = false;
         fallbackReason = FallbackReason.NONE;
         fallbackTicks = 0;
@@ -387,7 +346,7 @@ public class NeuroRotation extends RotationMode {
         return fallbackTicks;
     }
 
-    /** Сырое предсказание модели (после clamp, до множителей). */
+    /** Предсказание модели (после клампа, до множителей). */
     public float getDebugPredYaw() {
         return debugPredYaw;
     }
@@ -396,7 +355,7 @@ public class NeuroRotation extends RotationMode {
         return debugPredPitch;
     }
 
-    /** Геометрическая ошибка до точки прицеливания. */
+    /** Геометрическая ошибка до точки прицеливания (последний тик окна). */
     public float getDebugGeoYaw() {
         return debugGeoYaw;
     }
@@ -410,6 +369,6 @@ public class NeuroRotation extends RotationMode {
     }
 
     public boolean isHistoryWarm() {
-        return history.isWarm();
+        return collector.isWarm();
     }
 }

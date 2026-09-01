@@ -6,6 +6,7 @@ import tech.onetap.util.commands.api.argument.IArgConsumer;
 import tech.onetap.util.commands.api.exception.CommandException;
 import tech.onetap.util.neuro.rotation.AIRotationManager;
 import tech.onetap.util.neuro.rotation.NeuroBenchmark;
+import tech.onetap.util.neuro.rotation.NeuroSelftest;
 import tech.onetap.util.neuro.rotation.RotationDumpRecorder;
 import tech.onetap.util.neuro.rotation.TrainingLauncher;
 
@@ -77,9 +78,9 @@ public class AICommand extends Command {
 
             case "cancel" -> TrainingLauncher.cancel();
             case "setup" -> TrainingLauncher.setup();
-
             case "benchmark" -> NeuroBenchmark.run();
 
+            case "selftest" -> NeuroSelftest.run();
             case "delete" -> {
                 if (!args.hasAny()) {
                     ChatUtil.send("§cИспользование: §f.ai delete <modelname>");
@@ -171,6 +172,7 @@ public class AICommand extends Command {
         ChatUtil.send("§f.ai dump start <ник|ник2> §7- Писать чужую ротацию");
         ChatUtil.send("§f.ai dump stop §7- Остановить дамп и сохранить");
         ChatUtil.send("§f.ai benchmark §7- Замер времени inference");
+        ChatUtil.send("§f.ai selftest §7- Проверить совпадение фич Java и тренера");
         ChatUtil.send("§f.ai dir §7- Открыть папку");
     }
 
@@ -184,8 +186,7 @@ public class AICommand extends Command {
         return List.of(
                 "Команда для управления AI моделями ротаций",
                 "",
-                "Обучение выполняется внешним Python-скриптом (tools/neuro/train.py),",
-                "поэтому игра не лагает во время тренировки.",
+                "Обучение выполняется внешним Python-скриптом (train_neuro.py),",
                 "",
                 "Использование:",
                 ".ai save <name> - сохранить датасет",
@@ -195,7 +196,7 @@ public class AICommand extends Command {
                 ".ai setup - скачать Python и библиотеки",
                 ".ai load <model> - загрузить модель",
                 ".ai unload - выгрузить модель",
-                ".ai delete <model> - удалить модель",
+                ".ai selftest - проверить совпадение фич Java и тренера",
                 ".ai models - список моделей и датасетов",
                 ".ai dump start <ник|ник2> - записывать чужую ротацию в датасет",
                 ".ai dump stop - остановить дамп и сохранить датасет",
@@ -208,7 +209,7 @@ public class AICommand extends Command {
     public Stream<String> tabComplete(String label, IArgConsumer args) throws CommandException {
         if (args.hasExactlyOne()) {
             return Stream.of("save", "load", "unload", "train", "improve", "cancel",
-                    "setup", "delete", "list", "models", "dump", "benchmark", "dir");
+                    "setup", "delete", "list", "models", "dump", "benchmark", "selftest", "dir");
         }
         return Stream.empty();
     }

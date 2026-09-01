@@ -2,225 +2,207 @@ package tech.onetap.util.neuro.rotation;
 
 import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.util.hit.HitResult;
 import net.minecraft.util.math.Box;
 import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.Vec3d;
+import net.minecraft.world.RaycastContext;
 import tech.onetap.util.IMinecraft;
 import tech.onetap.util.player.combat.RaytraceUtil;
-import tech.onetap.util.rotation.Rotation;
+import tech.onetap.util.render.math.GCDFixer;
 
 /**
- * Собирает 39 фич для одного временного шага.
- * Состояние на инстанс, без static-полей.
+ * Собирает RAW-строку тика (21 колонка — формат датасета train_neuro.py)
+ * и выводит из окна истории 16 фич — формулы 1:1 с compute_features
+ * в тренере, что проверяется selftest'ом (.ai selftest).
+ *
+ * Одна инстанс — одна траектория (свой игрок или наблюдаемый в дампе),
+ * без static-состояния.
  */
 public class NeuroFeatureCollector implements IMinecraft {
 
-    private float prevAttackCooldown = 1.0f;
-    private Vec3d prevAimPoint = Vec3d.ZERO;
+    private final float[][] ring = new float[NeuroFeatureSchema.SEQ_LEN][NeuroFeatureSchema.RAW_COLUMN_COUNT];
+    private int head = 0;
+    private int size = 0;
 
-    // Кинематика поворота (в стиле mlsac TickData)
-    private boolean hasRotation = false;
-    private float lastCollectorYaw;
-    private float lastCollectorPitch;
-    private float lastDeltaYaw;
-    private float lastDeltaPitch;
-    private float lastAccelYaw;
-    private float lastAccelPitch;
-    private final GcdDivisorEstimator yawDivisors = new GcdDivisorEstimator();
-    private final GcdDivisorEstimator pitchDivisors = new GcdDivisorEstimator();
+    private boolean hasPrevRotation = false;
+    private float prevYaw;
+    private float prevPitch;
 
     public void reset() {
-        prevAttackCooldown = 1.0f;
-        prevAimPoint = Vec3d.ZERO;
-        hasRotation = false;
-        lastCollectorYaw = 0.0f;
-        lastCollectorPitch = 0.0f;
-        lastDeltaYaw = 0.0f;
-        lastDeltaPitch = 0.0f;
-        lastAccelYaw = 0.0f;
-        lastAccelPitch = 0.0f;
-        yawDivisors.reset();
-        pitchDivisors.reset();
+        head = 0;
+        size = 0;
+        hasPrevRotation = false;
+        prevYaw = 0.0f;
+        prevPitch = 0.0f;
+    }
+
+    public boolean isWarm() {
+        return size >= NeuroFeatureSchema.SEQ_LEN;
     }
 
     /**
-     * Собирает фичи в dest начиная с offset.
-     * @param dest целевой массив
-     * @param offset смещение для записи
-     * @param player игрок
-     * @param target цель
-     * @param currentRotation текущий поворот
-     * @param aimPoint точка прицеливания в мире
-     * @param targetChanged смена цели на этом тике
+     * Добавляет готовую RAW-строку (selftest, восстановление истории).
      */
-    public void collect(float[] dest, int offset,
-                        PlayerEntity player, LivingEntity target,
-                        Rotation currentRotation, Vec3d aimPoint,
-                        boolean targetChanged) {
+    public void pushRaw(float[] row) {
+        System.arraycopy(row, 0, ring[head], 0, NeuroFeatureSchema.RAW_COLUMN_COUNT);
+        head = (head + 1) % NeuroFeatureSchema.SEQ_LEN;
+        if (size < NeuroFeatureSchema.SEQ_LEN) size++;
+        hasPrevRotation = true;
+        prevYaw = row[NeuroFeatureSchema.R_YAW];
+        prevPitch = row[NeuroFeatureSchema.R_PITCH];
+    }
 
-        // Player velocity
-        Vec3d playerVel = new Vec3d(
-                player.getX() - player.prevX,
-                player.getY() - player.prevY,
-                player.getZ() - player.prevZ
-        );
-        dest[offset + NeuroFeatureSchema.PLAYER_VEL_X] = (float) playerVel.x;
-        dest[offset + NeuroFeatureSchema.PLAYER_VEL_Y] = (float) playerVel.y;
-        dest[offset + NeuroFeatureSchema.PLAYER_VEL_Z] = (float) playerVel.z;
+    /**
+     * Собирает RAW-строку тика из состояния актора и цели и кладёт в историю.
+     *
+     * @param actor    чья ротация описывается (свой игрок или наблюдаемый)
+     * @param target   цель актора, null если нет
+     * @param aimPoint точа прицеливания (для рекордера — центр хитбокса,
+     * @return копия собранной RAW-строки (слот кольца переиспользуется)
+     */
+    public float[] pushFrame(LivingEntity actor, LivingEntity target, Vec3d aimPoint,
+                             boolean clean, long t) {
+        float[] row = ring[head];
 
-        // Player input (поле input есть только на ClientPlayerEntity)
-        float forwardInput = 0.0f;
-        float sidewaysInput = 0.0f;
-        if (player instanceof net.minecraft.client.network.ClientPlayerEntity clientPlayer) {
-            forwardInput = clientPlayer.input.movementForward;
-            sidewaysInput = clientPlayer.input.movementSideways;
+        float yaw = MathHelper.wrapDegrees(actor.getYaw());
+        float pitch = actor.getPitch();
+
+        float dyaw = 0.0f;
+        float dpitch = 0.0f;
+        if (hasPrevRotation) {
+            dyaw = MathHelper.wrapDegrees(yaw - prevYaw);
+            dpitch = pitch - prevPitch;
         }
-        dest[offset + NeuroFeatureSchema.PLAYER_FORWARD_INPUT] = forwardInput;
-        dest[offset + NeuroFeatureSchema.PLAYER_SIDEWAYS_INPUT] = sidewaysInput;
+        prevYaw = yaw;
+        prevPitch = pitch;
+        hasPrevRotation = true;
 
-        // Player state
-        dest[offset + NeuroFeatureSchema.PLAYER_ON_GROUND] = player.isOnGround() ? 1.0f : 0.0f;
-        dest[offset + NeuroFeatureSchema.PLAYER_SPRINTING] = player.isSprinting() ? 1.0f : 0.0f;
-        dest[offset + NeuroFeatureSchema.PLAYER_SNEAKING] = player.isSneaking() ? 1.0f : 0.0f;
-        dest[offset + NeuroFeatureSchema.PLAYER_FALL_DISTANCE] = player.fallDistance;
+        row[NeuroFeatureSchema.R_T] = t;
+        row[NeuroFeatureSchema.R_GCD] = GCDFixer.getGCDValue();
+        row[NeuroFeatureSchema.R_CLEAN] = clean ? 1.0f : 0.0f;
+        row[NeuroFeatureSchema.R_YAW] = yaw;
+        row[NeuroFeatureSchema.R_PITCH] = pitch;
+        row[NeuroFeatureSchema.R_DYAW] = dyaw;
+        row[NeuroFeatureSchema.R_DPITCH] = dpitch;
 
-        // Target relative position — поворот в yaw-фрейм игрока
-        Vec3d targetPos = target.getPos();
-        Vec3d eyePos = player.getEyePos();
-        Vec3d relWorld = targetPos.subtract(eyePos);
+        if (target != null) {
+            Vec3d eye = actor.getEyePos();
+            Vec3d diff = aimPoint.subtract(eye);
+            Box box = target.getBoundingBox();
 
-        float yawRad = -currentRotation.getYaw() * MathHelper.RADIANS_PER_DEGREE;
-        float cosYaw = MathHelper.cos(yawRad);
-        float sinYaw = MathHelper.sin(yawRad);
-
-        double relX = relWorld.x * cosYaw - relWorld.z * sinYaw;
-        double relZ = relWorld.x * sinYaw + relWorld.z * cosYaw;
-
-        dest[offset + NeuroFeatureSchema.TARGET_REL_X] = (float) relX;
-        dest[offset + NeuroFeatureSchema.TARGET_REL_Y] = (float) relWorld.y;
-        dest[offset + NeuroFeatureSchema.TARGET_REL_Z] = (float) relZ;
-
-        // Target velocity — тоже в yaw-фрейме
-        Vec3d targetVel = new Vec3d(
-                target.getX() - target.prevX,
-                target.getY() - target.prevY,
-                target.getZ() - target.prevZ
-        );
-        double velX = targetVel.x * cosYaw - targetVel.z * sinYaw;
-        double velZ = targetVel.x * sinYaw + targetVel.z * cosYaw;
-
-        dest[offset + NeuroFeatureSchema.TARGET_VEL_X] = (float) velX;
-        dest[offset + NeuroFeatureSchema.TARGET_VEL_Y] = (float) targetVel.y;
-        dest[offset + NeuroFeatureSchema.TARGET_VEL_Z] = (float) velZ;
-
-        // Target metadata
-        Box box = target.getBoundingBox();
-        dest[offset + NeuroFeatureSchema.TARGET_DISTANCE] = (float) eyePos.distanceTo(targetPos);
-        dest[offset + NeuroFeatureSchema.TARGET_WIDTH] = (float) (box.maxX - box.minX);
-        dest[offset + NeuroFeatureSchema.TARGET_HEIGHT] = (float) (box.maxY - box.minY);
-        dest[offset + NeuroFeatureSchema.TARGET_ON_GROUND] = target.isOnGround() ? 1.0f : 0.0f;
-
-        // Rotation deltas — вычисляются caller-ом, здесь заполняются нулями
-        // Caller должен перезаписать их на основе истории
-        dest[offset + NeuroFeatureSchema.PREV_DELTA_YAW] = 0.0f;
-        dest[offset + NeuroFeatureSchema.PREV_DELTA_PITCH] = 0.0f;
-
-        // Кинематика поворота: delta -> accel -> jerk + GCD-error (mlsac TickData)
-        float kinDeltaYaw = hasRotation
-                ? MathHelper.wrapDegrees(currentRotation.getYaw() - lastCollectorYaw) : 0.0f;
-        float kinDeltaPitch = hasRotation
-                ? currentRotation.getPitch() - lastCollectorPitch : 0.0f;
-        float accelYaw = hasRotation ? kinDeltaYaw - lastDeltaYaw : 0.0f;
-        float accelPitch = hasRotation ? kinDeltaPitch - lastDeltaPitch : 0.0f;
-        float jerkYaw = hasRotation ? accelYaw - lastAccelYaw : 0.0f;
-        float jerkPitch = hasRotation ? accelPitch - lastAccelPitch : 0.0f;
-
-        dest[offset + NeuroFeatureSchema.ACCEL_YAW] = accelYaw;
-        dest[offset + NeuroFeatureSchema.ACCEL_PITCH] = accelPitch;
-        dest[offset + NeuroFeatureSchema.JERK_YAW] = jerkYaw;
-        dest[offset + NeuroFeatureSchema.JERK_PITCH] = jerkPitch;
-        dest[offset + NeuroFeatureSchema.GCD_ERROR_YAW] = yawDivisors.gcdError(kinDeltaYaw);
-        dest[offset + NeuroFeatureSchema.GCD_ERROR_PITCH] = pitchDivisors.gcdError(kinDeltaPitch);
-        yawDivisors.update(kinDeltaYaw);
-        pitchDivisors.update(kinDeltaPitch);
-
-        lastCollectorYaw = currentRotation.getYaw();
-        lastCollectorPitch = currentRotation.getPitch();
-        lastDeltaYaw = kinDeltaYaw;
-        lastDeltaPitch = kinDeltaPitch;
-        lastAccelYaw = accelYaw;
-        lastAccelPitch = accelPitch;
-        hasRotation = true;
-
-        // Геометрическая дельта к aim point
-        Rotation targetRotation = new Rotation(aimPoint);
-        float targetDeltaYaw = MathHelper.wrapDegrees(targetRotation.getYaw() - currentRotation.getYaw());
-        float targetDeltaPitch = targetRotation.getPitch() - currentRotation.getPitch();
-        dest[offset + NeuroFeatureSchema.TARGET_DELTA_YAW] = targetDeltaYaw;
-        dest[offset + NeuroFeatureSchema.TARGET_DELTA_PITCH] = targetDeltaPitch;
-
-        // Aim point — нормализованное пространство хитбокса (X −1..1, Y 0..1, Z −1..1)
-        double dx = box.maxX - box.minX;
-        double dy = box.maxY - box.minY;
-        double dz = box.maxZ - box.minZ;
-
-        float aimX = 0.0f;
-        float aimY = 0.5f;
-        float aimZ = 0.0f;
-
-        if (aimPoint != null) {
-            if (dx > 0) {
-                double norm = (aimPoint.x - box.minX) / dx;
-                aimX = (float) MathHelper.clamp(norm * 2.0 - 1.0, -1.0, 1.0);
-            }
-            if (dy > 0) {
-                aimY = (float) MathHelper.clamp((aimPoint.y - box.minY) / dy, 0.0, 1.0);
-            }
-            if (dz > 0) {
-                double norm = (aimPoint.z - box.minZ) / dz;
-                aimZ = (float) MathHelper.clamp(norm * 2.0 - 1.0, -1.0, 1.0);
-            }
-        }
-
-        dest[offset + NeuroFeatureSchema.AIM_X] = aimX;
-        dest[offset + NeuroFeatureSchema.AIM_Y] = aimY;
-        dest[offset + NeuroFeatureSchema.AIM_Z] = aimZ;
-
-        // Aim velocity
-        if (aimPoint != null && !prevAimPoint.equals(Vec3d.ZERO)) {
-            Vec3d aimVel = aimPoint.subtract(prevAimPoint);
-            // Нормализованная скорость (в пространстве хитбокса per tick)
-            dest[offset + NeuroFeatureSchema.AIM_VEL_X] = (float) (dx > 0 ? aimVel.x / dx : 0.0);
-            dest[offset + NeuroFeatureSchema.AIM_VEL_Y] = (float) (dy > 0 ? aimVel.y / dy : 0.0);
-            dest[offset + NeuroFeatureSchema.AIM_VEL_Z] = (float) (dz > 0 ? aimVel.z / dz : 0.0);
+            row[NeuroFeatureSchema.R_HAS] = 1.0f;
+            row[NeuroFeatureSchema.R_TID] = target.getId();
+            row[NeuroFeatureSchema.R_RX] = (float) diff.x;
+            row[NeuroFeatureSchema.R_RY] = (float) diff.y;
+            row[NeuroFeatureSchema.R_RZ] = (float) diff.z;
+            row[NeuroFeatureSchema.R_BW] = (float) (box.maxX - box.minX);
+            row[NeuroFeatureSchema.R_BH] = (float) (box.maxY - box.minY);
+            row[NeuroFeatureSchema.R_DIST] = (float) distanceToBox(eye, box);
+            row[NeuroFeatureSchema.R_VIS] = isVisible(eye, aimPoint, actor) ? 1.0f : 0.0f;
+            row[NeuroFeatureSchema.R_ON] = target.isOnGround() ? 1.0f : 0.0f;
+            row[NeuroFeatureSchema.R_ATK] =
+                    actor instanceof PlayerEntity player
+                            && player.getAttackCooldownProgress(0.0f) >= 1.0f ? 1.0f : 0.0f;
+            row[NeuroFeatureSchema.R_HP] = target.getHealth();
         } else {
-            dest[offset + NeuroFeatureSchema.AIM_VEL_X] = 0.0f;
-            dest[offset + NeuroFeatureSchema.AIM_VEL_Y] = 0.0f;
-            dest[offset + NeuroFeatureSchema.AIM_VEL_Z] = 0.0f;
+            row[NeuroFeatureSchema.R_HAS] = 0.0f;
+            row[NeuroFeatureSchema.R_TID] = -1.0f;
+            row[NeuroFeatureSchema.R_RX] = 0.0f;
+            row[NeuroFeatureSchema.R_RY] = 0.0f;
+            row[NeuroFeatureSchema.R_RZ] = 0.0f;
+            row[NeuroFeatureSchema.R_BW] = 0.0f;
+            row[NeuroFeatureSchema.R_BH] = 0.0f;
+            row[NeuroFeatureSchema.R_DIST] = 0.0f;
+            row[NeuroFeatureSchema.R_VIS] = 0.0f;
+            row[NeuroFeatureSchema.R_ON] = 0.0f;
+            row[NeuroFeatureSchema.R_ATK] = 0.0f;
+            row[NeuroFeatureSchema.R_HP] = 0.0f;
         }
 
-        if (aimPoint != null) {
-            prevAimPoint = aimPoint;
+        row[NeuroFeatureSchema.R_GROUND] = actor.isOnGround() ? 1.0f : 0.0f;
+        row[NeuroFeatureSchema.R_SPRINT] = actor.isSprinting() ? 1.0f : 0.0f;
+
+        head = (head + 1) % NeuroFeatureSchema.SEQ_LEN;
+        if (size < NeuroFeatureSchema.SEQ_LEN) size++;
+        // Копия: слот кольца переиспользуется на следующем тике
+        return row.clone();
+    }
+
+
+    /**
+     * Выводит фичи из всего окна истории в плоский вход модели.
+     * Порядок: от старого к новому, как fillFlat у тренера. Незанятые слоты
+     * непрогретого окна — нули.
+     */
+    public void collect(float[] flat) {
+        java.util.Arrays.fill(flat, 0.0f);
+        int read = (head + NeuroFeatureSchema.SEQ_LEN - size) % NeuroFeatureSchema.SEQ_LEN;
+        for (int i = 0; i < size; i++) {
+            int slot = (read + i) % NeuroFeatureSchema.SEQ_LEN;
+            computeFeatures(ring[slot], flat, i * NeuroFeatureSchema.FEATURE_COUNT);
         }
+    }
 
-        // Environment
-        Vec3d lookVec = currentRotation.toVector();
-        double range = 6.0;
-        boolean onTarget = RaytraceUtil.rayTrace(lookVec, range, box);
-        dest[offset + NeuroFeatureSchema.LINE_OF_SIGHT] = onTarget ? 1.0f : 0.0f;
+    /**
+     * Фичи одной RAW-строки. Публично — для selftest-сравнения с тренером.
+     */
+    public static void computeFeatures(float[] row, float[] dest, int offset) {
+        float yaw = row[NeuroFeatureSchema.R_YAW];
+        float pitch = row[NeuroFeatureSchema.R_PITCH];
+        float rx = row[NeuroFeatureSchema.R_RX];
+        float ry = row[NeuroFeatureSchema.R_RY];
+        float rz = row[NeuroFeatureSchema.R_RZ];
+        boolean has = row[NeuroFeatureSchema.R_HAS] > 0.5f;
 
-        // targetVisible — упрощённо приравнивается к lineOfSight
-        dest[offset + NeuroFeatureSchema.TARGET_VISIBLE] = onTarget ? 1.0f : 0.0f;
+        double hxz = Math.sqrt(rx * rx + rz * rz);
+        double d3 = Math.sqrt(rx * rx + ry * ry + rz * rz);
+        float desiredYaw = wrapDeg((float) (Math.toDegrees(Math.atan2(rz, rx)) - 90.0));
+        float desiredPitch = (float) -Math.toDegrees(Math.atan2(ry, Math.sqrt(rx * rx + rz * rz)));
 
-        // targetChanged
-        dest[offset + NeuroFeatureSchema.TARGET_CHANGED] = targetChanged ? 1.0f : 0.0f;
+        dest[offset + NeuroFeatureSchema.F_DYAW] = row[NeuroFeatureSchema.R_DYAW];
+        dest[offset + NeuroFeatureSchema.F_DPITCH] = row[NeuroFeatureSchema.R_DPITCH];
+        dest[offset + NeuroFeatureSchema.F_PITCH] = pitch;
 
-        // Attack cooldown с детектора атаки. Берём переданного игрока, а не
-        // mc.player: дамп-рекордер собирает фичи чужих игроков (у них
-        // cooldown локально не сбрасывается — фича будет ~1.0, это нормально).
-        float currentCooldown = player.getAttackCooldownProgress(0.5f);
-        dest[offset + NeuroFeatureSchema.ATTACK_COOLDOWN] = currentCooldown;
+        dest[offset + NeuroFeatureSchema.F_ERR_YAW] = has ? wrapDeg(desiredYaw - yaw) : 0.0f;
+        dest[offset + NeuroFeatureSchema.F_ERR_PITCH] = has ? desiredPitch - pitch : 0.0f;
+        dest[offset + NeuroFeatureSchema.F_HALF_YAW] = has
+                ? (float) Math.toDegrees(Math.atan2(row[NeuroFeatureSchema.R_BW] * 0.5, Math.max(hxz, 0.05)))
+                : 0.0f;
+        dest[offset + NeuroFeatureSchema.F_HALF_PITCH] = has
+                ? (float) Math.toDegrees(Math.atan2(row[NeuroFeatureSchema.R_BH] * 0.5, Math.max(d3, 0.05)))
+                : 0.0f;
+        dest[offset + NeuroFeatureSchema.F_DIST] = has
+                ? Math.max(row[NeuroFeatureSchema.R_DIST], 0.0f) : 0.0f;
+        dest[offset + NeuroFeatureSchema.F_HP] = has
+                ? MathHelper.clamp(row[NeuroFeatureSchema.R_HP] / 20.0f, 0.0f, 2.0f) : 0.0f;
+        dest[offset + NeuroFeatureSchema.F_BH] = has ? row[NeuroFeatureSchema.R_BH] : 0.0f;
 
-        prevAttackCooldown = currentCooldown;
+        dest[offset + NeuroFeatureSchema.F_HAS] = has ? 1.0f : 0.0f;
+        dest[offset + NeuroFeatureSchema.F_VIS] = row[NeuroFeatureSchema.R_VIS] > 0.5f ? 1.0f : 0.0f;
+        dest[offset + NeuroFeatureSchema.F_ON] = row[NeuroFeatureSchema.R_ON] > 0.5f ? 1.0f : 0.0f;
+        dest[offset + NeuroFeatureSchema.F_ATK] = row[NeuroFeatureSchema.R_ATK] > 0.5f ? 1.0f : 0.0f;
+        dest[offset + NeuroFeatureSchema.F_GROUND] = row[NeuroFeatureSchema.R_GROUND] > 0.5f ? 1.0f : 0.0f;
+        dest[offset + NeuroFeatureSchema.F_SPRINT] = row[NeuroFeatureSchema.R_SPRINT] > 0.5f ? 1.0f : 0.0f;
+    }
+
+    /** wrapDegrees с семантикой fmod из тренера (np.fmod → симметричный [-180, 180)). */
+    public static float wrapDeg(float value) {
+        float f = value % 360.0f;
+        if (f >= 180.0f) f -= 360.0f;
+        if (f < -180.0f) f += 360.0f;
+        return f;
+    }
+
+    private static double distanceToBox(Vec3d eye, Box box) {
+        double dx = MathHelper.clamp(eye.x, box.minX, box.maxX) - eye.x;
+        double dy = MathHelper.clamp(eye.y, box.minY, box.maxY) - eye.y;
+        double dz = MathHelper.clamp(eye.z, box.minZ, box.maxZ) - eye.z;
+        return Math.sqrt(dx * dx + dy * dy + dz * dz);
+    }
+
+    private static boolean isVisible(Vec3d eye, Vec3d point, LivingEntity actor) {
+        HitResult hit = RaytraceUtil.raycast(eye, point, RaycastContext.ShapeType.COLLIDER, actor);
+        return hit == null || hit.getType() == HitResult.Type.MISS;
     }
 }

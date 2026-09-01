@@ -1,6 +1,7 @@
 package tech.onetap.module.list.combat;
 
 import meteordevelopment.orbit.EventHandler;
+import net.minecraft.enchantment.Enchantment;
 import net.minecraft.enchantment.EnchantmentHelper;
 import net.minecraft.enchantment.Enchantments;
 import net.minecraft.entity.EquipmentSlot;
@@ -8,6 +9,8 @@ import net.minecraft.entity.LivingEntity;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
 import net.minecraft.registry.RegistryKeys;
+import net.minecraft.registry.RegistryKey;
+import net.minecraft.registry.entry.RegistryEntry;
 import tech.onetap.Onetap;
 import tech.onetap.event.list.EventTick;
 import tech.onetap.module.Module;
@@ -83,15 +86,9 @@ public class AutoMace extends Module {
         int bestSlot = -1;
         int bestPriorityLevel = -1;
 
-        var density = mc.world.getRegistryManager()
-                .getOptional(RegistryKeys.ENCHANTMENT).get()
-                .getEntry(Enchantments.DENSITY.getValue()).orElseThrow();
-        var breach = mc.world.getRegistryManager()
-                .getOptional(RegistryKeys.ENCHANTMENT).get()
-                .getEntry(Enchantments.BREACH.getValue()).orElseThrow();
-        var windBurst = mc.world.getRegistryManager()
-                .getOptional(RegistryKeys.ENCHANTMENT).get()
-                .getEntry(Enchantments.WIND_BURST.getValue()).orElseThrow();
+        var density = enchantment(Enchantments.DENSITY);
+        var breach = enchantment(Enchantments.BREACH);
+        var windBurst = enchantment(Enchantments.WIND_BURST);
 
         for (int slot = 0; slot < 9; slot++) {
             ItemStack stack = mc.player.getInventory().getStack(slot);
@@ -102,9 +99,9 @@ public class AutoMace extends Module {
 
             int level = 0;
             switch (macePriority.getValue()) {
-                case "Плотность" -> level = EnchantmentHelper.getLevel(density, stack);
-                case "Пробитие" -> level = EnchantmentHelper.getLevel(breach, stack);
-                case "Ветер" -> level = EnchantmentHelper.getLevel(windBurst, stack);
+                case "Плотность" -> level = density != null ? EnchantmentHelper.getLevel(density, stack) : 0;
+                case "Пробитие" -> level = breach != null ? EnchantmentHelper.getLevel(breach, stack) : 0;
+                case "Ветер" -> level = windBurst != null ? EnchantmentHelper.getLevel(windBurst, stack) : 0;
             }
 
             if (level > bestPriorityLevel) {
@@ -115,6 +112,13 @@ public class AutoMace extends Module {
 
         if (macePriority.is("Нет")) return firstMaceSlot;
         return bestSlot != -1 ? bestSlot : firstMaceSlot;
+    }
+
+    private RegistryEntry<Enchantment> enchantment(RegistryKey<Enchantment> key) {
+        return mc.world.getRegistryManager()
+                .getOptional(RegistryKeys.ENCHANTMENT)
+                .flatMap(registry -> registry.getEntry(key.getValue()))
+                .orElse(null);
     }
 
     private void swapElytraForAutoMace() {

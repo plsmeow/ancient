@@ -67,19 +67,19 @@ public class AiRecord extends Module {
     public void onTick(EventTick event) {
         if (!AIRotationRecorder.isRecording()) return;
 
-        int samples = AIRotationRecorder.getSampleCount();
+        long samples = AIRotationRecorder.getRowCount();
         int interval = (int) chatInterval.getValue();
 
         if (samples > 0 && samples != lastChatSamples && samples % interval == 0) {
-            lastChatSamples = samples;
-            ChatUtil.send("§eСэмплов: §f" + samples);
+            lastChatSamples = (int) samples;
+            ChatUtil.send("§eТиков записано: §f" + samples);
         }
     }
 
     @Override
     public void onDisable() {
-        int samples = AIRotationRecorder.stopRecording();
-        ChatUtil.send("§eЗапись остановлена, сэмплов: §f" + samples);
+        long samples = AIRotationRecorder.stopRecording();
+        ChatUtil.send("§eЗапись остановлена, тиков: §f" + samples);
 
         if (recorderInstance != null) {
             Onetap.getInstance().getEventBus().unsubscribe(recorderInstance);
@@ -101,25 +101,18 @@ public class AiRecord extends Module {
     }
 
     /**
-     * Отчёт по балансу датасета (§27) — чтобы не получить 90% неподвижной цели.
+     * Отчёт по полезности записи: доля тиков с целью (эпизоды для тренера).
      */
-    private void reportBalance(int samples) {
+    private void reportBalance(long samples) {
         if (samples == 0) return;
 
-        var balance = AIRotationRecorder.getBalance();
-        int moving = balance.getMovingTarget();
-        int stationary = balance.getStationaryTarget();
-        int total = moving + stationary;
+        long clean = AIRotationRecorder.getCleanCount();
+        int percent = (int) (clean * 100 / samples);
+        ChatUtil.send("§7Чистых тиков (с целью): §f" + clean + "§7/§f" + samples
+                + " §7(§f" + percent + "%§7)");
 
-        if (total == 0) return;
-
-        int movingPercent = moving * 100 / total;
-        ChatUtil.send("§7Баланс: движ. цель §f" + movingPercent + "%§7, близко §f"
-                + balance.getCloseDistance() + "§7 / средне §f" + balance.getMediumDistance()
-                + "§7 / далеко §f" + balance.getLongDistance());
-
-        if (movingPercent < 20) {
-            ChatUtil.send("§eМало движущихся целей — модель будет плохо вести подвижного противника");
+        if (samples < 256) {
+            ChatUtil.send("§eСтрок мало — модель обучится плохо. Запишите больше боёв");
         }
     }
 }

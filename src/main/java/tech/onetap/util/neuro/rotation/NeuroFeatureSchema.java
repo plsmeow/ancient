@@ -1,69 +1,73 @@
 package tech.onetap.util.neuro.rotation;
 
 /**
- * Схема фич для Neuro Rotation v3.
- * Всего 39 фич × 8 временных шагов = 312 входов.
+ * Схема Neuro Rotation v4 — контракт с тренером train_neuro.py.
  *
- * v3: добавлены кинематические фичи в стиле mlsac (TickData) —
- * accel/jerk поворота и GCD-error дельт относительно моды делителя.
+ * Датасет хранит RAW-состояние тика (21 колонка CSV), фичи выводятся
+ * из него формулами NeuroFeatureCollector.computeFeatures — те же формулы
+ * зашиты в тренер (compute_features), поэтому схема фич меняется без
+ * перезаписи датасетов.
+ *
+ * Модель: TCN + MDN. Вход — 16 фич × 16 тиков = 256, нормализация зашита
+ * ВНУТРИ графа ONNX. Выход — заголовок [VERSION, K, H, WINDOW, FEATURES],
+ * затем смеси распределений pi(K) / mu(K*H*2) / log_sigma(K*H*2).
  */
 public final class NeuroFeatureSchema {
 
-    public static final int SCHEMA_VERSION = 3;
-    public static final int FEATURE_COUNT = 39;
-    public static final int SEQ_LEN = 8;
-    public static final int OUTPUT_SIZE = 2;
+    public static final int SCHEMA_VERSION = 4;
+    public static final int FEATURE_COUNT = 16;
+    public static final int SEQ_LEN = 16;
+    public static final int HORIZON = 4;
+    public static final int MDN_K = 7;
+    public static final int OUTPUT_SIZE = 5 + MDN_K * (1 + 4 * HORIZON);
 
-    // Player (9 features)
-    public static final int PLAYER_VEL_X = 0;
-    public static final int PLAYER_VEL_Y = 1;
-    public static final int PLAYER_VEL_Z = 2;
-    public static final int PLAYER_FORWARD_INPUT = 3;
-    public static final int PLAYER_SIDEWAYS_INPUT = 4;
-    public static final int PLAYER_ON_GROUND = 5;
-    public static final int PLAYER_SPRINTING = 6;
-    public static final int PLAYER_SNEAKING = 7;
-    public static final int PLAYER_FALL_DISTANCE = 8;
+    /** Разброс меток при обучении — столько же позволяет модель на выходе. */
+    public static final float LABEL_CLIP_DEG = 25.0f;
 
-    // Target (10 features) — в yaw-фрейме игрока
-    public static final int TARGET_REL_X = 9;
-    public static final int TARGET_REL_Y = 10;
-    public static final int TARGET_REL_Z = 11;
-    public static final int TARGET_VEL_X = 12;
-    public static final int TARGET_VEL_Y = 13;
-    public static final int TARGET_VEL_Z = 14;
-    public static final int TARGET_DISTANCE = 15;
-    public static final int TARGET_WIDTH = 16;
-    public static final int TARGET_HEIGHT = 17;
-    public static final int TARGET_ON_GROUND = 18;
+    // Фичи (порядок совпадает с compute_features в train_neuro.py)
+    public static final int F_DYAW = 0;
+    public static final int F_DPITCH = 1;
+    public static final int F_ERR_YAW = 2;
+    public static final int F_ERR_PITCH = 3;
+    public static final int F_HALF_YAW = 4;
+    public static final int F_HALF_PITCH = 5;
+    public static final int F_DIST = 6;
+    public static final int F_PITCH = 7;
+    public static final int F_HAS = 8;
+    public static final int F_VIS = 9;
+    public static final int F_ON = 10;
+    public static final int F_ATK = 11;
+    public static final int F_GROUND = 12;
+    public static final int F_SPRINT = 13;
+    public static final int F_HP = 14;
+    public static final int F_BH = 15;
 
-    // Rotation (4 features)
-    public static final int PREV_DELTA_YAW = 19;
-    public static final int PREV_DELTA_PITCH = 20;
-    public static final int TARGET_DELTA_YAW = 21;
-    public static final int TARGET_DELTA_PITCH = 22;
+    // Колонки RAW-строки CSV (тот же порядок, что COLUMNS в тренере)
+    public static final int RAW_COLUMN_COUNT = 21;
+    public static final int R_T = 0;
+    public static final int R_GCD = 1;
+    public static final int R_CLEAN = 2;
+    public static final int R_YAW = 3;
+    public static final int R_PITCH = 4;
+    public static final int R_DYAW = 5;
+    public static final int R_DPITCH = 6;
+    public static final int R_HAS = 7;
+    public static final int R_TID = 8;
+    public static final int R_RX = 9;
+    public static final int R_RY = 10;
+    public static final int R_RZ = 11;
+    public static final int R_BW = 12;
+    public static final int R_BH = 13;
+    public static final int R_DIST = 14;
+    public static final int R_VIS = 15;
+    public static final int R_ON = 16;
+    public static final int R_ATK = 17;
+    public static final int R_HP = 18;
+    public static final int R_GROUND = 19;
+    public static final int R_SPRINT = 20;
 
-    // Aim point (6 features) — нормализованное пространство хитбокса
-    public static final int AIM_X = 23;
-    public static final int AIM_Y = 24;
-    public static final int AIM_Z = 25;
-    public static final int AIM_VEL_X = 26;
-    public static final int AIM_VEL_Y = 27;
-    public static final int AIM_VEL_Z = 28;
-
-    // Environment (4 features)
-    public static final int LINE_OF_SIGHT = 29;
-    public static final int TARGET_VISIBLE = 30;
-    public static final int TARGET_CHANGED = 31;
-    public static final int ATTACK_COOLDOWN = 32;
-
-    // Rotation kinematics (6 features) — аналог TickData из mlsac
-    public static final int ACCEL_YAW = 33;
-    public static final int ACCEL_PITCH = 34;
-    public static final int JERK_YAW = 35;
-    public static final int JERK_PITCH = 36;
-    public static final int GCD_ERROR_YAW = 37;
-    public static final int GCD_ERROR_PITCH = 38;
+    public static final String CSV_HEADER =
+            "t,gcd,clean,yaw,pitch,dyaw,dpitch,has,tid,rx,ry,rz,bw,bh,dist,vis,on,atk,hp,ground,sprint";
 
     private NeuroFeatureSchema() {
     }

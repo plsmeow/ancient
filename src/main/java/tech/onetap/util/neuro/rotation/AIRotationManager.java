@@ -19,7 +19,8 @@ import java.util.concurrent.atomic.AtomicReference;
 /**
  * Управление датасетами и активной моделью.
  *
- * Обучение вынесено во внешний Python (tools/neuro/train.py) — здесь только
+ * Датасет — RAW-CSV (формат train_neuro.py), обучение — внешний Python
+ * (train_neuro.py распаковывается из jar в .options/ai/neuro). Здесь только
  * запись датасетов и загрузка готовых ONNX-моделей.
  *
  * Активная модель живёт в AtomicReference: загрузчик собирает ActiveModel целиком
@@ -81,26 +82,19 @@ public final class AIRotationManager implements IMinecraft {
     // ------------------------------------------------------------------
 
     public static void saveDataset(String name) {
-        List<TrainingSample> samples = AIRotationRecorder.getSamples();
-        if (samples.isEmpty()) {
+        List<float[]> rows = AIRotationRecorder.getRows();
+        if (rows.isEmpty()) {
             ChatUtil.send("§cНет данных для сохранения! Включите модуль Ai Record для записи");
             return;
         }
 
         try {
-            Path datasetPath = DATASETS_DIR.resolve(name + ".jsonl");
-            Path metaPath = DATASETS_DIR.resolve(name + ".meta.json");
+            Path datasetPath = DATASETS_DIR.resolve(name + ".csv");
+            int written = NeuroDatasetCsv.write(datasetPath, rows);
 
-            int written = DatasetWriter.write(
-                    datasetPath,
-                    metaPath,
-                    name,
-                    AIRotationRecorder.getMode().name().toLowerCase(),
-                    samples,
-                    AIRotationRecorder.getBalance()
-            );
-
-            ChatUtil.send("§aДатасет §e" + name + " §aсохранен (§f" + written + " §aсэмплов)");
+            long clean = AIRotationRecorder.getCleanCount();
+            ChatUtil.send("§aДатасет §e" + name + " §aсохранен (§f" + written + " §aтиков, §f"
+                    + clean + " §aчистых)");
             ChatUtil.send("§7Путь: §f" + datasetPath.toAbsolutePath());
         } catch (IOException e) {
             ChatUtil.send("§cОшибка сохранения датасета: " + e.getMessage());
@@ -109,22 +103,19 @@ public final class AIRotationManager implements IMinecraft {
     }
 
     /**
-     * Сохраняет дамп чужих ротаций (.ai dump). Сэмплы приходят из
-     * RotationDumpRecorder, а не из Ai Record.
+     * Сохраняет дамп чужих ротаций. Строки приходят из RotationDumpRecorder.
      */
-    public static void saveDumpDataset(String name, List<TrainingSample> samples, DatasetBalance balance) {
-        if (samples == null || samples.isEmpty()) {
+    public static void saveDumpDataset(String name, List<float[]> rows) {
+        if (rows == null || rows.isEmpty()) {
             ChatUtil.send("§cНет данных для сохранения!");
             return;
         }
 
         try {
-            Path datasetPath = DATASETS_DIR.resolve(name + ".jsonl");
-            Path metaPath = DATASETS_DIR.resolve(name + ".meta.json");
+            Path datasetPath = DATASETS_DIR.resolve(name + ".csv");
+            int written = NeuroDatasetCsv.write(datasetPath, rows);
 
-            int written = DatasetWriter.write(datasetPath, metaPath, name, "dump", samples, balance);
-
-            ChatUtil.send("§aДатасет §e" + name + " §aсохранен (§f" + written + " §aсэмплов)");
+            ChatUtil.send("§aДатасет §e" + name + " §aсохранен (§f" + written + " §aтиков)");
             ChatUtil.send("§7Путь: §f" + datasetPath.toAbsolutePath());
         } catch (IOException e) {
             ChatUtil.send("§cОшибка сохранения дампа: " + e.getMessage());
@@ -153,7 +144,7 @@ public final class AIRotationManager implements IMinecraft {
 
         if (!Files.exists(metaPath)) {
             ChatUtil.send("§cУ модели §e" + modelName + " §cнет meta.json — загрузка отклонена");
-            ChatUtil.send("§7Модель обучена старой версией. Переобучите через tools/neuro/train.py");
+            ChatUtil.send("§7Модель обучена старой версией. Переобучите через .ai train");
             return;
         }
 
@@ -181,8 +172,7 @@ public final class AIRotationManager implements IMinecraft {
         ActiveModel newModel;
         try {
             InferenceEngine engine = new InferenceEngine(onnxPath, meta.getSeqLen(), meta.getFeatureCount());
-            FeatureNormalizer normalizer = new FeatureNormalizer(meta.getMean(), meta.getStd());
-            newModel = new ActiveModel(modelName, meta, normalizer, engine);
+            newModel = new ActiveModel(modelName, meta, engine);
         } catch (Throwable t) {
             ChatUtil.send("§cОшибка загрузки модели: " + t.getMessage());
             ;
@@ -228,7 +218,7 @@ public final class AIRotationManager implements IMinecraft {
 
     private static void listDatasets() {
         File[] datasets = DATASETS_DIR.toFile().listFiles(
-                (dir, name) -> name.endsWith(".jsonl") || (name.endsWith(".json") && !name.endsWith(".meta.json"))
+                (dir, name) -> name.endsWith(".csv") || name.endsWith(".jsonl")
         );
 
         if (datasets == null || datasets.length == 0) {
@@ -243,29 +233,18 @@ public final class AIRotationManager implements IMinecraft {
         for (File dataset : sorted) {
             String fileName = dataset.getName();
 
-            // Старый формат .json без .jsonl — датасет v1
-            if (fileName.endsWith(".json")) {
-                String name = fileName.substring(0, fileName.length() - ".json".length());
-                ChatUtil.send("  §7- §f" + name + " §c(v1, несовместим)");
+            if (fileName.endsWith(".jsonl")) {
+                ChatUtil.send("  §7- §f" + fileName + " §c(старый формат, несовместим)");
                 continue;
             }
 
-            String name = fileName.substring(0, fileName.length() - ".jsonl".length());
-            Path metaPath = DATASETS_DIR.resolve(name + ".meta.json");
-            DatasetWriter.DatasetMeta meta = DatasetWriter.readMeta(metaPath);
-
-            if (meta == null) {
-                ChatUtil.send("  §7- §f" + name + " §e(нет меты)");
-                continue;
+            long rows = NeuroDatasetCsv.countRows(dataset.toPath());
+            String name = fileName.substring(0, fileName.length() - ".csv".length());
+            if (rows < 0) {
+                ChatUtil.send("  §7- §f" + name + " §e(не читается)");
+            } else {
+                ChatUtil.send("  §7- §f" + name + " §7| тиков: §f" + rows);
             }
-
-            if (meta.schemaVersion() < NeuroFeatureSchema.SCHEMA_VERSION) {
-                ChatUtil.send("  §7- §f" + name + " §c(v" + meta.schemaVersion() + ", несовместим)");
-                continue;
-            }
-
-            ChatUtil.send("  §7- §f" + name + " §7| сэмплов: §f" + meta.samples()
-                    + " §7| источник: §f" + meta.source());
         }
     }
 
@@ -274,7 +253,7 @@ public final class AIRotationManager implements IMinecraft {
 
         if (models == null || models.length == 0) {
             ChatUtil.send("§7Модели: §cнет");
-            ChatUtil.send("§7Обучите модель: §fpython tools/neuro/train.py --dataset <ds> --out <name>");
+            ChatUtil.send("§7Обучите модель: §f.ai train <датасет>");
             return;
         }
 
@@ -359,7 +338,7 @@ public final class AIRotationManager implements IMinecraft {
             Desktop.getDesktop().open(AI_DIR.toFile());
             ChatUtil.send("§aПапка AI открыта");
         } catch (IOException e) {
-            ChatUtil.send("§cОшибка открытия папки: " + e.getMessage());
+            ChatUtil.send("§cОшибка открытия папки AI: " + e.getMessage());
             ChatUtil.send("§7Путь: §f" + AI_DIR.toAbsolutePath());
         }
     }

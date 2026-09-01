@@ -54,7 +54,7 @@ public class LonyGriefRotation extends RotationMode {
         newPitch -= (newPitch - ka.lastPitch) % gcdValue;
 
         var smoothRot = new Rotation(newYaw, newPitch);
-        RotationComponent.update(smoothRot, 360, 360, 360, 360, 0, 1, ka.clientLook.getValue(), ka.getMoveFixMode());
+        RotationComponent.update(smoothRot, 360, 360, 360, 360, 0, 1, ka.clientLook.getValue(), ka.getMoveFixMode(), ka.otvodkaActive());
 
         ka.lastYaw = smoothRot.getYaw();
         ka.lastPitch = smoothRot.getPitch();

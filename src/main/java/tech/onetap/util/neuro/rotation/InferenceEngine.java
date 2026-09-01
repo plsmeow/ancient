@@ -46,7 +46,7 @@ public class InferenceEngine implements Closeable {
 
         this.seqLen = seqLen;
         this.featureCount = featureCount;
-        this.inputShape = new long[]{1, seqLen, featureCount};
+        this.inputShape = new long[]{1, seqLen * featureCount};
 
         this.inputBuffer = ByteBuffer
                 .allocateDirect(seqLen * featureCount * Float.BYTES)
@@ -70,19 +70,20 @@ public class InferenceEngine implements Closeable {
     }
 
     /**
-     * Inference по уже нормализованному плоскому входу (seqLen * featureCount).
-     * @return [deltaYaw, deltaPitch]
+     * Inference по плоскому входу фич (seqLen * featureCount), без внешней
+     * нормализации — она зашита в граф. Возвращает полный выход модели;
+     * раскодирование MDN — в {@link NeuroMdn#decode}.
      */
-    public float[] predict(float[] normalizedInput) throws OrtException {
+    public float[] predict(float[] features) throws OrtException {
         int expected = seqLen * featureCount;
-        if (normalizedInput.length != expected) {
+        if (features.length != expected) {
             throw new IllegalArgumentException(
-                    "Размер входа " + normalizedInput.length + ", ожидается " + expected
+                    "Размер входа " + features.length + ", ожидается " + expected
             );
         }
 
         inputBuffer.clear();
-        inputBuffer.put(normalizedInput);
+        inputBuffer.put(features);
         inputBuffer.flip();
 
         try (OnnxTensor inputTensor = OnnxTensor.createTensor(env, inputBuffer, inputShape)) {

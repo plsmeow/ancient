@@ -202,7 +202,8 @@ public class RotationHelper {
             rot, 360f, 360f, 360f, 360f,
             0, 1,
             ka.clientLook.getValue(),
-            ka.getMoveFixMode()
+            ka.getMoveFixMode(),
+            ka.otvodkaActive()
         );
     }
 }

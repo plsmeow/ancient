@@ -6,6 +6,9 @@ import lombok.Getter;
 /**
  * Метаданные модели. Читаются из meta.json при загрузке.
  * Используются для валидации совместимости.
+ *
+ * Нормализация (mean/std) зашита в граф ONNX — здесь она только
+ * информационная и может отсутствовать.
  */
 @Getter
 @AllArgsConstructor
@@ -31,9 +34,9 @@ public class NeuroModelMeta {
      * @return null если совместима, иначе сообщение об ошибке
      */
     public String checkCompatibility() {
-        if (schemaVersion < NeuroFeatureSchema.SCHEMA_VERSION) {
+        if (schemaVersion != NeuroFeatureSchema.SCHEMA_VERSION) {
             return String.format(
-                    "Модель schemaVersion=%d, требуется %d. Переобучите модель на новом датасете.",
+                    "Модель schemaVersion=%d, требуется %d. Переобучите модель на новом датасете (train_neuro.py).",
                     schemaVersion, NeuroFeatureSchema.SCHEMA_VERSION
             );
         }
@@ -54,12 +57,6 @@ public class NeuroModelMeta {
                     "Модель outputSize=%d, ожидается %d",
                     outputSize, NeuroFeatureSchema.OUTPUT_SIZE
             );
-        }
-        if (mean == null || mean.length != featureCount) {
-            return "Метаданные нормализации отсутствуют или повреждены";
-        }
-        if (std == null || std.length != featureCount) {
-            return "Метаданные нормализации отсутствуют или повреждены";
         }
         return null;
     }
