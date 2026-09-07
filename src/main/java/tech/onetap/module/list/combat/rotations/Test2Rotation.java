@@ -21,14 +21,24 @@ import tech.onetap.util.rotation.RotationComponent;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
- * Test: дубль {@link Test2Rotation} с гарантией попадания — та же
- * humanized-ротация с фазами и вертикальной доводкой (настройки общие
- * с Test2), но доводка стартует заранее, за пару тиков до окна удара,
- * а сам удар KillAura ждёт завершения доводки (гейт в canAttack по
- * {@link #isReadyForAttack()}): прицел успевает встать на цель к
- * моменту крита, удар не уходит мимо.
+ * Test2: имитация естественного ручного наведения.
+ *
+ * <p>Yaw — основное плавное движение к цели. Pitch наводится на
+ * промежуточную точку выше/ниже фактической точки попадания (approach
+ * point), а перед ударом отдельная фаза CORRECTION плавно доводит его к
+ * точке удара. После атаки — плавный RECOVERY к следующей ориентации,
+ * без мгновенного возврата.
+ *
+ * <p>Движение — контролируемая временная траектория (minimum-jerk +
+ * контур скорости/ускорения/демпфирования), а не «медленная ротация»
+ * с постоянной скоростью. Точный hit-point берётся из multipoint-точки
+ * с вертикальным фактором {@link TargetPointSelector}, стабильным в
+ * течение цикла.
+ *
+ * <p>Координатор: алгоритм разнесён по компонентам
+ * {@link tech.onetap.module.list.combat.rotations.test2}.
  */
-public class TestRotation extends RotationMode {
+public class Test2Rotation extends RotationMode {
 
     private final TargetPointSelector targetPointSelector = new TargetPointSelector();
     private final ApproachController approachController = new ApproachController();
@@ -123,12 +133,8 @@ public class TestRotation extends RotationMode {
         float approachPitch = approachController.approachPitch(actualPitch);
 
         double distBlocks = mc.player.getEyePos().distanceTo(BestPoint.getNearestPoint(target));
-        // Test: окно удара отслеживается с опережением — доводка начинает
-        // работать за пару тиков до реального открытия окна (canAttack
-        // требует ticksToAttack <= 0 и кулдаун 0.98), поэтому к моменту
-        // крита прицел уже стоит на цели
-        boolean attackImminent = ka.ticksToAttack <= 3
-                && mc.player.getAttackCooldownProgress(0.5f) >= 0.8f
+        boolean attackImminent = ka.ticksToAttack <= 0
+                && mc.player.getAttackCooldownProgress(0.5f) >= 0.9f
                 && distBlocks <= ka.distance.getValue() + 1.5;
         boolean attackFired = prevTicksToAttack <= 1 && ka.ticksToAttack >= 5;
 
@@ -174,10 +180,7 @@ public class TestRotation extends RotationMode {
                     // Окно закрылось (цель ушла/кулдаун сброшен) — без рывка назад
                     correctionController.deactivate();
                     phase = RotationState.Phase.SETTLE;
-                } else if (correctionController.isFinished() && pitchError < 1.2F
-                        && Math.abs(MathHelper.wrapDegrees(controller.getCurrentYaw() - actualYaw)) < 2.0F) {
-                    // Test: готовность к удару требует и yaw на цели —
-                    // фаза ATTACK означает «можно бить, попадём»
+                } else if (correctionController.isFinished() && pitchError < 1.2F) {
                     phase = RotationState.Phase.ATTACK;
                 }
             }

@@ -5,7 +5,9 @@ import lombok.Getter;
 import lombok.Setter;
 import lombok.experimental.Accessors;
 import net.minecraft.util.math.MathHelper;
-import tech.onetap.event.list.EventPlayerSync;
+import tech.onetap.event.EventGameUpdate;
+import tech.onetap.event.list.EventPlayerSyncEnd;
+import tech.onetap.event.list.EventPlayerUpdate;
 import tech.onetap.event.list.EventTick;
 import tech.onetap.event.list.EventWorldRender;
 import tech.onetap.event.list.MoveInputEvent;
@@ -29,31 +31,50 @@ public class RotationComponent extends Component {
     private int idleTicks;
     private Rotation targetRotation;
 
-    // Рампа плавного входа/возврата: пока она идёт, шаг ограничен растущим
-    // капом RAMP_MAX_SPEED * smoothstep, поэтому наведение на цель и отвод
-    // обратно к взгляду игрока идут плавно, а не одним кадром. По завершении
-    // рампы скорость снова полностью определяется запросом модуля.
-    private static final int RAMP_TICKS = 8;
-    private static final float RAMP_MAX_SPEED = 45.0F;
-    private int rampTicks;
-
-    // Бюджет доворота на текущий тик (в градусах). Ротация больше не шагает
-    // раз в тик: каждый кадр (EventWorldRender) из бюджета тратится доля,
-    // пропорциональная времени кадра, поэтому наведение обновляется с частотой
-    // кадров (сотни Гц), а не 20 Гц. Непотраченный остаток досыпается перед
-    // отправкой пакетов (EventPlayerSync), чтобы суммарная скорость за тик
-    // осталась ровно той, что запросил модуль.
+    // ─── Кадровое распределение доворота ───────────────────────────────────
+    //
+    // Бюджет доворота на тик выдаётся строго ПОСЛЕ отправки пакетов
+    // (EventPlayerSyncEnd). Кадры между отправками расходуют его долями,
+    // пропорциональными прошедшему времени (advanceSmoothRotation), поэтому
+    // и наведение, и отводка движутся с частотой кадров, а не раз в тик.
+    //
+    // Продвижение вызывается в начале кадра (EventGameUpdate — до тика и его
+    // движения) и на рендере; повторный вызов с тем же временем ничего не
+    // добавляет. EventPlayerUpdate досыпает непотраченный «хвост» тика
+    // (доли миллисекунды с последнего кадра), поэтому суммарный доворот за
+    // тик остаётся ровно тем, что запросил модуль, а ротация в пакете
+    // совпадает с ротацией, по которой считалось движение.
     private float yawBudget;
     private float pitchBudget;
-    private long lastFrameNanos = System.nanoTime();
+    private float yawBudgetTotal;
+    private float pitchBudgetTotal;
+    private float consumedFraction;
+    private long grantNanos;
+
+    // Модуль запрашивал наведение с прошлой выдачи бюджета. Пока запросы
+    // идут — бюджет продлевается; прекратились — ротация замирает и ждёт
+    // таймаута/отводки.
+    private boolean aimRequested;
+
+    // Рампа входа отводки: первые RAMP_TICKS тиков шаг ограничен растущим
+    // капом RAMP_MAX_SPEED * smoothstep — возврат начинается без рывка.
+    private static final int RAMP_TICKS = 5;
+    private static final float RAMP_MAX_SPEED = 45.0F;
+
+    // Форма торможения отводки: шаг за тик не больше этой доли оставшегося
+    // угла — хвост экспоненциально затухает, посадка во взгляд игрока
+    // плавная, без резкой остановки клампом.
+    private static final float RETURN_EASE = 0.75F;
+    private int rampTicks;
 
     // Текущий режим коррекции движения. Ставится модулем через update(),
-    // сбрасывается при остановке/завершении ротации.
+    // сбрасывается при завершении ротации.
     private MoveFixMode moveFixMode;
 
     // Плавная отводка (RESET): включается только тем, кто явно её запросил
-    // (ротации KillAura: Universal, Sloth, Wellmine old, LonyGrief, SpookyTime,
-    // Neuro при включённой настройке «Отводка»). Все остальные — мгновенный возврат.
+    // (ротации KillAura: Universal, SpookyTime, Test, Test2, Sloth 07.09.26,
+    // Wellmine old, LonyGrief, Neuro при включённой настройке «Плавная
+    // отводка»). Все остальные — мгновенный возврат.
     private boolean smoothReturn;
 
     public static double direction(float rotationYaw, final float moveForward, final float moveStrafing) {
@@ -138,30 +159,25 @@ public class RotationComponent extends Component {
                 && FreeLookComponent.interactionActive();
     }
 
-    private void resetRotation() {
-        float factor = advanceRamp();
-        yawBudget = rampedSpeed(currentYawReturnSpeed(), factor);
-        pitchBudget = rampedSpeed(currentPitchReturnSpeed(), factor);
-    }
-
     /** Мгновенный сброс: серверный поворот снапится на взгляд камеры. */
     private void instantReset() {
         if (mc.player != null) {
             mc.player.setYaw(FreeLookComponent.getFreeYaw());
             mc.player.setPitch(FreeLookComponent.getFreePitch());
         }
-        yawBudget = 0;
-        pitchBudget = 0;
+        clearBudgets();
         currentTask(RotationTask.IDLE);
         currentPriority(0);
         moveFixMode = null;
         FreeLookComponent.setActive(false);
     }
+
     @EventHandler
     public void onEvent(EventTick event) {
         if (currentTask().equals(RotationTask.AIM) && idleTicks() > currentTimeout()) {
             // Цель пропала — возвращаем взгляд: плавно (отводка) или мгновенно.
             rampTicks = 0;
+            clearBudgets();
             if (smoothReturn) {
                 currentTask(RotationTask.RESET);
             } else {
@@ -169,9 +185,6 @@ public class RotationComponent extends Component {
             }
         }
 
-        if (currentTask().equals(RotationTask.RESET)) {
-            resetRotation();
-        }
         idleTicks++;
     }
 
@@ -203,10 +216,14 @@ public class RotationComponent extends Component {
         // update() приходит каждый тик и рампа должна продолжать набираться.
         if (!instance.currentTask().equals(RotationTask.AIM)) {
             instance.rampTicks = 0;
+            // Свежий захват посреди тика: бюджет выдаём сразу, чтобы первый
+            // тик наведения не потерял движение до ближайшего EventPlayerSyncEnd
+            instance.grantBudgets(yawSpeed, pitchSpeed);
         }
         instance.currentTask(RotationTask.AIM);
         instance.targetRotation(target);
         instance.idleTicks(0);
+        instance.aimRequested(true);
 
         if (moveFixMode != null) {
             instance.moveFixMode(moveFixMode);
@@ -238,70 +255,143 @@ public class RotationComponent extends Component {
     }
 
     /**
-     * Захват цели на новый тик: бюджет доворота = скорость (с учётом рампы
-     * входа — первые RAMP_TICKS тиков она наращивается плавно). Если цель
-     * достижима за один тик (мгновенные режимы со скоростью 360), доворачиваем
-     * сразу; иначе остаток распределяется по кадрам в onWorldRender.
+     * Захват цели на новый тик. Если цель достижима за один тик (мгновенные
+     * режимы со скоростью 360), доворачиваем сразу — к моменту тика и удара
+     * ротация уже на цели. Иначе движение идёт по кадровому бюджету из
+     * grantBudgets: модуль запросил скорость — столько за тик и выйдет.
      */
     private void beginAim(Rotation target, float yawSpeed, float pitchSpeed) {
-        float factor = advanceRamp();
-        yawBudget = rampedSpeed(yawSpeed, factor);
-        pitchBudget = rampedSpeed(pitchSpeed, factor);
-
         if (mc.player == null) return;
+
+        float factor = advanceRamp();
+        float yawAllowance = rampedSpeed(yawSpeed, factor);
+        float pitchAllowance = rampedSpeed(pitchSpeed, factor);
 
         Rotation currentRotation = new Rotation(mc.player);
         float yawDelta = Math.abs(MathHelper.wrapDegrees(target.getYaw() - currentRotation.getYaw()));
         float pitchDelta = Math.abs(target.getPitch() - currentRotation.getPitch());
 
-        if (yawDelta <= yawBudget && pitchDelta <= pitchBudget) {
-            yawBudget = 0;
-            pitchBudget = 0;
+        if (yawDelta <= yawAllowance && pitchDelta <= pitchAllowance) {
+            clearBudgets();
             updateRotation(target, yawDelta, pitchDelta);
         }
     }
 
+    /**
+     * Выдача бюджета доворота на следующий тик — сразу после отправки
+     * пакетов: до следующей отправки его целиком съедят кадры.
+     */
     @EventHandler
-    public void onWorldRender(EventWorldRender event) {
-        long now = System.nanoTime();
-        float frameTicks = Math.min((now - lastFrameNanos) / 50_000_000.0F, 1.0F);
-        lastFrameNanos = now;
-
+    public void onEvent(EventPlayerSyncEnd event) {
         if (!isRotating() || mc.player == null) return;
 
-        boolean aim = currentTask().equals(RotationTask.AIM);
-        float yawSpeed = aim ? currentYawSpeed() : currentYawReturnSpeed();
-        float pitchSpeed = aim ? currentPitchSpeed() : currentPitchReturnSpeed();
-        float yawStep = Math.min(yawSpeed * frameTicks, Math.max(yawBudget, 0.0F));
-        float pitchStep = Math.min(pitchSpeed * frameTicks, Math.max(pitchBudget, 0.0F));
+        if (currentTask().equals(RotationTask.AIM)) {
+            if (aimRequested) {
+                grantBudgets(currentYawSpeed(), currentPitchSpeed());
+            } else {
+                // Модуль перестал запрашивать наведение — замираем до отводки
+                clearBudgets();
+            }
+            aimRequested(false);
+        } else {
+            // Отводка: рампа разгона + торможение у цели — за тик не больше
+            // RETURN_EASE-доли оставшегося угла.
+            Rotation free = new Rotation(FreeLookComponent.getFreeYaw(), FreeLookComponent.getFreePitch());
+            Rotation current = new Rotation(mc.player);
+            if (current.getDelta(free) < 1.0F) {
+                finishResetIfDone(true);
+                return;
+            }
+
+            float factor = advanceRamp();
+            float yawRemain = Math.abs(MathHelper.wrapDegrees(free.getYaw() - current.getYaw()));
+            float pitchRemain = Math.abs(free.getPitch() - current.getPitch());
+            grantBudgets(
+                    Math.min(rampedSpeed(currentYawReturnSpeed(), factor), yawRemain * RETURN_EASE),
+                    Math.min(rampedSpeed(currentPitchReturnSpeed(), factor), pitchRemain * RETURN_EASE));
+        }
+    }
+
+    /**
+     * Продвигает доворот до текущего момента: между отправками пакетов бюджет
+     * расходуется пропорционально прошедшему времени. Вызывается и в начале
+     * кадра (EventGameUpdate — до тика и его движения), и на рендере.
+     */
+    private void advanceSmoothRotation() {
+        if (!isRotating() || mc.player == null) return;
+        if (yawBudget <= 0 && pitchBudget <= 0) return;
+
+        float fraction = Math.min((System.nanoTime() - grantNanos) / 50_000_000.0F, 1.0F);
+        if (fraction <= consumedFraction) return;
+
+        float share = fraction - consumedFraction;
+        consumedFraction = fraction;
+
+        float yawStep = Math.min(yawBudgetTotal * share, Math.max(yawBudget, 0.0F));
+        float pitchStep = Math.min(pitchBudgetTotal * share, Math.max(pitchBudget, 0.0F));
+        yawBudget = Math.max(yawBudget - yawStep, 0.0F);
+        pitchBudget = Math.max(pitchBudget - pitchStep, 0.0F);
         if (yawStep <= 0 && pitchStep <= 0) return;
 
-        yawBudget -= yawStep;
-        pitchBudget -= pitchStep;
-
-        Rotation target = aim ? targetRotation() : new Rotation(FreeLookComponent.getFreeYaw(), FreeLookComponent.getFreePitch());
+        Rotation target = currentTask().equals(RotationTask.AIM)
+                ? targetRotation()
+                : new Rotation(FreeLookComponent.getFreeYaw(), FreeLookComponent.getFreePitch());
         finishResetIfDone(updateRotation(target, yawStep, pitchStep));
     }
 
     @EventHandler
-    public void onEvent(EventPlayerSync event) {
-        // Страховка: перед отправкой пакетов досыпаем непотраченный остаток
-        // бюджета, чтобы за тик суммарный доворот совпадал со старым поведением.
+    public void onEvent(EventGameUpdate event) {
+        advanceSmoothRotation();
+    }
+
+    @EventHandler
+    public void onWorldRender(EventWorldRender event) {
+        advanceSmoothRotation();
+    }
+
+    @EventHandler
+    public void onEvent(EventPlayerUpdate event) {
+        // Страховка: в начале тика игрока досыпаем непотраченный «хвост»
+        // бюджета — доли миллисекунды с последнего кадра. Именно здесь, а не
+        // перед отправкой пакетов: к этому моменту ещё не считались ни ввод
+        // (MoveFix), ни движение тика, поэтому коррекция, физика движения и
+        // пакет видят один и тот же yaw — рассинхрона для симуляции античита
+        // нет. Суммарный доворот за тик по-прежнему равен запросу модуля.
         if (!isRotating() || mc.player == null) return;
         if (yawBudget <= 0 && pitchBudget <= 0) return;
 
-        boolean aim = currentTask().equals(RotationTask.AIM);
         float yawStep = Math.max(yawBudget, 0.0F);
         float pitchStep = Math.max(pitchBudget, 0.0F);
+        clearBudgets();
+
+        Rotation target = currentTask().equals(RotationTask.AIM)
+                ? targetRotation()
+                : new Rotation(FreeLookComponent.getFreeYaw(), FreeLookComponent.getFreePitch());
+        finishResetIfDone(updateRotation(target, yawStep, pitchStep));
+    }
+
+    private void grantBudgets(float yaw, float pitch) {
+        yawBudget = Math.max(yaw, 0.0F);
+        pitchBudget = Math.max(pitch, 0.0F);
+        yawBudgetTotal = yawBudget;
+        pitchBudgetTotal = pitchBudget;
+        consumedFraction = 0.0F;
+        grantNanos = System.nanoTime();
+    }
+
+    private void clearBudgets() {
         yawBudget = 0;
         pitchBudget = 0;
-
-        Rotation target = aim ? targetRotation() : new Rotation(FreeLookComponent.getFreeYaw(), FreeLookComponent.getFreePitch());
-        finishResetIfDone(updateRotation(target, yawStep, pitchStep));
+        yawBudgetTotal = 0;
+        pitchBudgetTotal = 0;
     }
 
     private void finishResetIfDone(boolean done) {
         if (done && currentTask().equals(RotationTask.RESET)) {
+            // Дотягиваем остаток до свободного взгляда: после выключения
+            // FreeLook камера не должна прыгать на недолетевшие доли градуса.
+            updateRotation(new Rotation(FreeLookComponent.getFreeYaw(), FreeLookComponent.getFreePitch()), 360.0F, 360.0F);
+            clearBudgets();
             currentTask(RotationTask.IDLE);
             currentPriority(0);
             moveFixMode = null;
@@ -342,13 +432,15 @@ public class RotationComponent extends Component {
     }
 
     public void stopRotation() {
-        moveFixMode = null;
         // Плавная отводка — только для opt-in (KillAura с включённой «Отводкой»),
         // остальные модули возвращают взгляд мгновенно.
         if (smoothReturn && FreeLookComponent.isActive() && mc.player != null) {
             if (currentYawReturnSpeed() <= 0) currentYawReturnSpeed(180);
             if (currentPitchReturnSpeed() <= 0) currentPitchReturnSpeed(180);
             rampTicks = 0;
+            clearBudgets();
+            // MoveFix живёт всю отводку и гасится только при её завершении:
+            // траектория держится по взгляду игрока, пока тело доворачивается.
             currentTask(RotationTask.RESET);
         } else {
             instantReset();

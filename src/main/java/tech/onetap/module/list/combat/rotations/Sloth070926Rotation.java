@@ -21,14 +21,32 @@ import tech.onetap.util.rotation.RotationComponent;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
- * Test: дубль {@link Test2Rotation} с гарантией попадания — та же
- * humanized-ротация с фазами и вертикальной доводкой (настройки общие
- * с Test2), но доводка стартует заранее, за пару тиков до окна удара,
- * а сам удар KillAura ждёт завершения доводки (гейт в canAttack по
- * {@link #isReadyForAttack()}): прицел успевает встать на цель к
- * моменту крита, удар не уходит мимо.
+ * Sloth 07.09.26: замороженная копия {@link Test2Rotation} — та же
+ * humanized-ротация с фазами и вертикальной доводкой, но без собственных
+ * настроек: параметры Test2 захардкожены (снимок значений от 07.09.26).
+ * Общие настройки KillAura (дистанция, предикт, MoveFix, отводка и т.д.)
+ * действуют как обычно.
  */
-public class TestRotation extends RotationMode {
+public class Sloth070926Rotation extends RotationMode {
+
+    // Снимок настроек Test2 от 07.09.26 — режим заморожен, значения не менять
+    private static final float OFFSET_MIN = 15.0F;
+    private static final float OFFSET_MAX = 25.0F;
+    private static final float APPROACH_SPEED = 485.0F;
+    private static final float CORRECTION_SPEED = 580.0F;
+    private static final float MIN_DURATION = 0.15F;
+    private static final float MAX_DURATION = 0.35F;
+    private static final float YAW_ACCEL = 13.5F;
+    private static final float PITCH_ACCEL = 2.5F;
+    private static final float DAMPING_YAW = 0.95F;
+    private static final float DAMPING_PITCH = 0.95F;
+    private static final float MICRO_AMP = 0.14F;
+    private static final float MICRO_FREQ = 5.0F;
+    private static final float OVERSHOOT_STRENGTH = 0.4F;
+    private static final float OVERSHOOT_CHANCE = 0.98F;
+    private static final boolean DYNAMIC_SPEED = false;
+    private static final boolean DYNAMIC_DURATION = true;
+    private static final TargetPointSelector.Mode TARGET_POINT = TargetPointSelector.Mode.ABOVE_CENTER;
 
     private final TargetPointSelector targetPointSelector = new TargetPointSelector();
     private final ApproachController approachController = new ApproachController();
@@ -123,12 +141,8 @@ public class TestRotation extends RotationMode {
         float approachPitch = approachController.approachPitch(actualPitch);
 
         double distBlocks = mc.player.getEyePos().distanceTo(BestPoint.getNearestPoint(target));
-        // Test: окно удара отслеживается с опережением — доводка начинает
-        // работать за пару тиков до реального открытия окна (canAttack
-        // требует ticksToAttack <= 0 и кулдаун 0.98), поэтому к моменту
-        // крита прицел уже стоит на цели
-        boolean attackImminent = ka.ticksToAttack <= 3
-                && mc.player.getAttackCooldownProgress(0.5f) >= 0.8f
+        boolean attackImminent = ka.ticksToAttack <= 0
+                && mc.player.getAttackCooldownProgress(0.5f) >= 0.9f
                 && distBlocks <= ka.distance.getValue() + 1.5;
         boolean attackFired = prevTicksToAttack <= 1 && ka.ticksToAttack >= 5;
 
@@ -153,8 +167,8 @@ public class TestRotation extends RotationMode {
                     // Зависящий от скорости overshoot: только при быстром
                     // входе и с шансом — не фиксированный каждый цикл
                     float entrySpeed = Math.abs(controller.getVelocityPitch());
-                    if (entrySpeed > 25.0F && r.nextFloat() < ka.test2OvershootChance.getFloatValue()) {
-                        controller.scaleVelocity(1.0F + ka.test2OvershootStrength.getFloatValue() * 0.6F);
+                    if (entrySpeed > 25.0F && r.nextFloat() < OVERSHOOT_CHANCE) {
+                        controller.scaleVelocity(1.0F + OVERSHOOT_STRENGTH * 0.6F);
                     }
                     phase = RotationState.Phase.SETTLE;
                 }
@@ -163,7 +177,7 @@ public class TestRotation extends RotationMode {
                 // Ожидание окна атаки; при его открытии — доводка
                 if (attackImminent) {
                     correctionController.begin(controller.getCurrentPitch(), actualPitch,
-                            ka.test2CorrectionSpeed.getFloatValue());
+                            CORRECTION_SPEED);
                     phase = RotationState.Phase.CORRECTION;
                 }
             }
@@ -174,10 +188,7 @@ public class TestRotation extends RotationMode {
                     // Окно закрылось (цель ушла/кулдаун сброшен) — без рывка назад
                     correctionController.deactivate();
                     phase = RotationState.Phase.SETTLE;
-                } else if (correctionController.isFinished() && pitchError < 1.2F
-                        && Math.abs(MathHelper.wrapDegrees(controller.getCurrentYaw() - actualYaw)) < 2.0F) {
-                    // Test: готовность к удару требует и yaw на цели —
-                    // фаза ATTACK означает «можно бить, попадём»
+                } else if (correctionController.isFinished() && pitchError < 1.2F) {
                     phase = RotationState.Phase.ATTACK;
                 }
             }
@@ -194,12 +205,12 @@ public class TestRotation extends RotationMode {
         float pitchTarget;
         HumanizedRotationController.Params params;
         float elytraScale = mc.player.isGliding() ? 0.45F : 1.0F;
-        float approachMax = ka.test2ApproachSpeed.getFloatValue() * cycleMaxSpeedScale * elytraScale;
-        float correctionMax = ka.test2CorrectionSpeed.getFloatValue() * elytraScale;
-        float yawAccel = ka.test2YawAccel.getFloatValue();
-        float pitchAccel = ka.test2PitchAccel.getFloatValue();
-        float dampingYaw = ka.test2YawDamping.getFloatValue();
-        float dampingPitch = ka.test2PitchDamping.getFloatValue();
+        float approachMax = APPROACH_SPEED * cycleMaxSpeedScale * elytraScale;
+        float correctionMax = CORRECTION_SPEED * elytraScale;
+        float yawAccel = YAW_ACCEL;
+        float pitchAccel = PITCH_ACCEL;
+        float dampingYaw = DAMPING_YAW;
+        float dampingPitch = DAMPING_PITCH;
 
         switch (phase) {
             case SETTLE -> {
@@ -246,10 +257,10 @@ public class TestRotation extends RotationMode {
 
 
         // Микродвижение: низкочастотный плавный шум, перед ударом почти выключен
-        float microAmp = ka.test2MicroAmp.getFloatValue();
+        float microAmp = MICRO_AMP;
         float phaseNoiseScale = (phase == RotationState.Phase.CORRECTION || phase == RotationState.Phase.ATTACK)
                 ? 0.25F : 1.0F;
-        noise.update(now, dtSec, ka.test2MicroFreq.getFloatValue(),
+        noise.update(now, dtSec, MICRO_FREQ,
                 microAmp * 0.4F * phaseNoiseScale, microAmp * phaseNoiseScale, r);
 
         // Выход: точное внутреннее состояние + шум, GCD только на выводе
@@ -350,8 +361,7 @@ public class TestRotation extends RotationMode {
             targetVelSmooth = target.getVelocity();
         }
 
-        verticalFactor = targetPointSelector.pickVerticalFactor(r,
-                TargetPointSelector.fromName(ka.test2TargetPoint.getValue()));
+        verticalFactor = targetPointSelector.pickVerticalFactor(r, TARGET_POINT);
         cycleOffsetX = (r.nextFloat() - 0.5F) * 2.0F;
         cycleOffsetZ = (r.nextFloat() - 0.5F) * 2.0F;
 
@@ -360,7 +370,7 @@ public class TestRotation extends RotationMode {
 
         double distBlocks = mc.player.getEyePos().distanceTo(BestPoint.getNearestPoint(target));
         approachController.newCycle(r,
-                ka.test2OffsetMin.getFloatValue(), ka.test2OffsetMax.getFloatValue(),
+                OFFSET_MIN, OFFSET_MAX,
                 45.0F, distBlocks, target.getHeight(), controller.getCurrentPitch());
         float approachPitch = approachController.approachPitch(actual.getPitch());
 
@@ -370,11 +380,11 @@ public class TestRotation extends RotationMode {
         if (Float.isNaN(angular)) angular = 30.0F;
 
         // Длительность от углового расстояния, с вариативностью
-        float minDur = ka.test2MinDuration.getFloatValue();
-        float maxDur = ka.test2MaxDuration.getFloatValue();
+        float minDur = MIN_DURATION;
+        float maxDur = MAX_DURATION;
         if (maxDur < minDur) maxDur = minDur;
         float durationMs;
-        if (ka.test2DynamicDuration.getValue()) {
+        if (DYNAMIC_DURATION) {
             float t = MathHelper.clamp((angular - 15.0F) / 135.0F, 0.0F, 1.0F);
             durationMs = MathHelper.lerp(t, minDur, maxDur) * (0.9F + r.nextFloat() * 0.2F);
         } else {
@@ -382,7 +392,7 @@ public class TestRotation extends RotationMode {
         }
         if (mc.player.isGliding()) durationMs *= 1.6F;
 
-        if (ka.test2DynamicSpeed.getValue()) {
+        if (DYNAMIC_SPEED) {
             cycleMaxSpeedScale = MathHelper.clamp(angular / 50.0F, 0.7F, 1.5F);
         } else {
             cycleMaxSpeedScale = 1.0F;

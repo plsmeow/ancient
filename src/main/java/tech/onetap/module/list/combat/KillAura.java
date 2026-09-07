@@ -43,6 +43,8 @@ import tech.onetap.module.settings.ModeSetting;
 import tech.onetap.module.settings.SliderSetting;
 import tech.onetap.util.base.Instance;
 import tech.onetap.util.friend.FriendRepository;
+import tech.onetap.util.draggable.DragManager;
+import tech.onetap.util.draggable.Draggable;
 import tech.onetap.util.math.BestPoint;
 import tech.onetap.util.target.TargetRepository;
 import tech.onetap.util.math.RotationUtil;
@@ -67,6 +69,7 @@ import tech.onetap.util.neuro.rotation.NeuroRotationController;
 import tech.onetap.util.neuro.rotation.RotationDumpRecorder;
 import tech.onetap.util.neuro.rotation.TrainingLauncher;
 import tech.onetap.module.list.combat.rotations.*;
+import tech.onetap.module.list.combat.rotations.test2.RotationState;
 
 import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
@@ -79,15 +82,15 @@ public class KillAura extends Module {
             "Vanilla",
             "Vanilla",
             "Snap",
-            "Sloth",
-            "Sloth3",
+            "SpookyTime",
             "Test",
+            "Test2",
+            "Sloth 07.09.26",
             "Wellmine old",
             "NoRot",
             "LonyGrief",
             "Vulcan",
             "Funtime",
-            "SpookyTime",
             "Universal",
             "GrimFun",
             "Grim 1.20.4",
@@ -103,9 +106,6 @@ public class KillAura extends Module {
     public final ModeSetting moveFix = new ModeSetting("MoveFix", "Сфокусированная", "Свободный", "Сфокусированная", "None");
     public final SliderSetting snapHoldTicks = new SliderSetting("Snap tick", ValueUnit.countable("тик", "тика", "тиков"), 2, 1, 10, 1)
             .setVisible(() -> rotation.is("Snap"));
-    public final BooleanSetting otvodka = new BooleanSetting("Отводка", true)
-            .setVisible(this::isOtvodkaRotation);
-
     public final SliderSetting distance = new SliderSetting("Дистанция", ValueUnit.countable("блок", "блока", "блоков"), 3, 2, 6, 0.1f);
     public final BooleanSetting elytraTarget = new BooleanSetting("ElytraTarget", true);
     public final BooleanSetting smoothElytraRotation = new BooleanSetting("Плавная ротация (Elytra)", false)
@@ -138,6 +138,9 @@ public class KillAura extends Module {
 
     public final BooleanSetting onlySpace = new BooleanSetting("Только с пробелом", true);
     public final BooleanSetting clientLook = new BooleanSetting("Клиент лук", true);
+
+    public final BooleanSetting otvodka = new BooleanSetting("Плавная отводка", true)
+            .setVisible(this::isOtvodkaRotation);
     public final BooleanSetting showPredictPoint = new BooleanSetting("Показать предикт точку", true)
             .setVisible(() -> elytraTarget.getValue());
     public final BooleanSetting elytraTurnaround = new BooleanSetting("Разворот на элитрах", true)
@@ -249,12 +252,60 @@ public class KillAura extends Module {
     public final SliderSetting universalYawTrackDistance = new SliderSetting("Трек по X: дистанция", 2.3, 0, 6, 0.1)
             .setVisible(() -> rotation.is("Universal") && universalYawTrack.getValue());
 
+    /** Настройки Test2 действуют и для его дубля Test. */
+    private boolean test2SettingsVisible() {
+        return rotation.is("Test2") || rotation.is("Test");
+    }
+
+    // Настройки Test2: humanized-ротация с фазами и вертикальной доводкой (общие для Test2 и Test)
+    public final SliderSetting test2OffsetMin = new SliderSetting("Test2: мин. верт. офсет", 3, 0, 15, 0.5)
+            .setVisible(this::test2SettingsVisible);
+    public final SliderSetting test2OffsetMax = new SliderSetting("Test2: макс. верт. офсет", 9, 0, 25, 0.5)
+            .setVisible(this::test2SettingsVisible);
+    public final SliderSetting test2ApproachSpeed = new SliderSetting("Test2: скорость подхода", 300, 30, 600, 5)
+            .setVisible(this::test2SettingsVisible);
+    public final SliderSetting test2CorrectionSpeed = new SliderSetting("Test2: скорость доводки", 320, 30, 700, 5)
+            .setVisible(this::test2SettingsVisible);
+    public final SliderSetting test2MinDuration = new SliderSetting("Test2: мин. длительность", 0.15, 0.05, 1, 0.05)
+            .setVisible(this::test2SettingsVisible);
+    public final SliderSetting test2MaxDuration = new SliderSetting("Test2: макс. длительность", 0.35, 0.1, 1.5, 0.05)
+            .setVisible(this::test2SettingsVisible);
+    public final SliderSetting test2YawAccel = new SliderSetting("Test2: ускорение Yaw", 15, 1, 30, 0.5)
+            .setVisible(this::test2SettingsVisible);
+    public final SliderSetting test2PitchAccel = new SliderSetting("Test2: ускорение Pitch", 9, 1, 25, 0.5)
+            .setVisible(this::test2SettingsVisible);
+    public final SliderSetting test2YawDamping = new SliderSetting("Test2: демпфирование Yaw", 0.72, 0.3, 0.95, 0.01)
+            .setVisible(this::test2SettingsVisible);
+    public final SliderSetting test2PitchDamping = new SliderSetting("Test2: демпфирование Pitch", 0.68, 0.3, 0.95, 0.01)
+            .setVisible(this::test2SettingsVisible);
+    public final SliderSetting test2MicroAmp = new SliderSetting("Test2: микродвижение", 0.12, 0, 1, 0.01)
+            .setVisible(this::test2SettingsVisible);
+    public final SliderSetting test2MicroFreq = new SliderSetting("Test2: частота микродвижения", 1.6, 0.2, 5, 0.1)
+            .setVisible(this::test2SettingsVisible);
+    public final SliderSetting test2OvershootStrength = new SliderSetting("Test2: сила овершута", 0.4, 0, 2, 0.05)
+            .setVisible(this::test2SettingsVisible);
+    public final SliderSetting test2OvershootChance = new SliderSetting("Test2: шанс овершута", 0.3, 0, 1, 0.01)
+            .setVisible(this::test2SettingsVisible);
+    public final BooleanSetting test2DynamicSpeed = new BooleanSetting("Test2: динам. скорость", true)
+            .setVisible(this::test2SettingsVisible);
+    public final BooleanSetting test2DynamicDuration = new BooleanSetting("Test2: динам. длительность", true)
+            .setVisible(this::test2SettingsVisible);
+    public final ModeSetting test2TargetPoint = new ModeSetting("Test2: точка цели", "ABOVE_CENTER",
+            "CENTER", "ABOVE_CENTER", "BELOW_CENTER", "RANDOM_OFFSET")
+            .setVisible(this::test2SettingsVisible);
+    public final BooleanSetting test2Debug = new BooleanSetting("Test2: отладка", false)
+            .setVisible(this::test2SettingsVisible);
+
+    // Draggable-панели отладки: перетаскиваются в чате как элементы Interface
+    public final Draggable neuroDebugDrag = DragManager.installDrag(this, "NeuroDebug", 4, 110);
+    public final Draggable test2DebugDrag = DragManager.installDrag(this, "Test2Debug", 4, 210);
+
     // Экземпляры ротаций (каждая хранит своё внутреннее состояние)
     private final VanillaRotation vanillaRotation = new VanillaRotation();
     private final SnapRotation snapRotation = new SnapRotation();
-    private final Sloth3Rotation sloth3Rotation = new Sloth3Rotation();
-    private final SlothRotation slothRotation = new SlothRotation();
     private final TestRotation testRotation = new TestRotation();
+    private final Test2Rotation test2Rotation = new Test2Rotation();
+    private final Sloth070926Rotation sloth070926Rotation = new Sloth070926Rotation();
     private final WellmineRotation wellmineRotation = new WellmineRotation();
     private final NoRotRotation noRotRotation = new NoRotRotation();
     private final LonyGriefRotation lonyGriefRotation = new LonyGriefRotation();
@@ -319,8 +370,8 @@ public class KillAura extends Module {
 
     /** Плавная отводка работает только с этими ротациями. */
     public boolean isOtvodkaRotation() {
-        return rotation.is("Universal") || rotation.is("Sloth") || rotation.is("Test") || rotation.is("Wellmine old")
-                || rotation.is("LonyGrief") || rotation.is("SpookyTime") || rotation.is("Neuro");
+        return rotation.is("Universal") || rotation.is("SpookyTime") || rotation.is("Test") || rotation.is("Test2") || rotation.is("Sloth 07.09.26")
+                || rotation.is("Wellmine old") || rotation.is("LonyGrief") || rotation.is("Neuro");
     }
 
     public boolean otvodkaActive() {
@@ -340,6 +391,15 @@ public class KillAura extends Module {
         }
         if (isEnabled() && rotation.is("Neuro") && neuroDebug.getValue()) {
             renderNeuroDebug(context.matrixStack(), context.camera());
+        }
+        if (isEnabled() && (rotation.is("Test2") || rotation.is("Test")) && test2Debug.getValue()) {
+            Vec3d actual = rotation.is("Test") ? testRotation.getDebugActualPoint() : test2Rotation.getDebugActualPoint();
+            Vec3d approach = rotation.is("Test") ? testRotation.getDebugApproachPoint() : test2Rotation.getDebugApproachPoint();
+            renderTest2Debug(context.matrixStack(), context.camera(), actual, approach);
+        }
+        if (isEnabled() && rotation.is("Sloth 07.09.26")) {
+            renderTest2Debug(context.matrixStack(), context.camera(),
+                    sloth070926Rotation.getDebugActualPoint(), sloth070926Rotation.getDebugApproachPoint());
         }
     };
 
@@ -366,6 +426,51 @@ public class KillAura extends Module {
 
         matrices.push();
         matrices.translate(renderX, renderY, renderZ);
+
+        RenderSystem.enableBlend();
+        RenderSystem.defaultBlendFunc();
+        RenderSystem.disableDepthTest();
+        RenderSystem.disableCull();
+        RenderSystem.setShader(ShaderProgramKeys.POSITION_COLOR);
+
+        Matrix4f matrix = matrices.peek().getPositionMatrix();
+        Tessellator tessellator = Tessellator.getInstance();
+        BufferBuilder buffer = tessellator.begin(VertexFormat.DrawMode.DEBUG_LINES, VertexFormats.POSITION_COLOR);
+
+        drawLineBox(buffer, matrix, -size, -size, -size, size, size, size, r, g, b, 1f);
+
+        BufferRenderer.drawWithGlobalProgram(buffer.end());
+
+        RenderSystem.enableDepthTest();
+        RenderSystem.enableCull();
+        RenderSystem.disableBlend();
+
+        matrices.pop();
+    }
+
+    /**
+     * Отладка Test2: фактическая точка попадания (зелёный), точка подхода
+     * (жёлтый) и конец текущего вектора ротации (белый) — для поиска
+     * неестественных скачков.
+     */
+    private void renderTest2Debug(MatrixStack matrices, Camera camera, Vec3d actual, Vec3d approach) {
+        if (mc.player == null || actual == null) return;
+
+        drawTest2Point(matrices, camera, actual, 0.2f, 1.0f, 0.35f, 0.2f);
+        if (approach != null && approach.squaredDistanceTo(actual) > 1.0E-4D) {
+            drawTest2Point(matrices, camera, approach, 1.0f, 0.85f, 0.2f, 0.2f);
+        }
+
+        Rotation current = new Rotation(lastYaw, lastPitch);
+        Vec3d vecEnd = mc.player.getEyePos().add(current.toVector().multiply(3.0D));
+        drawTest2Point(matrices, camera, vecEnd, 0.95f, 0.95f, 0.95f, 0.1f);
+    }
+
+    private void drawTest2Point(MatrixStack matrices, Camera camera, Vec3d worldPos, float r, float g, float b, float size) {
+        Vec3d camPos = camera.getPos();
+
+        matrices.push();
+        matrices.translate(worldPos.x - camPos.x, worldPos.y - camPos.y, worldPos.z - camPos.z);
 
         RenderSystem.enableBlend();
         RenderSystem.defaultBlendFunc();
@@ -463,14 +568,16 @@ public class KillAura extends Module {
         // Рисуем панель
         MsdfFont font = Fonts.SFMEDIUM.get();
         float fontSize = 7f;
-        float x = 4f;
-        float y = 110f;
+        float x = neuroDebugDrag.getX();
+        float y = neuroDebugDrag.getY();
 
         float maxWidth = font.getWidth("[ Neuro ]", fontSize);
         for (String[] line : lines) {
             maxWidth = Math.max(maxWidth, font.getWidth(line[0], fontSize));
         }
         float panelHeight = 10f + lines.size() * 9f;
+        neuroDebugDrag.setWidth(maxWidth + 8f);
+        neuroDebugDrag.setHeight(panelHeight + 4f);
 
         DrawUtil.drawRound(x - 3f, y - 3f, maxWidth + 8f, panelHeight + 4f, 3f,
                 ColorProvider.rgba(15, 15, 15, 140));
@@ -480,6 +587,68 @@ public class KillAura extends Module {
         for (String[] line : lines) {
             int color = switch (line[1]) {
                 case "red" -> red;
+                case "gray" -> gray;
+                default -> white;
+            };
+            DrawUtil.drawText(font, line[0], x, y, color, fontSize);
+            y += 9f;
+        }
+    }
+
+    /**
+     * Текстовая debug-панель Test2: фаза, углы, ошибки, скорость, прогресс.
+     */
+    @EventHandler
+    private void onTest2Hud(EventHUD e) {
+        if (!isEnabled() || mc.player == null || mc.options.hudHidden || mc.getDebugHud().shouldShowDebugHud()) return;
+
+        String title;
+        RotationState state;
+        if ((rotation.is("Test2") || rotation.is("Test")) && test2Debug.getValue()) {
+            title = rotation.is("Test") ? "[ Test ]" : "[ Test2 ]";
+            state = rotation.is("Test") ? testRotation.getRotationState() : test2Rotation.getRotationState();
+        } else if (rotation.is("Sloth 07.09.26")) {
+            title = "[ Sloth 07.09.26 ]";
+            state = sloth070926Rotation.getRotationState();
+        } else {
+            return;
+        }
+
+        int white = ColorProvider.rgba(235, 235, 235, 255);
+        int gray = ColorProvider.rgba(170, 170, 170, 255);
+        int green = ColorProvider.rgba(90, 220, 130, 255);
+
+        java.util.List<String[]> lines = new java.util.ArrayList<>();
+        lines.add(new String[]{"Фаза: " + state.getPhase(), state.getPhase() == RotationState.Phase.ATTACK ? "green" : "white"});
+        lines.add(new String[]{String.format("yaw %.2f → %.2f (err %.2f)", state.getYaw(), state.getTargetYaw(), state.getYawError()), "white"});
+        lines.add(new String[]{String.format("pitch %.2f → %.2f (err %.2f)", state.getPitch(), state.getTargetPitch(), state.getPitchError()), "white"});
+        lines.add(new String[]{String.format("approach pitch %.2f", state.getApproachPitch()), "gray"});
+        lines.add(new String[]{String.format("velocity %.2f / %.2f град/с", state.getVelocityYaw(), state.getVelocityPitch()), "white"});
+        lines.add(new String[]{String.format("accel %.0f / %.0f град/с²", state.getAccelerationYaw(), state.getAccelerationPitch()), "gray"});
+        lines.add(new String[]{String.format("progress %.2f | ready %s", state.getMovementProgress(), state.isReadyForAttack() ? "да" : "нет"),
+                state.isReadyForAttack() ? "green" : "gray"});
+
+        MsdfFont font = Fonts.SFMEDIUM.get();
+        float fontSize = 7f;
+        float x = test2DebugDrag.getX();
+        float y = test2DebugDrag.getY();
+
+        float maxWidth = font.getWidth(title, fontSize);
+        for (String[] line : lines) {
+            maxWidth = Math.max(maxWidth, font.getWidth(line[0], fontSize));
+        }
+        float panelHeight = 10f + lines.size() * 9f;
+        test2DebugDrag.setWidth(maxWidth + 8f);
+        test2DebugDrag.setHeight(panelHeight + 4f);
+
+        DrawUtil.drawRound(x - 3f, y - 3f, maxWidth + 8f, panelHeight + 4f, 3f,
+                ColorProvider.rgba(15, 15, 15, 140));
+
+        DrawUtil.drawText(font, title, x, y, ColorProvider.getThemeColor(), fontSize);
+        y += 10f;
+        for (String[] line : lines) {
+            int color = switch (line[1]) {
+                case "green" -> green;
                 case "gray" -> gray;
                 default -> white;
             };
@@ -504,7 +673,7 @@ public class KillAura extends Module {
         boolean forceElytraRot = elytraTarget.getValue() && target != null && mc.player.isGliding();
         if (forceElytraRot) {
             if (smoothElytraRotation.getValue()) {
-                slothRotation.update(this, target);
+                spookyTimeRotation.update(this, target);
             } else {
                 Vec3d point = (target.isGliding() && isElytraPredictActive() && !isTurnaroundActive)
                         ? PredictUtils.getPredicted(target, predictValue.getValue())
@@ -518,9 +687,9 @@ public class KillAura extends Module {
             switch (rotation.getValue()) {
                 case "Vanilla" -> vanillaRotation.update(this, target);
                 case "Snap" -> snapRotation.update(this, target);
-                case "Sloth3" -> sloth3Rotation.update(this, target);
-                case "Sloth" -> slothRotation.update(this, target);
                 case "Test" -> testRotation.update(this, target);
+                case "Test2" -> test2Rotation.update(this, target);
+                case "Sloth 07.09.26" -> sloth070926Rotation.update(this, target);
                 case "Wellmine old" -> wellmineRotation.update(this, target);
                 case "NoRot" -> noRotRotation.update(this, target);
                 case "LonyGrief" -> lonyGriefRotation.update(this, target);
@@ -674,7 +843,9 @@ public class KillAura extends Module {
             snapActive = false;
             snapTimer = 0;
             shieldPhase = 0;
-            slothRotation.reset(this);
+            spookyTimeRotation.reset(this);
+            test2Rotation.reset(this);
+            sloth070926Rotation.reset(this);
             testRotation.reset(this);
             if (!rotation.is("Universal")) {
                 universalRotation.reset(this);
@@ -808,6 +979,13 @@ public class KillAura extends Module {
 
         if (rotation.is("Snap")) {
             if (!snapActive || snapTimer < snapHoldTicks.getValue()) return false;
+        }
+
+        // Test: бьём только с завершённой доводкой (прицел на цели) —
+        // каждый удар должен проходить, лучше подождать тик-другой, чем мимо
+        if (rotation.is("Test") && !(elytraTarget.getValue() && target.isGliding() && mc.player.isGliding())
+                && !testRotation.isReadyForAttack()) {
+            return false;
         }
 
         FunskyMace funskyMace = Onetap.getInstance().getModuleStorage().get(FunskyMace.class);
