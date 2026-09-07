@@ -81,6 +81,7 @@ public class KillAura extends Module {
             "Snap",
             "Sloth",
             "Sloth3",
+            "Test",
             "Wellmine old",
             "NoRot",
             "LonyGrief",
@@ -253,6 +254,7 @@ public class KillAura extends Module {
     private final SnapRotation snapRotation = new SnapRotation();
     private final Sloth3Rotation sloth3Rotation = new Sloth3Rotation();
     private final SlothRotation slothRotation = new SlothRotation();
+    private final TestRotation testRotation = new TestRotation();
     private final WellmineRotation wellmineRotation = new WellmineRotation();
     private final NoRotRotation noRotRotation = new NoRotRotation();
     private final LonyGriefRotation lonyGriefRotation = new LonyGriefRotation();
@@ -317,7 +319,7 @@ public class KillAura extends Module {
 
     /** Плавная отводка работает только с этими ротациями. */
     public boolean isOtvodkaRotation() {
-        return rotation.is("Universal") || rotation.is("Sloth") || rotation.is("Wellmine old")
+        return rotation.is("Universal") || rotation.is("Sloth") || rotation.is("Test") || rotation.is("Wellmine old")
                 || rotation.is("LonyGrief") || rotation.is("SpookyTime") || rotation.is("Neuro");
     }
 
@@ -518,6 +520,7 @@ public class KillAura extends Module {
                 case "Snap" -> snapRotation.update(this, target);
                 case "Sloth3" -> sloth3Rotation.update(this, target);
                 case "Sloth" -> slothRotation.update(this, target);
+                case "Test" -> testRotation.update(this, target);
                 case "Wellmine old" -> wellmineRotation.update(this, target);
                 case "NoRot" -> noRotRotation.update(this, target);
                 case "LonyGrief" -> lonyGriefRotation.update(this, target);
@@ -672,6 +675,7 @@ public class KillAura extends Module {
             snapTimer = 0;
             shieldPhase = 0;
             slothRotation.reset(this);
+            testRotation.reset(this);
             if (!rotation.is("Universal")) {
                 universalRotation.reset(this);
             }
