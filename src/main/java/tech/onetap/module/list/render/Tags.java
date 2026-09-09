@@ -41,10 +41,16 @@ import tech.onetap.module.settings.ModeSetting;
 import tech.onetap.util.friend.FriendRepository;
 import tech.onetap.util.staff.StaffManager;
 import tech.onetap.util.target.TargetRepository;
+import tech.onetap.util.render.ColorUtil;
+import tech.onetap.util.render.Delta2DHolder;
+import tech.onetap.util.render.DeltaThemeInfo;
+import tech.onetap.util.render.Draw2D;
 import tech.onetap.util.render.builders.Builder;
 import tech.onetap.util.render.builders.states.QuadColorState;
 import tech.onetap.util.render.builders.states.QuadRadiusState;
 import tech.onetap.util.render.builders.states.SizeState;
+import tech.onetap.util.render.font.DeltaFonts;
+import tech.onetap.util.render.font.Font;
 import tech.onetap.util.render.math.ProjectionUtil;
 import tech.onetap.util.render.msdf.Fonts;
 import tech.onetap.util.render.msdf.MsdfFont;
@@ -64,6 +70,17 @@ public class Tags extends Module {
             new BooleanSetting("Игроки", true),
             new BooleanSetting("Предметы", true)
     );
+
+    private final ModeSetting tagMode = new ModeSetting("Режим", "Default", "Default", "Modern");
+
+    private static final float MODERN_RADIUS = 3.0f;
+    private static final float MODERN_HEIGHT = 12.5f;
+    private static final float MODERN_HEAD_SIZE = 8.0f;
+    private static final float MODERN_HEAD_RADIUS = 2.0f;
+    private static final float MODERN_FONT_SIZE = 7.0f;
+    private static final float MODERN_TEXT_X = 19.0f;
+    private static final float MODERN_PADDING = 5.0f;
+    private static final float MODERN_VALUE_GAP = 8.0f;
 
     private final BooleanSetting totemCounter = new BooleanSetting("Счетчик тотемов", false);
     private static final Pattern STAFF_PREFIX_PATTERN = Pattern.compile(
@@ -282,9 +299,10 @@ public class Tags extends Module {
     }
 
     private void renderPlayerTags(MsdfFont font, float tickDelta, EventHUD e) {
+        boolean modern = tagMode.is("Modern");
         List<AbstractClientPlayerEntity> worldPlayers = mc.world.getPlayers();
 
-        for (PlayerEntity entity : worldPlayers) {
+        for (AbstractClientPlayerEntity entity : worldPlayers) {
             if (entity == mc.player && !mc.getEntityRenderDispatcher().camera.isThirdPerson()) continue;
 
             double x = MathHelper.lerp(tickDelta, entity.lastRenderX, entity.getX());
@@ -319,55 +337,12 @@ public class Tags extends Module {
             }
 
 
-            MutableText name = baseName.copy();
-
-            ItemStack offHandStack = entity.getOffHandStack();
-            if (offHandStack.getItem() == net.minecraft.item.Items.PLAYER_HEAD) {
-                name.append(Text.literal(" [").setStyle(Style.EMPTY.withColor(Formatting.GRAY)))
-                        .append(offHandStack.getName())
-                        .append(Text.literal("]").setStyle(Style.EMPTY.withColor(Formatting.GRAY)));
+            if (modern) {
+                renderModernTag(entity, e.getDrawContext().getMatrices(), pos.getX(), posY, baseName, currentHp, hpColor);
+            } else {
+                renderDefaultTag(entity, font, pos.getX(), posY, baseName, currentHp, hpColor);
             }
 
-            name.append(Text.literal(" [").setStyle(Style.EMPTY.withColor(Formatting.GRAY)))
-                    .append(Text.literal(String.valueOf(currentHp)).setStyle(Style.EMPTY.withColor(hpColor)))
-                    .append(Text.literal("]").setStyle(Style.EMPTY.withColor(Formatting.GRAY)));
-
-            if (totemCounter.getValue()) {
-                int pops = totemPops.getOrDefault(entity.getUuid(), 0);
-                if (pops > 0) {
-                    name.append(Text.literal(" [").setStyle(Style.EMPTY.withColor(Formatting.GRAY)))
-                            .append(Text.literal("-" + pops).setStyle(Style.EMPTY.withColor(0xFF5555)))
-                            .append(Text.literal("]").setStyle(Style.EMPTY.withColor(Formatting.GRAY)));
-                }
-            }
-
-
-            float textWidth = font.getWidth(name.getString(), 8.3f);
-            float paddingX = 3f;
-            float totalWidth = textWidth + (paddingX * 2) - 4;
-            float tagHeight = 12.5f;
-            float tagY = posY - 2;
-
-            float centerX = pos.getX();
-            float bgX = centerX - totalWidth / 2.0f;
-            float bgY = tagY;
-
-            DrawUtil.drawRound(bgX, bgY, totalWidth, tagHeight, 2, ColorProvider.rgba(0, 0, 0, 125));
-
-            int outlineColor = statusOutlineColor(entity);
-            if (outlineColor != 0) {
-                Builder.border()
-                        .size(new SizeState(totalWidth + 1.5f, tagHeight + 1.25f))
-                        .radius(new QuadRadiusState(2f))
-                        .color(new QuadColorState(outlineColor))
-                        .thickness(1f)
-                        .smoothness(1f, 0.5f)
-                        .build()
-                        .render(bgX - 0.5f, bgY - 0.5f);
-            }
-
-
-            DrawUtil.drawText(font, name, bgX + paddingX, posY + 0.25f, 8, 255);
 
             equipmentCache.clear();
             equipmentCache.add(entity.getEquippedStack(EquipmentSlot.HEAD));
@@ -404,8 +379,117 @@ public class Tags extends Module {
         }
 
     }
+
+    private void renderDefaultTag(PlayerEntity entity, MsdfFont font, float centerX, float posY, Text baseName, float currentHp, int hpColor) {
+        MutableText name = baseName.copy();
+
+        ItemStack offHandStack = entity.getOffHandStack();
+        if (offHandStack.getItem() == net.minecraft.item.Items.PLAYER_HEAD) {
+            name.append(Text.literal(" [").setStyle(Style.EMPTY.withColor(Formatting.GRAY)))
+                    .append(offHandStack.getName())
+                    .append(Text.literal("]").setStyle(Style.EMPTY.withColor(Formatting.GRAY)));
+        }
+
+        name.append(Text.literal(" [").setStyle(Style.EMPTY.withColor(Formatting.GRAY)))
+                .append(Text.literal(String.valueOf(currentHp)).setStyle(Style.EMPTY.withColor(hpColor)))
+                .append(Text.literal("]").setStyle(Style.EMPTY.withColor(Formatting.GRAY)));
+
+        if (totemCounter.getValue()) {
+            int pops = totemPops.getOrDefault(entity.getUuid(), 0);
+            if (pops > 0) {
+                name.append(Text.literal(" [").setStyle(Style.EMPTY.withColor(Formatting.GRAY)))
+                        .append(Text.literal("-" + pops).setStyle(Style.EMPTY.withColor(0xFF5555)))
+                        .append(Text.literal("]").setStyle(Style.EMPTY.withColor(Formatting.GRAY)));
+            }
+        }
+
+        float textWidth = font.getWidth(name.getString(), 8.3f);
+        float paddingX = 3f;
+        float totalWidth = textWidth + (paddingX * 2) - 4;
+        float tagHeight = 12.5f;
+        float tagY = posY - 2;
+
+        float bgX = centerX - totalWidth / 2.0f;
+        float bgY = tagY;
+
+        DrawUtil.drawRound(bgX, bgY, totalWidth, tagHeight, 2, ColorProvider.rgba(0, 0, 0, 125));
+
+        int outlineColor = statusOutlineColor(entity);
+        if (outlineColor != 0) {
+            Builder.border()
+                    .size(new SizeState(totalWidth + 1.5f, tagHeight + 1.25f))
+                    .radius(new QuadRadiusState(2f))
+                    .color(new QuadColorState(outlineColor))
+                    .thickness(1f)
+                    .smoothness(1f, 0.5f)
+                    .build()
+                    .render(bgX - 0.5f, bgY - 0.5f);
+        }
+
+        DrawUtil.drawText(font, name, bgX + paddingX, posY + 0.25f, 8, 255);
+    }
+
+    private void renderModernTag(AbstractClientPlayerEntity entity, MatrixStack matrices, float centerX, float posY, Text baseName, float currentHp, int hpColor) {
+        Font font = DeltaFonts.GT_REGULAR.get();
+        Draw2D draw = Delta2DHolder.get();
+
+        MutableText name = baseName.copy();
+
+        ItemStack offHandStack = entity.getOffHandStack();
+        if (offHandStack.getItem() == net.minecraft.item.Items.PLAYER_HEAD) {
+            name.append(Text.literal(" [").setStyle(Style.EMPTY.withColor(Formatting.GRAY)))
+                    .append(offHandStack.getName())
+                    .append(Text.literal("]").setStyle(Style.EMPTY.withColor(Formatting.GRAY)));
+        }
+
+        MutableText value = Text.literal(String.valueOf((int) currentHp)).setStyle(Style.EMPTY.withColor(hpColor));
+        if (totemCounter.getValue()) {
+            int pops = totemPops.getOrDefault(entity.getUuid(), 0);
+            if (pops > 0) {
+                value.append(Text.literal(" -" + pops).setStyle(Style.EMPTY.withColor(0xFF5555)));
+            }
+        }
+
+        float nameWidth = font.getWidth(name, MODERN_FONT_SIZE);
+        float valueWidth = font.getWidth(value, MODERN_FONT_SIZE);
+        float totalWidth = MODERN_TEXT_X + nameWidth + MODERN_VALUE_GAP + valueWidth + MODERN_PADDING;
+        float tagY = posY - 2.0f;
+        float bgX = centerX - totalWidth / 2.0f;
+
+        int background = ColorUtil.applyAlphaToColor(
+                ColorUtil.lerpColor(DeltaThemeInfo.BACKGROUND_HUD.resolve(), DeltaThemeInfo.PRIMARY.resolve(),
+                        DeltaThemeInfo.PRIMARY.alphaFloat() / 6.0f),
+                DeltaThemeInfo.BACKGROUND_HUD.alphaFloat());
+        draw.drawShadowBlur(matrices, bgX, tagY, totalWidth, MODERN_HEIGHT, MODERN_RADIUS, background, 1.0f);
+
+        int outlineColor = statusOutlineColor(entity);
+        if (outlineColor != 0) {
+            draw.drawOutline(matrices, bgX, tagY, totalWidth, MODERN_HEIGHT, MODERN_RADIUS, 1.0f, outlineColor);
+        }
+
+        float headY = tagY + (MODERN_HEIGHT - MODERN_HEAD_SIZE) / 2.0f;
+        try {
+            draw.drawSkinHead(matrices, entity.getSkinTextures().texture(),
+                    bgX + MODERN_PADDING, headY, MODERN_HEAD_SIZE, MODERN_HEAD_SIZE, MODERN_HEAD_RADIUS, 1.0f);
+        } catch (Exception ignored) {
+            DeltaFonts.ICONS.get().drawText(matrices, "y",
+                    bgX + MODERN_PADDING + (MODERN_HEAD_SIZE - 8.0f) / 2.0f,
+                    tagY + (MODERN_HEIGHT - 8.0f) / 2.0f, 8.0f,
+                    ColorUtil.applyAlphaToColor(DeltaThemeInfo.PRIMARY.resolve(), 1.0f));
+        }
+
+        draw.drawRounded(matrices, bgX + 15.0f, tagY + ((MODERN_HEIGHT - MODERN_HEIGHT / 2.0f) / 2.0f),
+                0.75f, MODERN_HEIGHT / 2.0f, 0.0f,
+                ColorUtil.applyAlphaToColor(ColorUtil.convertToARGB(200, 200, 200, 255), 0.5f));
+
+        float textY = (tagY + (MODERN_HEIGHT - font.getHeight(MODERN_FONT_SIZE)) / 2.0f) - 0.5f;
+        font.drawText(matrices, name, bgX + MODERN_TEXT_X, textY, MODERN_FONT_SIZE);
+        font.drawText(matrices, value, bgX + totalWidth - MODERN_PADDING - valueWidth, textY, MODERN_FONT_SIZE);
+    }
     private void renderItemTags(MsdfFont font, float tickDelta, EventHUD e) {
+        boolean modern = tagMode.is("Modern");
         MsdfFont sfBold = Fonts.SFBOLD.get();
+
 
         for (Entity entity : mc.world.getEntities()) {
             if (!(entity instanceof ItemEntity itemEntity)) continue;
@@ -433,23 +517,67 @@ public class Tags extends Module {
             Text nameText = Text.literal(itemName).setStyle(Style.EMPTY.withColor(rarityColor));
             if (!stack.getName().getSiblings().isEmpty()) nameText = stack.getName();
 
-            Text countComponent = stack.getCount() > 1
-                    ? Text.literal(" [").setStyle(Style.EMPTY.withColor(Formatting.GRAY))
-                    .append(Text.literal(String.valueOf(stack.getCount())).setStyle(Style.EMPTY.withColor(Formatting.RED)))
-                    .append(Text.literal("]").setStyle(Style.EMPTY.withColor(Formatting.GRAY)))
-                    : Text.empty();
+            if (modern) {
+                renderModernItemTag(e, stack, nameText, pos.getX(), pos.getY());
+            } else {
+                Text countComponent = stack.getCount() > 1
+                        ? Text.literal(" [").setStyle(Style.EMPTY.withColor(Formatting.GRAY))
+                        .append(Text.literal(String.valueOf(stack.getCount())).setStyle(Style.EMPTY.withColor(Formatting.RED)))
+                        .append(Text.literal("]").setStyle(Style.EMPTY.withColor(Formatting.GRAY)))
+                        : Text.empty();
 
-            Text textComponent = nameText.copy().append(countComponent);
-            Text normalized = normalizeSmallCaps(textComponent);
+                Text textComponent = nameText.copy().append(countComponent);
+                Text normalized = normalizeSmallCaps(textComponent);
 
-            float textWidth = sfBold.getWidth(normalized.getString(), 8.3f);
+                float textWidth = sfBold.getWidth(normalized.getString(), 8.3f);
 
-            float totalWidth = textWidth + 1;
+                float totalWidth = textWidth + 1;
 
-            float bgX = pos.getX() - (totalWidth / 2.0f);
+                float bgX = pos.getX() - (totalWidth / 2.0f);
 
-            DrawUtil.drawRoundBlur(bgX, pos.getY() - 2f, totalWidth, 12.5f, 0, ColorProvider.rgba(0, 0, 0, 144), 8f);
-            DrawUtil.drawText(sfBold, normalized, bgX + 2, pos.getY() + 0.5f, 8, 255);
+                DrawUtil.drawRoundBlur(bgX, pos.getY() - 2f, totalWidth, 12.5f, 0, ColorProvider.rgba(0, 0, 0, 144), 8f);
+                DrawUtil.drawText(sfBold, normalized, bgX + 2, pos.getY() + 0.5f, 8, 255);
+            }
+        }
+    }
+
+    private void renderModernItemTag(EventHUD e, ItemStack stack, Text nameText, float centerX, float posY) {
+        Font font = DeltaFonts.GT_REGULAR.get();
+        Draw2D draw = Delta2DHolder.get();
+        MatrixStack matrices = e.getDrawContext().getMatrices();
+
+        Text name = normalizeSmallCaps(nameText.copy());
+        String countText = stack.getCount() > 1 ? String.valueOf(stack.getCount()) : null;
+
+        float nameWidth = font.getWidth(name, MODERN_FONT_SIZE);
+        float countWidth = countText != null ? font.getWidth(countText, MODERN_FONT_SIZE) : 0.0f;
+        float totalWidth = MODERN_TEXT_X + nameWidth + MODERN_PADDING
+                + (countText != null ? MODERN_VALUE_GAP + countWidth : 0.0f);
+        float tagY = posY - 2.0f;
+        float bgX = centerX - totalWidth / 2.0f;
+
+        int background = ColorUtil.applyAlphaToColor(
+                ColorUtil.lerpColor(DeltaThemeInfo.BACKGROUND_HUD.resolve(), DeltaThemeInfo.PRIMARY.resolve(),
+                        DeltaThemeInfo.PRIMARY.alphaFloat() / 6.0f),
+                DeltaThemeInfo.BACKGROUND_HUD.alphaFloat());
+        draw.drawShadowBlur(matrices, bgX, tagY, totalWidth, MODERN_HEIGHT, MODERN_RADIUS, background, 1.0f);
+
+        matrices.push();
+        matrices.translate(bgX + MODERN_PADDING, tagY + (MODERN_HEIGHT - MODERN_HEAD_SIZE) / 2.0f, 0.0f);
+        float itemScale = MODERN_HEAD_SIZE / 16.0f;
+        matrices.scale(itemScale, itemScale, 1.0f);
+        e.getDrawContext().drawItem(stack, 0, 0);
+        matrices.pop();
+
+        draw.drawRounded(matrices, bgX + 15.0f, tagY + ((MODERN_HEIGHT - MODERN_HEIGHT / 2.0f) / 2.0f),
+                0.75f, MODERN_HEIGHT / 2.0f, 0.0f,
+                ColorUtil.applyAlphaToColor(ColorUtil.convertToARGB(200, 200, 200, 255), 0.5f));
+
+        float textY = (tagY + (MODERN_HEIGHT - font.getHeight(MODERN_FONT_SIZE)) / 2.0f) - 0.5f;
+        font.drawText(matrices, name, bgX + MODERN_TEXT_X, textY, MODERN_FONT_SIZE);
+        if (countText != null) {
+            font.drawText(matrices, countText, bgX + totalWidth - MODERN_PADDING - countWidth, textY, MODERN_FONT_SIZE,
+                    ColorUtil.rgb(255, 85, 85));
         }
     }
 
