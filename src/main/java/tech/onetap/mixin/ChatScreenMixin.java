@@ -25,11 +25,6 @@ public class ChatScreenMixin extends Screen {
 
     @Inject(method = "mouseClicked", at = @At("TAIL"))
     private void injectDragClick(double mouseX, double mouseY, int button, CallbackInfoReturnable<Boolean> cir) {
-        tech.onetap.module.list.render.Interface interfaceModule =
-                tech.onetap.util.base.Instance.get(tech.onetap.module.list.render.Interface.class);
-        if (interfaceModule != null && button == 0 && interfaceModule.onPopupLeftClick(mouseX, mouseY)) {
-            return;
-        }
         DragManager.onClickAll(button);
     }
 

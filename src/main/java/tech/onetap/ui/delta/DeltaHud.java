@@ -41,6 +41,8 @@ public final class DeltaHud {
     private static final Map<Module, Animation> MODULE_ANIMS = new LinkedHashMap<>();
     private static final Map<String, DeltaAnimation> ROW_ANIMS = new LinkedHashMap<>();
     private static final DeltaAnimation HP_ANIM = new DeltaAnimation();
+    private static final DeltaAnimation HOTKEYS_ANIM = new DeltaAnimation();
+    private static final Animation HOTKEYS_WIDTH = new Animation(Easing.EXPO_OUT, 200);
 
     private DeltaHud() {
         throw new UnsupportedOperationException("This is a utility class and cannot be instantiated");
@@ -188,7 +190,8 @@ public final class DeltaHud {
     }
 
     /**
-     * Hotkeys: bound-module list, ported from HotkeysWidget.
+     * Hotkeys: только включённые модули с биндами; скрывается когда пуст (как stafflist),
+     * ширина адаптируется к содержимому.
      */
     public static void renderHotkeys(Interface hud, DrawContext context, float delta) {
         MatrixStack matrices = context.getMatrices();
@@ -199,29 +202,38 @@ public final class DeltaHud {
 
         List<Module> bound = new ArrayList<>();
         for (Module module : tech.onetap.Onetap.getInstance().getModuleStorage().getModules()) {
-            if (module.getKey() != -1) {
+            if (module.getKey() != -1 && moduleAnim(module).getValue() > 0.0f) {
                 bound.add(module);
             }
         }
-        var headerFont = DeltaFonts.GT_REGULAR.get();
-        float width = 14.5f + headerFont.getWidth("Hot-keys", 7.0f) + 5.0f + 2.0f;
-        for (Module module : bound) {
-            Animation anim = moduleAnim(module);
-            width = Math.max(width, 19.0f + fonts.getWidth(module.getName(), 6.5f) + 8.0f
-                    + fonts.getWidth(KeyUtil.getKeyName(module.getKey()), 6.5f) + 4.0f
-                    + icons.getWidth("Q", 6.5f) + 5.0f + 2.0f);
+
+        boolean show = !bound.isEmpty() || mc.currentScreen instanceof net.minecraft.client.gui.screen.ChatScreen;
+        HOTKEYS_ANIM.update(0.0f, 1.0f, 0.3f, DeltaEasing.SINE_IN, delta);
+        HOTKEYS_ANIM.tick(show);
+        float widgetAnim = HOTKEYS_ANIM.getAnimationValue();
+        if (widgetAnim <= 0.05f) {
+            hud.keyBindsDrag.setWidth(0);
+            hud.keyBindsDrag.setHeight(0);
+            return;
         }
+
+        float targetWidth = 14.5f + fonts.getWidth("Hot-keys", 7.0f) + 5.0f + 2.0f;
+        for (Module module : bound) {
+            targetWidth = Math.max(targetWidth, 19.0f + fonts.getWidth(module.getName(), 6.5f) + 4.0f
+                    + fonts.getWidth(KeyUtil.getKeyName(module.getKey()), 6.5f) + 4.0f
+                    + icons.getWidth("C", 6.5f) + 6.0f);
+        }
+        HOTKEYS_WIDTH.run(targetWidth);
+        float width = (float) HOTKEYS_WIDTH.getValue();
 
         float x = hud.keyBindsDrag.getX();
         float y = hud.keyBindsDrag.getY();
-        float anim = 1.0f;
 
-        renderHeader(matrices, draw, fonts, icons, "Q", "Hot-keys", x, y, width, anim);
+        renderHeader(matrices, draw, fonts, icons, "Q", "Hot-keys", x, y, width, widgetAnim);
 
         float contentY = y + HEADER_HEIGHT + 1.0f;
         for (Module module : bound) {
-            Animation moduleAnim = moduleAnim(module);
-            float moduleAnimValue = moduleAnim.getValue();
+            float moduleAnimValue = (float) moduleAnim(module).getValue() * widgetAnim;
             if (moduleAnimValue <= 0.0f) continue;
             float offsetX = -8.0f * (1.0f - moduleAnimValue);
             float offsetY = -(1.0f - moduleAnimValue);
@@ -341,7 +353,7 @@ public final class DeltaHud {
                     + fonts.getWidth(status, 6.5f) + 5.0f + 2.0f);
         }
 
-        boolean staffFound = !hud.staffPlayers.isEmpty();
+        boolean staffFound = !staff.isEmpty();
         if (staffFound) {
             hud.alpha2.run(1);
         }

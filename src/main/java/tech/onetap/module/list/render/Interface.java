@@ -74,7 +74,7 @@ import tech.onetap.util.staff.StaffManager;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
-import java.util.Collections;
+
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
@@ -136,199 +136,6 @@ public class Interface extends Module {
         Draggable drag = DragManager.installDrag(this, "Notifications", 0, -1);
         drag.setYOnly(true);
         return drag;
-    }
-
-    // ===== Настройка элементов через ПКМ (работает во всех стилях HUD) =====
-    private Draggable activePopupDrag;
-    private final Animation popupAnim = new Animation(Easing.EXPO_OUT, 200);
-    private float popupX, popupY, popupW, popupH;
-    private final List<PopupRow> popupRows = new ArrayList<>();
-
-    private record PopupRow(float y, float h, String label, BooleanSetting boolSetting, ModeSetting modeSetting) {}
-
-    private BooleanSetting elementSetting(String name) {
-        for (BooleanSetting setting : elements.getSettings()) {
-            if (setting.getName().equals(name)) {
-                return setting;
-            }
-        }
-        return null;
-    }
-
-    /**
-     * ЛКМ по элементу HUD (в Delta-стиле, чат открыт) открывает его попап; ЛКМ по строке
-     * попапа переключает настройку; клик мимо — закрывает попап и передаёт клик дальше.
-     */
-    public boolean onPopupLeftClick(double mouseX, double mouseY) {
-        if (!(mc.currentScreen instanceof ChatScreen) || !hudStyle.is("Delta")) {
-            activePopupDrag = null;
-            return false;
-        }
-        if (activePopupDrag != null
-                && mouseX >= popupX && mouseX <= popupX + popupW
-                && mouseY >= popupY && mouseY <= popupY + popupH) {
-            for (PopupRow row : popupRows) {
-                if (mouseY >= row.y() && mouseY <= row.y() + row.h()) {
-                    if (row.boolSetting() != null) {
-                        row.boolSetting().toggle();
-                    } else if (row.modeSetting() != null) {
-                        row.modeSetting().cycle();
-                    }
-                    break;
-                }
-            }
-            return true;
-        }
-        List<Draggable> drags = new ArrayList<>(List.of(watermarkDrag, keyBindsDrag, staffListDrag,
-                potionsDrag, targetHUDDrag, totemCounterDrag, notificationDrag));
-        Collections.reverse(drags);
-        for (Draggable drag : drags) {
-            if (drag.isHovering()) {
-                activePopupDrag = activePopupDrag == drag ? null : drag;
-                popupAnim.reset();
-                popupAnim.setValue(activePopupDrag != null ? 1 : 0);
-                return true;
-            }
-        }
-        activePopupDrag = null;
-        return false;
-    }
-
-    private List<PopupRow> popupRowTemplates(Draggable drag) {
-        List<PopupRow> rows = new ArrayList<>();
-        if (drag == watermarkDrag) {
-            rows.add(boolRow("Ватермарка"));
-            rows.add(boolRow("Ник в ватермарке"));
-            rows.add(boolRow("FPS в ватермарке"));
-            rows.add(boolRow("Пинг в ватермарке"));
-            rows.add(boolRow("Время в ватермарке"));
-            rows.add(boolRow("Координаты в ватермарке"));
-            rows.add(boolRow("TPS в ватермарке"));
-            rows.add(boolRow("Скорость в ватермарке"));
-            rows.add(boolRow("Разделять элементы ватермарки"));
-        } else if (drag == keyBindsDrag) {
-            rows.add(boolRow("Привязанные модули"));
-        } else if (drag == staffListDrag) {
-            rows.add(boolRow("Активные модераторы"));
-        } else if (drag == potionsDrag) {
-            rows.add(boolRow("Бафы"));
-        } else if (drag == targetHUDDrag) {
-            rows.add(boolRow("Активный таргет"));
-            rows.add(boolRow("Таргет худ от темы"));
-            rows.add(new PopupRow(0, 0, "Стиль таргета", null, targetStyle));
-        } else if (drag == totemCounterDrag) {
-            rows.add(boolRow("Счетчик тотемов"));
-        } else if (drag == notificationDrag) {
-            rows.add(boolRow("Нотификации"));
-        }
-        rows.add(boolRow("Блюр фона"));
-        rows.add(boolRow("Задний фон от темы"));
-        return rows;
-    }
-
-    private PopupRow boolRow(String name) {
-        return new PopupRow(0, 0, name, elementSetting(name), null);
-    }
-
-    private String popupTitle(Draggable drag) {
-        if (drag == watermarkDrag) return "Ватермарка";
-        if (drag == keyBindsDrag) return "Привязанные модули";
-        if (drag == staffListDrag) return "Модераторы";
-        if (drag == potionsDrag) return "Бафы";
-        if (drag == targetHUDDrag) return "Таргет-худ";
-        if (drag == totemCounterDrag) return "Счетчик тотемов";
-        if (drag == notificationDrag) return "Нотификации";
-        return "Элемент";
-    }
-
-    /**
-     * Рисует попап настроек активного элемента (поверх HUD, единый стиль для всех режимов).
-     */
-    public void renderPopups(DrawContext context) {
-        if (!hudStyle.is("Delta")) {
-            activePopupDrag = null;
-            return;
-        }
-        if (activePopupDrag != null && !(mc.currentScreen instanceof ChatScreen)) {
-            activePopupDrag = null;
-        }
-        popupAnim.run(activePopupDrag != null);
-        if (activePopupDrag == null) return;
-        float alpha = (float) popupAnim.getValue();
-        if (alpha <= 0.05f) return;
-        int alphaInt = (int) (255 * alpha);
-
-        List<PopupRow> templates = popupRowTemplates(activePopupDrag);
-
-        float width = Fonts.SFMEDIUM.get().getWidth(popupTitle(activePopupDrag), 6.5f) + 10;
-        for (PopupRow row : templates) {
-            float rowWidth = Fonts.SFREGULAR.get().getWidth(row.label(), 6.5f) + 26;
-            if (row.modeSetting() != null) {
-                rowWidth += Fonts.SFREGULAR.get().getWidth(row.modeSetting().getValue(), 6.5f);
-            }
-            width = Math.max(width, rowWidth);
-        }
-
-        float headerHeight = 11;
-        float rowHeight = 11;
-        float height = headerHeight + templates.size() * rowHeight + 2;
-
-        int screenW = mc.getWindow().getScaledWidth();
-        int screenH = mc.getWindow().getScaledHeight();
-        float px = activePopupDrag.getX() + activePopupDrag.getWidth() + 4;
-        if (px + width > screenW - 2) {
-            px = activePopupDrag.getX() - width - 4;
-        }
-        px = Math.max(2, Math.min(px, screenW - width - 2));
-        float py = Math.max(2, Math.min(activePopupDrag.getY(), screenH - height - 2));
-
-        this.popupX = px;
-        this.popupY = py;
-        this.popupW = width;
-        this.popupH = height;
-        this.popupRows.clear();
-
-        DrawUtil.drawRoundBlur(px, py, width, height, 3, ColorProvider.rgba(75, 75, 75, alphaInt), 10);
-        DrawUtil.drawRound(px, py, width, height, 3, ColorProvider.rgba(20, 20, 25, (int) (210 * alpha)));
-        DrawUtil.drawRound(px - 0.5f, py - 0.5f, width + 1, height + 1, 3.5f, ColorProvider.rgba(80, 80, 85, (int) (100 * alpha)));
-
-        DrawUtil.drawText(Fonts.SFMEDIUM.get(), popupTitle(activePopupDrag), px + 4, py + 2,
-                ColorProvider.rgba(255, 255, 255, alphaInt), 6.5f);
-        DrawUtil.drawRound(px + 3, py + headerHeight - 0.5f, width - 6, 0.5f, 0,
-                ColorProvider.rgba(255, 255, 255, (int) (20 * alpha)));
-
-        int mouseX = (int) (mc.mouse.getX() / mc.getWindow().getScaleFactor());
-        int mouseY = (int) (mc.mouse.getY() / mc.getWindow().getScaleFactor());
-
-        float rowY = py + headerHeight + 1;
-        for (PopupRow template : templates) {
-            boolean hovered = mouseX >= px && mouseX <= px + width && mouseY >= rowY && mouseY <= rowY + rowHeight;
-            if (hovered) {
-                DrawUtil.drawRound(px + 1, rowY, width - 2, rowHeight, 2, ColorProvider.rgba(255, 255, 255, (int) (15 * alpha)));
-            }
-            this.popupRows.add(new PopupRow(rowY, rowHeight, template.label(), template.boolSetting(), template.modeSetting()));
-
-            DrawUtil.drawText(Fonts.SFREGULAR.get(), template.label(), px + 4, rowY + 2,
-                    ColorProvider.rgba(230, 230, 230, alphaInt), 6.5f);
-
-            if (template.modeSetting() != null) {
-                String value = template.modeSetting().getValue();
-                float valueWidth = Fonts.SFREGULAR.get().getWidth(value, 6.5f);
-                DrawUtil.drawText(Fonts.SFREGULAR.get(), value, (px + width - 4) - valueWidth, rowY + 2,
-                        ColorProvider.setAlpha(ColorProvider.getThemeColor(), alphaInt), 6.5f);
-            } else if (template.boolSetting() != null) {
-                float boxX = (px + width) - 12;
-                DrawUtil.drawRound(boxX - 0.5f, rowY + (rowHeight - 8) / 2f - 0.5f, 9, 9, 2.5f,
-                        ColorProvider.rgba(60, 60, 65, (int) (150 * alpha)));
-                DrawUtil.drawRound(boxX, rowY + (rowHeight - 8) / 2f, 8, 8, 2,
-                        ColorProvider.rgba(20, 20, 25, alphaInt));
-                if (template.boolSetting().getValue()) {
-                    DrawUtil.drawRound(boxX + 1.5f, rowY + (rowHeight - 8) / 2f + 1.5f, 5, 5, 1,
-                            ColorProvider.setAlpha(ColorProvider.getThemeColor(), alphaInt));
-                }
-            }
-            rowY += rowHeight;
-        }
     }
 
     private final Map<String, Long> spekSuspects = new ConcurrentHashMap<>();
@@ -665,8 +472,6 @@ public class Interface extends Module {
         if (elements.isEnabled("Урон Булавы")) {
             renderMACEDMG(e.getDrawContext());
         }
-
-        renderPopups(e.getDrawContext());
     }
 
     @EventHandler
