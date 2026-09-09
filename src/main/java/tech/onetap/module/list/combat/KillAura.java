@@ -34,6 +34,7 @@ import tech.onetap.event.list.EventHUD;
 import tech.onetap.event.list.EventPacket;
 import tech.onetap.event.list.EventTick;
 import tech.onetap.event.list.EventTickEnd;
+import tech.onetap.event.list.MoveInputEvent;
 import tech.onetap.module.Module;
 import tech.onetap.module.ModuleCategory;
 import tech.onetap.module.ModuleInformation;
@@ -60,6 +61,7 @@ import tech.onetap.util.render.msdf.MsdfFont;
 import tech.onetap.util.render.renderers.DrawUtil;
 import tech.onetap.util.rotation.Rotation;
 import tech.onetap.util.rotation.RotationComponent;
+import tech.onetap.util.rotation.MoveFixMode;
 import tech.onetap.util.text.ValueUnit;
 import tech.onetap.util.neuro.rotation.ActiveModel;
 import tech.onetap.util.neuro.rotation.AIRotationManager;
@@ -103,7 +105,7 @@ public class KillAura extends Module {
             new BooleanSetting("Монстры", true),
             new BooleanSetting("Животные", true)
     );
-    public final ModeSetting moveFix = new ModeSetting("MoveFix", "Сфокусированная", "Свободный", "Сфокусированная", "None");
+    public final ModeSetting moveFix = new ModeSetting("MoveFix", "Сфокусированная", "Свободный", "Сфокусированная", "None", "Target");
     public final SliderSetting snapHoldTicks = new SliderSetting("Snap tick", ValueUnit.countable("тик", "тика", "тиков"), 2, 1, 10, 1)
             .setVisible(() -> rotation.is("Snap"));
     public final SliderSetting distance = new SliderSetting("Дистанция", ValueUnit.countable("блок", "блока", "блоков"), 3, 2, 6, 0.1f);
@@ -362,10 +364,39 @@ public class KillAura extends Module {
         return snapActive;
     }
 
-    public tech.onetap.util.rotation.MoveFixMode getMoveFixMode() {
-        if (moveFix.is("Свободный")) return tech.onetap.util.rotation.MoveFixMode.FREE;
-        if (moveFix.is("None")) return tech.onetap.util.rotation.MoveFixMode.NONE;
-        return tech.onetap.util.rotation.MoveFixMode.CORRECT;
+    public MoveFixMode getMoveFixMode() {
+        if (moveFix.is("Свободный")) return MoveFixMode.FREE;
+        if (moveFix.is("None")) return MoveFixMode.NONE;
+        if (moveFix.is("Target")) return MoveFixMode.TARGET;
+        return MoveFixMode.CORRECT;
+    }
+
+    /**
+     * MoveFix «Target»: опорное направление движения — сама цель, а не ротация.
+     * Работает независимо от состояния ротации (NoRot и Grim 1.20.4 её вообще
+     * не включают): движение выходит таким, будто ротация смотрит прямо на
+     * цель, куда бы реальная ротация ни смотрела. Правка ввода та же, что у
+     * FREE — сервер видит только обычные комбинации forward/strafe.
+     */
+    @EventHandler
+    private void onMoveInput(MoveInputEvent event) {
+        if (mc.player == null || !moveFix.is("Target")) return;
+        if (event.getForward() == 0 && event.getStrafe() == 0) return;
+
+        RotationComponent rc = RotationComponent.getInstance();
+        // Ротацией сейчас владеет другой модуль — его MoveFix главнее
+        if (rc.isRotating() && rc.moveFixMode() != MoveFixMode.TARGET) return;
+
+        float serverYaw = MathHelper.wrapDegrees(mc.player.getYaw());
+
+        if (target != null) {
+            float targetYaw = MathHelper.wrapDegrees(RotationUtil.calculate(target.getBoundingBox().getCenter()).x);
+            RotationComponent.fixMovement(event, targetYaw, serverYaw);
+        } else if (rc.isRotating()) {
+            // Отводка после потери цели — траектория по взгляду камеры, как FREE
+            float viewYaw = MathHelper.wrapDegrees(mc.gameRenderer.getCamera().getYaw());
+            RotationComponent.fixMovement(event, viewYaw, serverYaw);
+        }
     }
 
     /** Плавная отводка работает только с этими ротациями. */
