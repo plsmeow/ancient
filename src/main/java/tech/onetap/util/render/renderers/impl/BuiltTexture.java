@@ -1,21 +1,23 @@
 package tech.onetap.util.render.renderers.impl;
 
 import com.mojang.blaze3d.systems.RenderSystem;
-import net.minecraft.client.gl.Defines;
-import net.minecraft.client.gl.ShaderProgram;
-import net.minecraft.client.gl.ShaderProgramKey;
 import net.minecraft.client.render.BufferBuilder;
 import net.minecraft.client.render.BufferRenderer;
 import net.minecraft.client.render.Tessellator;
 import net.minecraft.client.render.VertexFormat.DrawMode;
 import net.minecraft.client.render.VertexFormats;
 import org.joml.Matrix4f;
+import tech.onetap.util.render.RenderShaders;
 import tech.onetap.util.render.builders.states.QuadColorState;
 import tech.onetap.util.render.builders.states.QuadRadiusState;
 import tech.onetap.util.render.builders.states.SizeState;
-import tech.onetap.util.render.providers.ResourceProvider;
 import tech.onetap.util.render.renderers.IRenderer;
+import tech.onetap.util.render.shader.TextureShader;
 
+/**
+ * Textured rounded rectangle on the ported DeltaClient texture shader
+ * (mre:core/rect/texture_rect); identical geometry/UV layout to the previous engine.
+ */
 public record BuiltTexture(
         SizeState size,
         QuadRadiusState radius,
@@ -26,9 +28,6 @@ public record BuiltTexture(
         int textureId
     ) implements IRenderer {
 
-    private static final ShaderProgramKey TEXTURE_SHADER_KEY = new ShaderProgramKey(ResourceProvider.getShaderIdentifier("texture"),
-        VertexFormats.POSITION_TEXTURE_COLOR, Defines.EMPTY);
-    
     @Override
     public void render(Matrix4f matrix, float x, float y, float z) {
         RenderSystem.enableBlend();
@@ -37,12 +36,15 @@ public record BuiltTexture(
 
         RenderSystem.setShaderTexture(0, this.textureId);
 
-        float width = this.size.width(), height = this.size.height();
-        ShaderProgram shader = RenderSystem.setShader(TEXTURE_SHADER_KEY);
-        shader.getUniform("Size").set(width, height);
-        shader.getUniform("Radius").set(this.radius.radius1(), this.radius.radius2(), 
-            this.radius.radius3(), this.radius.radius4());
-        shader.getUniform("Smoothness").set(this.smoothness);
+        float width = this.size.width();
+        float height = this.size.height();
+
+        TextureShader shader = RenderShaders.TEXTURE;
+        shader.bind();
+        shader.setSize(width, height);
+        shader.setRadius(this.radius.radius1(), this.radius.radius2(),
+                this.radius.radius3(), this.radius.radius4());
+        shader.setSmoothness(this.smoothness);
 
         BufferBuilder builder = Tessellator.getInstance().begin(DrawMode.QUADS, VertexFormats.POSITION_TEXTURE_COLOR);
         builder.vertex(matrix, x, y, z).texture(this.u, this.v).color(this.color.color1());

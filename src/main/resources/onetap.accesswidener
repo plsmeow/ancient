@@ -55,3 +55,4 @@ accessible method net/minecraft/client/MinecraftClient doItemUse ()V
 accessible method net/minecraft/client/MinecraftClient doAttack ()Z
 accessible method net/minecraft/client/texture/NativeImage setColor (III)V
 accessible field net/minecraft/network/packet/c2s/play/PlayerInteractEntityC2SPacket entityId I
+accessible method net/minecraft/client/util/Window setScaleFactor (D)V

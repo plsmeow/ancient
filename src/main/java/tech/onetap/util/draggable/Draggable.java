@@ -20,6 +20,7 @@ public class Draggable implements IMinecraft {
     private float startX, startY;
     private boolean dragging;
     private float width, height;
+    private boolean yOnly;
 
     @Expose
     private final String name;
@@ -41,17 +42,20 @@ public class Draggable implements IMinecraft {
             int mouseX = normaliseX();
             int mouseY = normaliseY();
 
-            x = roundToHalf(mouseX - startX);
+            if (!yOnly) {
+                x = roundToHalf(mouseX - startX);
+            }
             y = roundToHalf(mouseY - startY);
 
             int screenWidth = (int) MathUtil.calc(mc.getWindow().getScaledWidth());
             int screenHeight = (int) MathUtil.calc(mc.getWindow().getScaledHeight());
 
-            x = Math.max(0, Math.min(x, screenWidth - width));
+            if (!yOnly) {
+                x = Math.max(0, Math.min(x, screenWidth - width));
+            }
             y = Math.max(0, Math.min(y, screenHeight - height));
         }
     }
-
     public final void onClick(int button) {
         if (button == 0) {
             dragging = true;

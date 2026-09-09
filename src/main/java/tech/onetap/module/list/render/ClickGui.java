@@ -11,7 +11,7 @@ import tech.onetap.ui.Panel;
 @ModuleInformation(moduleName = "Click Gui", moduleDesc = "Открывает клик-гуй клиента", moduleCategory = ModuleCategory.RENDER, moduleKeybind = GLFW.GLFW_KEY_RIGHT_SHIFT)
 public class ClickGui extends Module {
 
-    public final ModeSetting mode = new ModeSetting("Режим", "Dropdown", "Dropdown", "Panel", "New");
+    public final ModeSetting mode = new ModeSetting("Режим", "Dropdown", "Dropdown", "Panel", "New", "Delta");
 
     private ClickGuiFrame clickGuiFrame;
 
@@ -25,6 +25,13 @@ public class ClickGui extends Module {
 
     @Override
     public void onEnable() {
+        if (mode.is("Delta")) {
+            if (mc.currentScreen == null) {
+                mc.setScreen(tech.onetap.ui.delta.DeltaGuiScreen.getInstance());
+            }
+            toggle();
+            return;
+        }
         if (isNewMode()) {
             if (mc.currentScreen == null) {
                 mc.setScreen(new tech.onetap.ui.NewClickGuiFrame());

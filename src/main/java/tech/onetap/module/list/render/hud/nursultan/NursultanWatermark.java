@@ -63,26 +63,46 @@ public final class NursultanWatermark {
         }
 
         float firstRowX = x + firstBoxWidth + gap;
+        boolean showUser = hud.elements.isEnabled("Ник в ватермарке");
+        boolean showFps = hud.elements.isEnabled("FPS в ватермарке");
+        boolean showTime = hud.elements.isEnabled("Время в ватермарке");
         float userW = Fonts.SFMEDIUM.get().getWidth(userText, 7f);
         float fpsW = Fonts.SFMEDIUM.get().getWidth(fpsValue, 7f);
         float timeW = Fonts.SFMEDIUM.get().getWidth(timeText, 7f);
-        float wCombined = 4 + 10 + userW + 5 + 1 + 5 + 10 + fpsW + 5 + 1 + 5 + 10 + timeW + 6;
+        float wCombined = 4 + 10;
+        if (showUser) wCombined += userW + 5;
+        if (showFps) wCombined += 1 + 5 + 10 + fpsW + 5;
+        if (showTime) wCombined += 1 + 5 + 10 + timeW + 5;
+        wCombined += 6;
 
         hud.drawBackground(firstRowX, y, wCombined, height, 4, 255);
 
         float currX = firstRowX + 4;
-        DrawUtil.drawText(Fonts.ICONS_NURIK.get(), "\u0057", currX, y + 4.25f, themeColor, 8f);
-        DrawUtil.drawText(Fonts.SFMEDIUM.get(), userText, currX + 10, y + 3.5f, whiteColor, 7f);
-        currX += 11 + userW + 5;
-        DrawUtil.drawRound(currX, y + 3.5f, 0.5f, height - 7f, 0.2f, sepColor);
-        currX += 6;
-        DrawUtil.drawText(Fonts.ICONS_NURIK.get(), "\u0058", currX, y + 4.25f, themeColor, 8f);
-        DrawUtil.drawText(Fonts.SFMEDIUM.get(), fpsValue, currX + 11, y + 3.5f, whiteColor, 7f);
-        currX += 11 + fpsW + 5;
-        DrawUtil.drawRound(currX, y + 3.5f, 0.5f, height - 7f, 0.2f, sepColor);
-        currX += 6;
-        DrawUtil.drawText(Fonts.ICONS_NURIK.get(), "\u0056", currX, y + 4.25f, themeColor, 8f);
-        DrawUtil.drawText(Fonts.SFMEDIUM.get(), timeText, currX + 11, y + 3.5f, whiteColor, 7f);
+        boolean firstInSection = true;
+        if (showUser) {
+            DrawUtil.drawText(Fonts.ICONS_NURIK.get(), "\u0057", currX, y + 4.25f, themeColor, 8f);
+            DrawUtil.drawText(Fonts.SFMEDIUM.get(), userText, currX + 10, y + 3.5f, whiteColor, 7f);
+            currX += 11 + userW + 5;
+            firstInSection = false;
+        }
+        if (showFps) {
+            if (!firstInSection) {
+                DrawUtil.drawRound(currX, y + 3.5f, 0.5f, height - 7f, 0.2f, sepColor);
+                currX += 6;
+            }
+            DrawUtil.drawText(Fonts.ICONS_NURIK.get(), "\u0058", currX, y + 4.25f, themeColor, 8f);
+            DrawUtil.drawText(Fonts.SFMEDIUM.get(), fpsValue, currX + 11, y + 3.5f, whiteColor, 7f);
+            currX += 11 + fpsW + 5;
+            firstInSection = false;
+        }
+        if (showTime) {
+            if (!firstInSection) {
+                DrawUtil.drawRound(currX, y + 3.5f, 0.5f, height - 7f, 0.2f, sepColor);
+                currX += 6;
+            }
+            DrawUtil.drawText(Fonts.ICONS_NURIK.get(), "\u0056", currX, y + 4.25f, themeColor, 8f);
+            DrawUtil.drawText(Fonts.SFMEDIUM.get(), timeText, currX + 11, y + 3.5f, whiteColor, 7f);
+        }
 
         float row1Width = (firstRowX + wCombined) - startX;
         x = startX;
@@ -94,37 +114,54 @@ public final class NursultanWatermark {
         DrawUtil.drawText(Fonts.ICONS_NURIK.get(), "\u0055", x + 4.5f, y + 4.25f, animatedThemeColor2, 8f);
         x += 17 + gap;
 
-        float wCoords = 17 + Fonts.SFMEDIUM.get().getWidth(coordsText, 7f) + 4;
-        hud.drawBackground(x, y, wCoords, height, 4, 255);
-        DrawUtil.drawText(Fonts.ICONS_NURIK.get(), "\u0046", x + 4, y + 4.25f, themeColor, 8f);
-        DrawUtil.drawRound(x + 13, y + 3.5f, 0.5f, height - 7f, 0.2f, sepColor);
-        DrawUtil.drawText(Fonts.SFMEDIUM.get(), coordsText, x + 17, y + 3.5f, whiteColor, 7f);
-        x += wCoords + gap;
+        float row2Width = 0f;
+        boolean showCoords = hud.elements.isEnabled("Координаты в ватермарке");
+        boolean showPing = hud.elements.isEnabled("Пинг в ватермарке");
+        boolean showTps = hud.elements.isEnabled("TPS в ватермарке");
+        boolean showSpeed = hud.elements.isEnabled("Скорость в ватермарке");
 
-        float wPing = 17 + Fonts.SFMEDIUM.get().getWidth(pingText, 7f) + 4;
-        hud.drawBackground(x, y, wPing, height, 4, 255);
-        DrawUtil.drawText(Fonts.ICONS_NURIK.get(), "\u0051", x + 4, y + 4.25f, themeColor, 8f);
-        DrawUtil.drawRound(x + 13.5f, y + 3.5f, 0.5f, height - 7f, 0.2f, sepColor);
-        DrawUtil.drawText(Fonts.SFMEDIUM.get(), pingText, x + 17, y + 3.5f, whiteColor, 7f);
-        x += wPing + gap;
+        if (showCoords) {
+            float wCoords = 17 + Fonts.SFMEDIUM.get().getWidth(coordsText, 7f) + 4;
+            hud.drawBackground(x, y, wCoords, height, 4, 255);
+            DrawUtil.drawText(Fonts.ICONS_NURIK.get(), "\u0046", x + 4, y + 4.25f, themeColor, 8f);
+            DrawUtil.drawRound(x + 13, y + 3.5f, 0.5f, height - 7f, 0.2f, sepColor);
+            DrawUtil.drawText(Fonts.SFMEDIUM.get(), coordsText, x + 17, y + 3.5f, whiteColor, 7f);
+            x += wCoords + gap;
+            row2Width = (x - gap) - startX;
+        }
 
-        float wTps = 17 + Fonts.SFMEDIUM.get().getWidth(tpsText, 7f) + 4;
-        hud.drawBackground(x, y, wTps, height, 4, 255);
-        DrawUtil.drawText(Fonts.ICONS_NURIK.get(), "\u0054", x + 4, y + 4.25f, themeColor, 8f);
-        DrawUtil.drawRound(x + 13, y + 3.5f, 0.5f, height - 7f, 0.2f, sepColor);
-        DrawUtil.drawText(Fonts.SFMEDIUM.get(), tpsText, x + 17, y + 3.5f, whiteColor, 7f);
-        x += wTps + gap;
+        if (showPing) {
+            float wPing = 17 + Fonts.SFMEDIUM.get().getWidth(pingText, 7f) + 4;
+            hud.drawBackground(x, y, wPing, height, 4, 255);
+            DrawUtil.drawText(Fonts.ICONS_NURIK.get(), "\u0051", x + 4, y + 4.25f, themeColor, 8f);
+            DrawUtil.drawRound(x + 13.5f, y + 3.5f, 0.5f, height - 7f, 0.2f, sepColor);
+            DrawUtil.drawText(Fonts.SFMEDIUM.get(), pingText, x + 17, y + 3.5f, whiteColor, 7f);
+            x += wPing + gap;
+            row2Width = (x - gap) - startX;
+        }
 
-        float wSpeed = 20 + Fonts.SFMEDIUM.get().getWidth(speedText, 7f) + 4;
-        hud.drawBackground(x, y, wSpeed, height, 4, 255);
-        DrawUtil.drawText(Fonts.ICONS_NURIK.get(), "\u0040", x + 4, y + 4.25f, themeColor, 8f);
-        DrawUtil.drawRound(x + 15, y + 3.5f, 0.5f, height - 7f, 0.2f, sepColor);
-        DrawUtil.drawText(Fonts.SFMEDIUM.get(), speedText, x + 20, y + 3.5f, whiteColor, 7f);
+        if (showTps) {
+            float wTps = 17 + Fonts.SFMEDIUM.get().getWidth(tpsText, 7f) + 4;
+            hud.drawBackground(x, y, wTps, height, 4, 255);
+            DrawUtil.drawText(Fonts.ICONS_NURIK.get(), "\u0054", x + 4, y + 4.25f, themeColor, 8f);
+            DrawUtil.drawRound(x + 13, y + 3.5f, 0.5f, height - 7f, 0.2f, sepColor);
+            DrawUtil.drawText(Fonts.SFMEDIUM.get(), tpsText, x + 17, y + 3.5f, whiteColor, 7f);
+            x += wTps + gap;
+            row2Width = (x - gap) - startX;
+        }
 
-        float row2Width = (x + wSpeed) - startX;
+        if (showSpeed) {
+            float wSpeed = 20 + Fonts.SFMEDIUM.get().getWidth(speedText, 7f) + 4;
+            hud.drawBackground(x, y, wSpeed, height, 4, 255);
+            DrawUtil.drawText(Fonts.ICONS_NURIK.get(), "\u0040", x + 4, y + 4.25f, themeColor, 8f);
+            DrawUtil.drawRound(x + 15, y + 3.5f, 0.5f, height - 7f, 0.2f, sepColor);
+            DrawUtil.drawText(Fonts.SFMEDIUM.get(), speedText, x + 20, y + 3.5f, whiteColor, 7f);
+            row2Width = Math.max(row2Width, (x + wSpeed) - startX);
+        }
 
-        hud.watermarkDrag.setWidth(Math.max(row1Width, row2Width));
-        hud.watermarkDrag.setHeight((height * 2) + gap);
+        boolean anySecondRow = showCoords || showPing || showTps || showSpeed;
+        hud.watermarkDrag.setWidth(Math.max(row1Width, anySecondRow ? row2Width : 0f));
+        hud.watermarkDrag.setHeight(anySecondRow ? (height * 2) + gap : height);
     }
 
     private static int colorLerp(int start, int end, float speed, float offset) {

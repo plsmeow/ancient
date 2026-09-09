@@ -29,6 +29,7 @@ public class KBDisplacement extends Module {
 
     private State state = State.IDLE;
     private PlayerEntity target;
+    private boolean fromAura;
     private int stateTicks;
 
     @EventHandler
@@ -49,8 +50,7 @@ public class KBDisplacement extends Module {
 
     @EventHandler
     public void onAttack(EventAttack event) {
-        if (state != State.WAITING_FOR_SPRINT_HIT || target == null || event.getEntity() != target
-                || !isKillAuraTarget(target) || !validSprintHit()) {
+        if (state != State.WAITING_FOR_SPRINT_HIT || target == null || event.getEntity() != target) {
             return;
         }
 
@@ -67,24 +67,60 @@ public class KBDisplacement extends Module {
     }
 
     private void prepareTarget() {
-        if (!isHitImminentForKillAura()) {
+        PlayerEntity candidate = findTarget();
+        if (candidate == null) {
             reset();
             return;
         }
 
-        KillAura aura = getKillAura();
-        target = aura.getTarget() instanceof PlayerEntity player ? player : null;
-        if (target == null || !validTarget(target)) {
-            reset();
-            return;
-        }
-
+        target = candidate;
+        fromAura = isKillAuraTarget(candidate);
         state = noRot.getValue() ? State.PREPARE_DISPLACEMENT : State.AIM_TARGET;
         stateTicks = 0;
     }
 
+    /**
+     * Цель смещения: приоритет у KillAura (удар вот-вот случится), иначе — любой игрок
+     * под прицелом при готовом кулдауне и спринте (ручной удар).
+     */
+    private PlayerEntity findTarget() {
+        KillAura aura = getKillAura();
+        if (aura != null && aura.isEnabled() && aura.isHitImminent(2)
+                && aura.getTarget() instanceof PlayerEntity auraTarget && validTarget(auraTarget)) {
+            return auraTarget;
+        }
+        if (mc.player != null && mc.player.isSprinting() && isAttackReady()
+                && mc.targetedEntity instanceof PlayerEntity aimed && validTarget(aimed)) {
+            return aimed;
+        }
+        return null;
+    }
+
+    private boolean isAttackReady() {
+        if (mc.player == null) return false;
+        float perTick = mc.player.getAttackCooldownProgressPerTick();
+        if (perTick > 0f) {
+            float remainingTicks = (1.0f - mc.player.getAttackCooldownProgress(0.5f)) / perTick;
+            if (remainingTicks > 2f) return false;
+        }
+        return true;
+    }
+
+    /**
+     * Течение ещё актуально: цель жива/в досягаемости, и источник (аура или ручной
+     * спринт-удар) всё ещё в силе.
+     */
+    private boolean flowStillValid() {
+        if (target == null || !validTarget(target)) return false;
+        if (fromAura) {
+            KillAura aura = getKillAura();
+            return aura != null && aura.isEnabled() && aura.getTarget() == target && aura.isHitImminent(2);
+        }
+        return mc.player != null && mc.player.isSprinting();
+    }
+
     private void aimTarget() {
-        if (!isHitImminentForKillAura() || !isKillAuraTarget(target) || !validTarget(target) || stateTicks++ >= TARGET_TIMEOUT) {
+        if (!flowStillValid() || stateTicks++ >= TARGET_TIMEOUT) {
             state = State.PREPARE_TARGET;
             stateTicks = 0;
             return;
@@ -98,7 +134,7 @@ public class KBDisplacement extends Module {
     }
 
     private void prepareDisplacement() {
-        if (!isHitImminentForKillAura() || !isKillAuraTarget(target) || !validTarget(target) || stateTicks++ >= TARGET_TIMEOUT) {
+        if (!flowStillValid() || stateTicks++ >= TARGET_TIMEOUT) {
             state = State.PREPARE_TARGET;
             stateTicks = 0;
             clearOwner();
@@ -112,7 +148,7 @@ public class KBDisplacement extends Module {
     }
 
     private void waitForHit() {
-        if (!isKillAuraTarget(target) || !validTarget(target) || stateTicks++ >= HIT_TIMEOUT) {
+        if (!validTarget(target) || (fromAura && !isKillAuraTarget(target)) || stateTicks++ >= HIT_TIMEOUT) {
             state = State.RESTORE_CAMERA;
             stateTicks = 0;
             clearOwner();
@@ -132,11 +168,6 @@ public class KBDisplacement extends Module {
         return tech.onetap.Onetap.getInstance().getModuleStorage().get(KillAura.class);
     }
 
-    private boolean isHitImminentForKillAura() {
-        KillAura aura = getKillAura();
-        return aura != null && aura.isEnabled() && aura.isHitImminent(2);
-    }
-
     private boolean isKillAuraTarget(PlayerEntity candidate) {
         KillAura aura = getKillAura();
         return aura != null && aura.isEnabled() && aura.getTarget() == candidate;
@@ -146,18 +177,6 @@ public class KBDisplacement extends Module {
         return candidate != null && candidate != mc.player && candidate.isAlive()
                 && !candidate.isSpectator() && !fullyNetherite(candidate)
                 && mc.player.squaredDistanceTo(candidate) <= 4.5 * 4.5;
-    }
-
-    private boolean validSprintHit() {
-        return target != null && mc.player.isSprinting()
-                && mc.player.getAttackCooldownProgress(0.5f) >= 0.99f
-                && !isCritical();
-    }
-
-    private boolean isCritical() {
-        return !mc.player.isOnGround() && mc.player.fallDistance > 0.0f
-                && !mc.player.getAbilities().flying && !mc.player.isClimbing()
-                && !mc.player.isTouchingWater() && !mc.player.isInLava();
     }
 
     private float targetYaw(PlayerEntity entity) {
@@ -194,6 +213,7 @@ public class KBDisplacement extends Module {
     private void reset() {
         clearOwner();
         target = null;
+        fromAura = false;
         state = State.IDLE;
         stateTicks = 0;
         if (mc.player != null) RotationComponent.getInstance().stopRotation();
