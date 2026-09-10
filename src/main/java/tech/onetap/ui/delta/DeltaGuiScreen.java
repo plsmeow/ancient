@@ -9,6 +9,7 @@ import org.joml.Vector4f;
 import tech.onetap.Onetap;
 import tech.onetap.module.Module;
 import tech.onetap.module.ModuleCategory;
+import tech.onetap.module.settings.impl.ThemeManager;
 import tech.onetap.util.render.ColorUtil;
 import tech.onetap.util.render.Delta2DHolder;
 import tech.onetap.util.render.DeltaAnimation;
@@ -25,8 +26,7 @@ import java.util.List;
 /**
  * Delta-styled ClickGUI screen ported from DeltaClient (aethereal.ui.screen.GUIScreen):
  * singleton (state persists between opens), forced GUI scale 2, centered 125x270 panels
- * with 8px gaps, bottom-centered search field (Ctrl+F focus), animated module-description
- * tooltip above the panels.
+ * tooltip above the panels, theme picker row below the search field.
  */
 public class DeltaGuiScreen extends Screen {
     private static DeltaGuiScreen instance;
@@ -34,6 +34,8 @@ public class DeltaGuiScreen extends Screen {
     private final StringBuilder searchText = new StringBuilder();
     private final DeltaAnimation tooltipAnim = new DeltaAnimation();
     private final List<DeltaGuiPanel> panels = new ArrayList<>();
+    private final List<ThemeManager.ThemePreset> pickerThemes = new ArrayList<>();
+    private final List<Vector4f> pickerRects = new ArrayList<>();
     private boolean searchFocused;
     private String lastTooltip;
     private float searchX;
@@ -107,6 +109,7 @@ public class DeltaGuiScreen extends Screen {
         matrices.translate(-centerX, -searchY, 0.0f);
         renderSearchField(context, centerX, panelTop, (int) scaledMouseX, (int) scaledMouseY);
         matrices.pop();
+        renderThemePicker(context, centerX, this.searchY + 26.0f, scaledMouseX, scaledMouseY, animValue, backEase, expoEase);
         renderTooltip(context.getMatrices(), centerX, topY, delta);
         ScaleUtil.popScale(context);
     }
@@ -141,6 +144,61 @@ public class DeltaGuiScreen extends Screen {
         }
     }
 
+    private void renderThemePicker(DrawContext context, float centerX, float y, double mouseX, double mouseY,
+                                   float animValue, float backEase, float expoEase) {
+        MatrixStack matrices = context.getMatrices();
+        var draw = Delta2DHolder.get();
+        var fonts = DeltaFonts.ONEST_REGULAR.get();
+        ThemeManager manager = ThemeManager.getInstance();
+
+        this.pickerThemes.clear();
+        this.pickerThemes.addAll(ThemeManager.DEFAULT_THEMES);
+        this.pickerThemes.addAll(manager.getCustomThemes());
+
+        float size = 11.0f;
+        float gap = 5.0f;
+        float totalWidth = (this.pickerThemes.size() * size) + ((this.pickerThemes.size() - 1) * gap);
+        float startX = centerX - (totalWidth / 2.0f);
+        float fade = DeltaEasing.EXPO_OUT.ease(animValue);
+        String activeName = manager.getActivePreset() == null ? null : manager.getActivePreset().name();
+        String hoveredName = null;
+
+        this.pickerRects.clear();
+        matrices.push();
+        matrices.translate(centerX, y + (size / 2.0f) + ((1.0f - expoEase) * 8.0f), 0.0f);
+        float scale = (0.15f * backEase) + 0.85f;
+        matrices.scale(scale, scale, 1.0f);
+        matrices.translate(-centerX, -(y + (size / 2.0f)), 0.0f);
+
+        for (int i = 0; i < this.pickerThemes.size(); i++) {
+            ThemeManager.ThemePreset preset = this.pickerThemes.get(i);
+            float x = startX + (i * (size + gap));
+            this.pickerRects.add(new Vector4f(x, y, size, size));
+            boolean active = preset.name().equals(activeName);
+            boolean hover = DeltaMath.isHovered(mouseX, mouseY, x, y, size, size);
+            if (hover) hoveredName = preset.name();
+
+            draw.drawRounded(matrices, x, y, size, size, size / 2.0f,
+                    ColorUtil.applyAlphaToColor(preset.color1(), fade));
+            draw.drawRounded(matrices, x + 3.0f, y + 3.0f, size - 6.0f, size - 6.0f, (size - 6.0f) / 2.0f,
+                    ColorUtil.applyAlphaToColor(preset.color2(), fade));
+
+            if (active || hover) {
+                int outline = ColorUtil.applyAlphaToColor(ColorUtil.convertToARGB(255, 255, 255, 255),
+                        (active ? 0.85f : 0.35f) * fade);
+                draw.drawOutline(matrices, x - 1.0f, y - 1.0f, size + 2.0f, size + 2.0f,
+                        (size + 2.0f) / 2.0f, 0.5f, outline);
+            }
+        }
+
+        if (hoveredName != null) {
+            float textWidth = fonts.getWidth(hoveredName, 6.5f);
+            fonts.drawText(matrices, hoveredName, centerX - (textWidth / 2.0f), y + size + 3.5f, 6.5f,
+                    ColorUtil.applyAlphaToColor(DeltaThemeInfo.TEXT.resolve(), fade));
+        }
+        matrices.pop();
+    }
+
     private void renderTooltip(MatrixStack matrices, float centerX, float panelTop, float delta) {
         Module hovered = this.panels.stream()
                 .map(panel -> panel.getHovered() == null ? null : panel.getHovered().module)
@@ -172,6 +230,16 @@ public class DeltaGuiScreen extends Screen {
         if (DeltaMath.isHovered(scaledX, scaledY, this.searchX, this.searchY, 100.0f, 20.0f)) {
             this.searchFocused = true;
             return true;
+        }
+        for (int i = 0; i < this.pickerRects.size(); i++) {
+            Vector4f rect = this.pickerRects.get(i);
+            if (DeltaMath.isHovered(scaledX, scaledY, rect.x, rect.y, rect.z, rect.w)) {
+                ThemeManager.ThemePreset preset = this.pickerThemes.get(i);
+                ThemeManager manager = ThemeManager.getInstance();
+                manager.getCurrentTheme().setColors(preset.color1(), preset.color2());
+                manager.saveThemes(manager.getCustomThemes(), preset.name());
+                return true;
+            }
         }
         if (this.searchFocused) {
             this.searchFocused = false;

@@ -40,6 +40,13 @@ public class Theme {
         }
     }
 
+    public void setColorsInstant(int newColor1, int newColor2) {
+        this.color1 = saturateColor(newColor1);
+        this.color2 = saturateColor(newColor2);
+        this.fromColor1 = this.color1;
+        this.fromColor2 = this.color2;
+    }
+
     public void startAnimation(int oldColor1, int oldColor2) {
         this.fromColor1 = oldColor1;
         this.fromColor2 = oldColor2;

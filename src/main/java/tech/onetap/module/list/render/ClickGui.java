@@ -40,6 +40,7 @@ public class ClickGui extends Module {
             return;
         }
         if (clickGuiFrame == null) clickGuiFrame = new ClickGuiFrame();
+        clickGuiFrame.getThemeManager().syncFromManager();
         mc.setScreen(clickGuiFrame);
         for (Panel panel : clickGuiFrame.getPanels()) {
             panel.getAnimationAlpha().setValue(0);

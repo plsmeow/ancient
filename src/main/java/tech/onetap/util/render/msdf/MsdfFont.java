@@ -31,8 +31,8 @@ public final class MsdfFont {
         return this.engine.getTextureId();
     }
 
-    public void applyGlyphs(Matrix4f matrix, VertexConsumer consumer, String text, float size, float thickness, float spacing, float x, float y, float z, int color) {
-        this.engine.drawGlyphs(matrix, consumer, text, size, thickness, spacing, x, y, z, color, -1, -1.0f);
+    public boolean applyGlyphs(Matrix4f matrix, VertexConsumer consumer, String text, float size, float thickness, float spacing, float x, float y, float z, int color) {
+        return this.engine.drawGlyphs(matrix, consumer, text, size, thickness, spacing, x, y, z, color, -1, -1.0f);
     }
 
     public void applyGlyphs(Matrix4f matrix, VertexConsumer consumer,

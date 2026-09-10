@@ -1,15 +1,10 @@
 package tech.onetap.ui;
 
-import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
-import com.google.gson.JsonArray;
-import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
 import lombok.Getter;
 import lombok.Setter;
 import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.util.math.MathHelper;
+import tech.onetap.module.settings.impl.ThemeManager;
 import tech.onetap.util.IMinecraft;
 import tech.onetap.util.cursor.CursorManager;
 import tech.onetap.util.render.helper.HoverUtil;
@@ -21,8 +16,6 @@ import tech.onetap.util.render.providers.ColorProvider;
 import tech.onetap.util.render.renderers.DrawUtil;
 
 import java.awt.Color;
-import java.io.*;
-import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -43,103 +36,49 @@ public class ThemeManagerWindow implements IMinecraft {
 
     private final ClickGuiFrame parent;
 
-    private static final File THEME_DIR = new File(".options");
-    private static final File THEME_FILE = new File(THEME_DIR, "themes.json");
-    private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 
     public ThemeManagerWindow(ClickGuiFrame parent) {
         this.parent = parent;
 
-        defaultThemes.add(new CustomTheme("Crimson", new Color(220, 20, 60, 255).getRGB(), new Color(30, 0, 0, 255).getRGB(), false));
-        defaultThemes.add(new CustomTheme("Cyber Blue", new Color(0, 200, 255, 255).getRGB(), new Color(10, 10, 20, 255).getRGB(), false));
-        defaultThemes.add(new CustomTheme("Violet Void", new Color(180, 0, 255, 255).getRGB(), new Color(30, 0, 40, 255).getRGB(), false));
-        defaultThemes.add(new CustomTheme("Abyss Blue", new Color(0, 102, 204, 255).getRGB(), new Color(10, 10, 30, 255).getRGB(), false));
-        defaultThemes.add(new CustomTheme("Obsidian Glow", new Color(200, 200, 255, 255).getRGB(), new Color(10, 10, 15, 230).getRGB(), false));
-        defaultThemes.add(new CustomTheme("Quantum Shift", new Color(100, 255, 230, 255).getRGB(), new Color(0, 20, 25, 220).getRGB(), false));
-        defaultThemes.add(new CustomTheme("White-Black", new Color(255, 255, 255, 255).getRGB(), new Color(0, 0, 0, 255).getRGB(), false));
-        defaultThemes.add(new CustomTheme("Serenity", new Color(137, 159, 255, 255).getRGB(), new Color(20, 20, 35, 255).getRGB(), false));
+        for (ThemeManager.ThemePreset preset : ThemeManager.DEFAULT_THEMES) {
+            defaultThemes.add(new CustomTheme(preset.name(), preset.color1(), preset.color2(), false));
+        }
 
-        activeTheme = defaultThemes.get(0);
+        syncFromManager();
+    }
 
-        loadThemes();
-
+    public void syncFromManager() {
+        ThemeManager manager = ThemeManager.getInstance();
+        customThemes.clear();
+        for (ThemeManager.ThemePreset preset : manager.getCustomThemes()) {
+            customThemes.add(new CustomTheme(preset.name(), preset.color1(), preset.color2(), true));
+        }
+        activeTheme = resolveActive(manager.getActivePreset());
         updateClientTheme(activeTheme.color1, activeTheme.color2);
     }
 
     public void saveThemes() {
-        try {
-            if (!THEME_DIR.exists()) THEME_DIR.mkdirs();
-
-            JsonObject json = new JsonObject();
-            json.addProperty("activeTheme", activeTheme.name);
-
-            JsonArray customThemesArray = new JsonArray();
-            for (CustomTheme theme : customThemes) {
-                JsonObject themeObj = new JsonObject();
-                themeObj.addProperty("name", theme.name);
-                themeObj.addProperty("color1", theme.color1);
-                themeObj.addProperty("color2", theme.color2);
-                customThemesArray.add(themeObj);
-            }
-            json.add("customThemes", customThemesArray);
-
-            Files.writeString(THEME_FILE.toPath(), GSON.toJson(json));
-        } catch (IOException e) {
-            ;
+        List<ThemeManager.ThemePreset> presets = new ArrayList<>();
+        for (CustomTheme theme : customThemes) {
+            presets.add(new ThemeManager.ThemePreset(theme.name, theme.color1, theme.color2));
         }
+        ThemeManager.getInstance().saveThemes(presets, activeTheme.name);
     }
 
-    public void loadThemes() {
-        if (!THEME_FILE.exists()) return;
-
-        try {
-            String content = Files.readString(THEME_FILE.toPath());
-            JsonObject json = JsonParser.parseString(content).getAsJsonObject();
-
-            if (json.has("customThemes")) {
-                customThemes.clear();
-                JsonArray customArray = json.getAsJsonArray("customThemes");
-                for (JsonElement el : customArray) {
-                    JsonObject obj = el.getAsJsonObject();
-                    String name = obj.get("name").getAsString();
-                    int c1 = obj.get("color1").getAsInt();
-                    int c2 = obj.get("color2").getAsInt();
-                    customThemes.add(new CustomTheme(name, c1, c2, true));
-                }
+    private CustomTheme resolveActive(ThemeManager.ThemePreset active) {
+        if (active != null) {
+            for (CustomTheme theme : defaultThemes) {
+                if (theme.name.equals(active.name())) return theme;
             }
-
-            if (json.has("activeTheme")) {
-                String activeName = json.get("activeTheme").getAsString();
-                boolean found = false;
-
-                for (CustomTheme theme : defaultThemes) {
-                    if (theme.name.equals(activeName)) {
-                        activeTheme = theme;
-                        found = true;
-                        break;
-                    }
-                }
-
-                if (!found) {
-                    for (CustomTheme theme : customThemes) {
-                        if (theme.name.equals(activeName)) {
-                            activeTheme = theme;
-                            break;
-                        }
-                    }
-                }
+            for (CustomTheme theme : customThemes) {
+                if (theme.name.equals(active.name())) return theme;
             }
-
-        } catch (Exception e) {
-            ;
-            ;
         }
+        return defaultThemes.get(0);
     }
 
     private void updateClientTheme(int c1, int c2) {
-        tech.onetap.module.settings.impl.ThemeManager.getInstance()
-                .getCurrentTheme()
-                .setColors(c1, c2);
+        ThemeManager.getInstance().getCurrentTheme().setColors(c1, c2);
     }
 
     public void render(MatrixStack matrixStack, int mouseX, int mouseY, float partialTicks) {

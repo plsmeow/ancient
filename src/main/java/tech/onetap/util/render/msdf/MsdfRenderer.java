@@ -56,6 +56,10 @@ public class MsdfRenderer {
             float fadeoutEnd,
             float maxWidth
     ) {
+        if (text == null || text.isEmpty()) {
+            return;
+        }
+
         float thickness = 0.05f;
         float spacing = 0;
 
@@ -80,7 +84,7 @@ public class MsdfRenderer {
         shader.getUniform("uFadeEnd").set(fadeEndPx);
 
         BufferBuilder builder = Tessellator.getInstance().begin(VertexFormat.DrawMode.QUADS, VertexFormats.POSITION_TEXTURE_COLOR);
-        font.applyGlyphs(
+        boolean hasGlyphs = font.applyGlyphs(
                 matrix,
                 builder,
                 text,
@@ -94,7 +98,11 @@ public class MsdfRenderer {
                 color
         );
 
-        BufferRenderer.drawWithGlobalProgram(builder.end());
+        if (hasGlyphs) {
+            BufferRenderer.drawWithGlobalProgram(builder.end());
+        } else {
+            builder.endNullable();
+        }
 
         RenderSystem.setShaderTexture(0, 0);
         RenderSystem.enableCull();
@@ -222,13 +230,14 @@ public class MsdfRenderer {
         setupStyledText(font, enableFadeout, fadeStartPx, fadeEndPx);
 
         BufferBuilder builder = Tessellator.getInstance().begin(VertexFormat.DrawMode.QUADS, VertexFormats.POSITION_TEXTURE_COLOR);
+        boolean hasGlyphs = false;
 
         for (FormattedTextProcessor.TextSegment segment : segments) {
             int color = segment.color();
             if (alpha != 255) {
                 color = (color & 0x00FFFFFF) | ((alpha & 0xFF) << 24);
             }
-            font.applyGlyphs(
+            hasGlyphs |= font.applyGlyphs(
                     matrix,
                     builder,
                     segment.text(),
@@ -245,7 +254,11 @@ public class MsdfRenderer {
             currentX += font.getWidth(segment.text(), size);
         }
 
-        BufferRenderer.drawWithGlobalProgram(builder.end());
+        if (hasGlyphs) {
+            BufferRenderer.drawWithGlobalProgram(builder.end());
+        } else {
+            builder.endNullable();
+        }
 
         finishText();
     }
