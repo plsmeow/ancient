@@ -3,6 +3,7 @@ package tech.onetap.ui.delta;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.util.math.MatrixStack;
 import org.joml.Vector4f;
+import org.lwjgl.glfw.GLFW;
 import tech.onetap.module.Module;
 import tech.onetap.module.ModuleCategory;
 import tech.onetap.module.settings.BindSetting;
@@ -48,10 +49,11 @@ public class DeltaGuiPanel {
 
     public boolean onMouseClick(double mouseX, double mouseY, int button) {
         for (ModuleEntry entry : this.entries) {
-            if (entry.bindListening) {
-                entry.module.setKey(-100 + button);
-                entry.bindListening = false;
-                return true;
+            for (DeltaElement<?> element : entry.elements) {
+                if (element.isBindListening()) {
+                    element.completeBindClick(button);
+                    return true;
+                }
             }
         }
         if (this.hoveredEntry != null) {
@@ -64,9 +66,11 @@ public class DeltaGuiPanel {
                 return true;
             }
             if (button == 2) {
+                boolean listening = !this.hoveredEntry.bindListening;
                 for (ModuleEntry entry : this.entries) {
-                    entry.extended = entry == this.hoveredEntry && !entry.bindListening;
+                    entry.bindListening = false;
                 }
+                this.hoveredEntry.bindListening = listening;
                 return true;
             }
         }
@@ -94,18 +98,32 @@ public class DeltaGuiPanel {
     }
 
     public boolean onKeyPress(int keyCode, int scanCode, int modifiers) {
-        for (ModuleEntry entry : this.entries) {
-            if (entry.bindListening) {
-                entry.module.setKey(keyCode);
-                entry.bindListening = false;
-                return true;
-            }
-        }
         return this.entries.stream()
                 .filter(entry -> entry.extended)
                 .flatMap(entry -> entry.elements.stream())
                 .filter(DeltaElement::isEnabled)
                 .anyMatch(element -> element.onKeyPress(keyCode, scanCode, modifiers));
+    }
+
+    /**
+     * Клавиша во время бинда модуля или настройки — обрабатывается раньше поиска
+     * (Esc/Del сбрасывают бинд модуля, для настройки Esc — отмена, Del — сброс).
+     */
+    public boolean onBindKeyPress(int keyCode) {
+        for (ModuleEntry entry : this.entries) {
+            if (entry.bindListening) {
+                entry.bindListening = false;
+                if (keyCode == GLFW.GLFW_KEY_ESCAPE || keyCode == GLFW.GLFW_KEY_DELETE) {
+                    entry.module.setKey(-1);
+                } else {
+                    entry.module.setKey(keyCode);
+                }
+                return true;
+            }
+        }
+        return this.entries.stream()
+                .flatMap(entry -> entry.elements.stream())
+                .anyMatch(element -> element.handleBindKey(keyCode));
     }
 
     public boolean onCharTyped(char chr, int modifiers) {
@@ -364,6 +382,9 @@ public class DeltaGuiPanel {
                 if (element != null) {
                     elements.add(element);
                 }
+            }
+            if (module.getName().equals("Interface")) {
+                elements.add(new DeltaThemeButtonElement());
             }
         }
 

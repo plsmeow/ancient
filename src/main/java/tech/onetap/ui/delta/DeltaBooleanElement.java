@@ -23,15 +23,14 @@ public class DeltaBooleanElement extends DeltaElement<BooleanSetting> {
     @Override
     public boolean onMouseClick(double mouseX, double mouseY, int button) {
         Vector4f b = this.bounds;
+        if (handleBindClick(mouseX, mouseY, button, b.x, b.y, b.z, b.w)) {
+            return true;
+        }
         if (!DeltaMath.isHovered(mouseX, mouseY, b.x, b.y, b.z, b.w)) {
             return false;
         }
         if (button == 0) {
             this.setting.toggle();
-            return true;
-        }
-        if (button == 2) {
-            this.setting.setKey(-1);
             return true;
         }
         return false;
@@ -48,7 +47,7 @@ public class DeltaBooleanElement extends DeltaElement<BooleanSetting> {
         float centerY = this.bounds.y + (this.bounds.w / 2.0f) + 0.5f;
         boolean hovered = DeltaMath.isHovered(mouseX, mouseY, this.bounds.x, this.bounds.y, this.bounds.z, this.bounds.w)
                 && extend >= 1.0f;
-        drawLabel(matrices, DeltaFonts.SF_REGULAR.get(), this.setting.getName(), this.bounds.x, this.bounds.y,
+        drawLabel(matrices, DeltaFonts.SF_REGULAR.get(), bindLabelText(), this.bounds.x, this.bounds.y,
                 this.bounds.w, 6.5f, DeltaThemeInfo.TEXT.resolve(), (this.bounds.z - 11.0f) - 4.0f, hovered, extend, delta);
         float boxX = (this.bounds.x + this.bounds.z) - 11.0f;
         float boxY = centerY - 5.5f;

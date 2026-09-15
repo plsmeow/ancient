@@ -29,12 +29,11 @@ public class DeltaModeElement extends DeltaElement<ModeSetting> {
     @Override
     public boolean onMouseClick(double mouseX, double mouseY, int button) {
         Vector4f b = this.bounds;
-        if (button != 0) {
-            if (button != 2 || !DeltaMath.isHovered(mouseX, mouseY, b.x, b.y, b.z, b.w)) {
-                return false;
-            }
-            this.setting.setKey(-1);
+        if (handleBindClick(mouseX, mouseY, button, b.x, b.y, b.z, b.w)) {
             return true;
+        }
+        if (button != 0) {
+            return false;
         }
         var fonts = DeltaFonts.SF_REGULAR.get();
         float x = b.x;
@@ -59,7 +58,7 @@ public class DeltaModeElement extends DeltaElement<ModeSetting> {
         MatrixStack matrices = context.getMatrices();
         var draw = Delta2DHolder.get();
         var fonts = DeltaFonts.SF_REGULAR.get();
-        fonts.drawText(matrices, this.setting.getName(), this.bounds.x, this.bounds.y, 6.5f,
+        fonts.drawText(matrices, bindLabelText(), this.bounds.x, this.bounds.y, 6.5f,
                 ColorUtil.applyAlphaToColor(DeltaThemeInfo.TEXT.resolve(), extend));
         float x = this.bounds.x;
         float y = this.bounds.y + fonts.getHeight(6.5f) + 5.0f;

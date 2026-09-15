@@ -28,14 +28,10 @@ public class DeltaModeListElement extends DeltaElement<ModeListSetting> {
 
     @Override
     public boolean onMouseClick(double mouseX, double mouseY, int button) {
-        Vector4f b = this.bounds;
         if (button != 0) {
-            if (button != 2 || !DeltaMath.isHovered(mouseX, mouseY, b.x, b.y, b.z, b.w)) {
-                return false;
-            }
-            this.setting.setKey(-1);
-            return true;
+            return false;
         }
+        Vector4f b = this.bounds;
         var fonts = DeltaFonts.SF_REGULAR.get();
         float x = b.x;
         float y = b.y + fonts.getHeight(6.5f) + 5.0f;

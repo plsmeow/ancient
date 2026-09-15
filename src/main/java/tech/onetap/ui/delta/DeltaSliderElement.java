@@ -24,6 +24,9 @@ public class DeltaSliderElement extends DeltaElement<SliderSetting> {
     @Override
     public boolean onMouseClick(double mouseX, double mouseY, int button) {
         Vector4f b = this.bounds;
+        if (handleBindClick(mouseX, mouseY, button, b.x, b.y, b.z, b.w)) {
+            return true;
+        }
         float font = DeltaFonts.SF_REGULAR.get().getHeight(6.5f);
         if (!DeltaMath.isHovered(mouseX, mouseY, b.x, b.y + font, b.z, 11.0f)) {
             return false;
@@ -33,11 +36,7 @@ public class DeltaSliderElement extends DeltaElement<SliderSetting> {
             updateSliderFromMouse(mouseX);
             return true;
         }
-        if (button != 2) {
-            return false;
-        }
-        this.setting.setKey(-1);
-        return true;
+        return false;
     }
 
     @Override
@@ -71,7 +70,7 @@ public class DeltaSliderElement extends DeltaElement<SliderSetting> {
         float boxWidth = fonts.getWidth(value, 6.25f) + 6.0f;
         float boxHeight = fonts.getHeight(6.25f) + 2.0f;
         float boxX = (this.bounds.x + this.bounds.z) - boxWidth;
-        drawLabel(matrices, fonts, this.setting.getName(), this.bounds.x, this.bounds.y + 0.5f,
+        drawLabel(matrices, fonts, bindLabelText(), this.bounds.x, this.bounds.y + 0.5f,
                 fonts.getHeight(6.5f), 6.5f, DeltaThemeInfo.TEXT.resolve(), (boxX - this.bounds.x) - 4.0f,
                 hovered, extend, delta);
         draw.drawRounded(matrices, boxX, this.bounds.y, boxWidth, boxHeight, 2.0f,

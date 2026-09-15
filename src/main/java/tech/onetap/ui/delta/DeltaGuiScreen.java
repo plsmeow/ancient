@@ -9,7 +9,6 @@ import org.joml.Vector4f;
 import tech.onetap.Onetap;
 import tech.onetap.module.Module;
 import tech.onetap.module.ModuleCategory;
-import tech.onetap.module.settings.impl.ThemeManager;
 import tech.onetap.util.render.ColorUtil;
 import tech.onetap.util.render.Delta2DHolder;
 import tech.onetap.util.render.DeltaAnimation;
@@ -25,17 +24,18 @@ import java.util.List;
 
 /**
  * Delta-styled ClickGUI screen ported from DeltaClient (aethereal.ui.screen.GUIScreen):
- * singleton (state persists between opens), forced GUI scale 2, centered 125x270 panels
- * tooltip above the panels, theme picker row below the search field.
+ * singleton (state persists between opens), forced GUI scale 2, centered 125x270 panels,
+ * tooltip above the panels, search field with a theme-panel toggle button below.
  */
 public class DeltaGuiScreen extends Screen {
     private static DeltaGuiScreen instance;
 
     private final StringBuilder searchText = new StringBuilder();
     private final DeltaAnimation tooltipAnim = new DeltaAnimation();
+    private final DeltaAnimation themeButtonHover = new DeltaAnimation();
     private final List<DeltaGuiPanel> panels = new ArrayList<>();
-    private final List<ThemeManager.ThemePreset> pickerThemes = new ArrayList<>();
-    private final List<Vector4f> pickerRects = new ArrayList<>();
+    private final DeltaThemePanel themePanel = new DeltaThemePanel();
+    private final Vector4f themeButtonRect = new Vector4f();
     private boolean searchFocused;
     private String lastTooltip;
     private float searchX;
@@ -56,6 +56,14 @@ public class DeltaGuiScreen extends Screen {
             instance = new DeltaGuiScreen();
         }
         return instance;
+    }
+
+    public void toggleThemePanel() {
+        this.themePanel.setOpen(!this.themePanel.isOpen());
+    }
+
+    public boolean isThemePanelOpen() {
+        return this.themePanel.isOpen();
     }
 
     @Override
@@ -93,6 +101,7 @@ public class DeltaGuiScreen extends Screen {
         for (DeltaGuiPanel panel : this.panels) {
             panel.renderColorPickers(context, scaledMouseX, scaledMouseY, delta);
         }
+        this.themePanel.render(context, scaledMouseX, scaledMouseY, delta, left, topY);
         float panelBottom = this.panels.getFirst().getBounds().w;
         MatrixStack matrices = context.getMatrices();
         float animValue = this.panels.getFirst().getOpenAnimation().getAnimationValue();
@@ -108,8 +117,8 @@ public class DeltaGuiScreen extends Screen {
         matrices.scale(searchScale, searchScale, 1.0f);
         matrices.translate(-centerX, -searchY, 0.0f);
         renderSearchField(context, centerX, panelTop, (int) scaledMouseX, (int) scaledMouseY);
+        renderThemeButton(context, scaledMouseX, scaledMouseY, delta);
         matrices.pop();
-        renderThemePicker(context, centerX, this.searchY + 26.0f, scaledMouseX, scaledMouseY, animValue, backEase, expoEase);
         renderTooltip(context.getMatrices(), centerX, topY, delta);
         ScaleUtil.popScale(context);
     }
@@ -144,59 +153,33 @@ public class DeltaGuiScreen extends Screen {
         }
     }
 
-    private void renderThemePicker(DrawContext context, float centerX, float y, double mouseX, double mouseY,
-                                   float animValue, float backEase, float expoEase) {
+    /**
+     * Кнопка-палитра рядом с полем поиска — открывает отдельную панель тем.
+     */
+    private void renderThemeButton(DrawContext context, double mouseX, double mouseY, float delta) {
         MatrixStack matrices = context.getMatrices();
         var draw = Delta2DHolder.get();
-        var fonts = DeltaFonts.ONEST_REGULAR.get();
-        ThemeManager manager = ThemeManager.getInstance();
-
-        this.pickerThemes.clear();
-        this.pickerThemes.addAll(ThemeManager.DEFAULT_THEMES);
-        this.pickerThemes.addAll(manager.getCustomThemes());
-
-        float size = 11.0f;
-        float gap = 5.0f;
-        float totalWidth = (this.pickerThemes.size() * size) + ((this.pickerThemes.size() - 1) * gap);
-        float startX = centerX - (totalWidth / 2.0f);
-        float fade = DeltaEasing.EXPO_OUT.ease(animValue);
-        String activeName = manager.getActivePreset() == null ? null : manager.getActivePreset().name();
-        String hoveredName = null;
-
-        this.pickerRects.clear();
-        matrices.push();
-        matrices.translate(centerX, y + (size / 2.0f) + ((1.0f - expoEase) * 8.0f), 0.0f);
-        float scale = (0.15f * backEase) + 0.85f;
-        matrices.scale(scale, scale, 1.0f);
-        matrices.translate(-centerX, -(y + (size / 2.0f)), 0.0f);
-
-        for (int i = 0; i < this.pickerThemes.size(); i++) {
-            ThemeManager.ThemePreset preset = this.pickerThemes.get(i);
-            float x = startX + (i * (size + gap));
-            this.pickerRects.add(new Vector4f(x, y, size, size));
-            boolean active = preset.name().equals(activeName);
-            boolean hover = DeltaMath.isHovered(mouseX, mouseY, x, y, size, size);
-            if (hover) hoveredName = preset.name();
-
-            draw.drawRounded(matrices, x, y, size, size, size / 2.0f,
-                    ColorUtil.applyAlphaToColor(preset.color1(), fade));
-            draw.drawRounded(matrices, x + 3.0f, y + 3.0f, size - 6.0f, size - 6.0f, (size - 6.0f) / 2.0f,
-                    ColorUtil.applyAlphaToColor(preset.color2(), fade));
-
-            if (active || hover) {
-                int outline = ColorUtil.applyAlphaToColor(ColorUtil.convertToARGB(255, 255, 255, 255),
-                        (active ? 0.85f : 0.35f) * fade);
-                draw.drawOutline(matrices, x - 1.0f, y - 1.0f, size + 2.0f, size + 2.0f,
-                        (size + 2.0f) / 2.0f, 0.5f, outline);
-            }
-        }
-
-        if (hoveredName != null) {
-            float textWidth = fonts.getWidth(hoveredName, 6.5f);
-            fonts.drawText(matrices, hoveredName, centerX - (textWidth / 2.0f), y + size + 3.5f, 6.5f,
-                    ColorUtil.applyAlphaToColor(DeltaThemeInfo.TEXT.resolve(), fade));
-        }
-        matrices.pop();
+        var icons = DeltaFonts.ICONS.get();
+        float x = this.searchX + 100.0f + 6.0f;
+        float y = this.searchY;
+        this.themeButtonRect.set(x, y, 20.0f, 20.0f);
+        boolean hovered = DeltaMath.isHovered(mouseX, mouseY, x, y, 20.0f, 20.0f);
+        this.themeButtonHover.tick(hovered);
+        this.themeButtonHover.update(0.0f, 1.0f, 0.25f, DeltaEasing.SINE_IN_OUT, delta);
+        float hover = this.themeButtonHover.getAnimationValue();
+        draw.drawBlur(matrices, x, y, 20.0f, 20.0f, 6.0f,
+                ColorUtil.applyAlphaToColor(ColorUtil.lerpColor(DeltaThemeInfo.BACKGROUND_GUI.resolve(),
+                        DeltaThemeInfo.PRIMARY.resolve(), 0.05f), 0.784f));
+        draw.drawRounded(matrices, x, y, 20.0f, 20.0f, 6.0f,
+                ColorUtil.applyAlphaToColor(ColorUtil.convertToARGB(255, 255, 255, 255), 0.023529412f * hover));
+        draw.drawOutline(matrices, x, y, 20.0f, 20.0f, 6.0f, 0.5f,
+                ColorUtil.applyAlphaToColor(DeltaThemeInfo.OUTLINE_MEDIUM.resolve(),
+                        DeltaThemeInfo.OUTLINE_MEDIUM.alphaFloat()));
+        int iconColor = this.themePanel.isOpen()
+                ? DeltaThemeInfo.PRIMARY.resolve()
+                : ColorUtil.lerpColor(DeltaThemeInfo.TEXT_DISABLED.resolve(), DeltaThemeInfo.TEXT.resolve(), hover);
+        icons.drawText(matrices, "J", x + ((20.0f - icons.getWidth("J", 8.0f)) / 2.0f),
+                icons.centerInkY("J", 8.0f, y + 10.0f), 8.0f, iconColor);
     }
 
     private void renderTooltip(MatrixStack matrices, float centerX, float panelTop, float delta) {
@@ -227,19 +210,17 @@ public class DeltaGuiScreen extends Screen {
         MinecraftClient mc = MinecraftClient.getInstance();
         double scaledX = DeltaMath.scaleToGui2(mouseX, mc);
         double scaledY = DeltaMath.scaleToGui2(mouseY, mc);
+        if (this.themePanel.onMouseClick(scaledX, scaledY, button)) {
+            return true;
+        }
         if (DeltaMath.isHovered(scaledX, scaledY, this.searchX, this.searchY, 100.0f, 20.0f)) {
             this.searchFocused = true;
             return true;
         }
-        for (int i = 0; i < this.pickerRects.size(); i++) {
-            Vector4f rect = this.pickerRects.get(i);
-            if (DeltaMath.isHovered(scaledX, scaledY, rect.x, rect.y, rect.z, rect.w)) {
-                ThemeManager.ThemePreset preset = this.pickerThemes.get(i);
-                ThemeManager manager = ThemeManager.getInstance();
-                manager.getCurrentTheme().setColors(preset.color1(), preset.color2());
-                manager.saveThemes(manager.getCustomThemes(), preset.name());
-                return true;
-            }
+        if (button == 0 && DeltaMath.isHovered(scaledX, scaledY, this.themeButtonRect.x, this.themeButtonRect.y,
+                this.themeButtonRect.z, this.themeButtonRect.w)) {
+            toggleThemePanel();
+            return true;
         }
         if (this.searchFocused) {
             this.searchFocused = false;
@@ -255,6 +236,7 @@ public class DeltaGuiScreen extends Screen {
         MinecraftClient mc = MinecraftClient.getInstance();
         double scaledX = DeltaMath.scaleToGui2(mouseX, mc);
         double scaledY = DeltaMath.scaleToGui2(mouseY, mc);
+        this.themePanel.onMouseRelease(scaledX, scaledY, button);
         if (this.panels.stream().anyMatch(panel -> panel.onMouseRelease(scaledX, scaledY, button))) {
             return true;
         }
@@ -266,6 +248,9 @@ public class DeltaGuiScreen extends Screen {
         MinecraftClient mc = MinecraftClient.getInstance();
         double scaledX = DeltaMath.scaleToGui2(mouseX, mc);
         double scaledY = DeltaMath.scaleToGui2(mouseY, mc);
+        if (this.themePanel.onMouseScroll(scaledX, scaledY, verticalAmount)) {
+            return true;
+        }
         for (DeltaGuiPanel panel : this.panels) {
             Vector4f bounds = panel.getBounds();
             if (DeltaMath.isHovered(scaledX, scaledY, bounds.x, bounds.y, bounds.z, bounds.w)) {
@@ -277,6 +262,9 @@ public class DeltaGuiScreen extends Screen {
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        if (this.panels.stream().anyMatch(panel -> panel.onBindKeyPress(keyCode))) {
+            return true;
+        }
         if (keyCode == 70 && (modifiers & 2) != 0) {
             this.searchFocused = !this.searchFocused;
             return true;
