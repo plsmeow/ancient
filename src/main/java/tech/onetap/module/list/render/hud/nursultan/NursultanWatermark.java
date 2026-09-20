@@ -63,9 +63,9 @@ public final class NursultanWatermark {
         }
 
         float firstRowX = x + firstBoxWidth + gap;
-        boolean showUser = hud.elements.isEnabled("Ник в ватермарке");
-        boolean showFps = hud.elements.isEnabled("FPS в ватермарке");
-        boolean showTime = hud.elements.isEnabled("Время в ватермарке");
+        boolean showUser = hud.watermarkElements.isEnabled("Ник в ватермарке");
+        boolean showFps = hud.watermarkElements.isEnabled("FPS в ватермарке");
+        boolean showTime = hud.watermarkElements.isEnabled("Время в ватермарке");
         float userW = Fonts.SFMEDIUM.get().getWidth(userText, 7f);
         float fpsW = Fonts.SFMEDIUM.get().getWidth(fpsValue, 7f);
         float timeW = Fonts.SFMEDIUM.get().getWidth(timeText, 7f);
@@ -115,10 +115,10 @@ public final class NursultanWatermark {
         x += 17 + gap;
 
         float row2Width = 0f;
-        boolean showCoords = hud.elements.isEnabled("Координаты в ватермарке");
-        boolean showPing = hud.elements.isEnabled("Пинг в ватермарке");
-        boolean showTps = hud.elements.isEnabled("TPS в ватермарке");
-        boolean showSpeed = hud.elements.isEnabled("Скорость в ватермарке");
+        boolean showCoords = hud.watermarkElements.isEnabled("Координаты в ватермарке");
+        boolean showPing = hud.watermarkElements.isEnabled("Пинг в ватермарке");
+        boolean showTps = hud.watermarkElements.isEnabled("TPS в ватермарке");
+        boolean showSpeed = hud.watermarkElements.isEnabled("Скорость в ватермарке");
 
         if (showCoords) {
             float wCoords = 17 + Fonts.SFMEDIUM.get().getWidth(coordsText, 7f) + 4;

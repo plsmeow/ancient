@@ -67,7 +67,7 @@ public final class DeltaHud {
         var fonts = DeltaFonts.GT_REGULAR.get();
         var icons = DeltaFonts.ICONS.get();
         MinecraftClient mc = MinecraftClient.getInstance();
-        boolean split = hud.elements.isEnabled("Разделять элементы ватермарки");
+        boolean split = hud.watermarkElements.isEnabled("Разделять элементы ватермарки");
 
         smoothedFps = smoothedFps + ((mc.getCurrentFps() - smoothedFps) * 0.1f);
 
@@ -97,18 +97,18 @@ public final class DeltaHud {
 
     private static List<String[]> buildTopSections(Interface hud, MinecraftClient mc) {
         List<String[]> sections = new ArrayList<>();
-        if (hud.elements.isEnabled("Ник в ватермарке") && mc.player != null) {
+        if (hud.watermarkElements.isEnabled("Ник в ватермарке") && mc.player != null) {
             sections.add(new String[]{"L", mc.player.getName().getString()});
         }
-        if (hud.elements.isEnabled("FPS в ватермарке")) {
+        if (hud.watermarkElements.isEnabled("FPS в ватермарке")) {
             sections.add(new String[]{"q", ((int) smoothedFps) + " FPS"});
         }
-        if (hud.elements.isEnabled("Пинг в ватермарке") && mc.player != null && mc.getNetworkHandler() != null
+        if (hud.watermarkElements.isEnabled("Пинг в ватермарке") && mc.player != null && mc.getNetworkHandler() != null
                 && mc.getNetworkHandler().getPlayerListEntry(mc.player.getUuid()) != null) {
             sections.add(new String[]{"P",
                     mc.getNetworkHandler().getPlayerListEntry(mc.player.getUuid()).getLatency() + " ms"});
         }
-        if (hud.elements.isEnabled("Время в ватермарке")) {
+        if (hud.watermarkElements.isEnabled("Время в ватермарке")) {
             sections.add(new String[]{"T", LocalTime.now().format(TIME_FORMAT)});
         }
         return sections;
@@ -117,15 +117,15 @@ public final class DeltaHud {
     private static List<String[]> buildBottomSections(Interface hud, MinecraftClient mc) {
         List<String[]> sections = new ArrayList<>();
         if (mc.player == null) return sections;
-        if (hud.elements.isEnabled("Координаты в ватермарке")) {
+        if (hud.watermarkElements.isEnabled("Координаты в ватермарке")) {
             sections.add(new String[]{"b", "x " + ((int) mc.player.getX())
                     + " y " + ((int) mc.player.getY()) + " z " + ((int) mc.player.getZ())});
         }
-        if (hud.elements.isEnabled("TPS в ватермарке")) {
+        if (hud.watermarkElements.isEnabled("TPS в ватермарке")) {
             float tps = tech.onetap.Onetap.getInstance().getTpsGetter().getAverageTPS();
             sections.add(new String[]{"g", String.format("%.1f TPS", tps)});
         }
-        if (hud.elements.isEnabled("Скорость в ватермарке")) {
+        if (hud.watermarkElements.isEnabled("Скорость в ватермарке")) {
             double dx = mc.player.getX() - mc.player.prevX;
             double dz = mc.player.getZ() - mc.player.prevZ;
             double bps = Math.hypot(dx, dz) * 20;

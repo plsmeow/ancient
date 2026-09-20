@@ -105,7 +105,9 @@ public class Interface extends Module {
             new BooleanSetting("СпекТрекер", true),
             new BooleanSetting("Блюр фона", true),
             new BooleanSetting("Задний фон от темы", false),
-            new BooleanSetting("Урон Булавы", false),
+            new BooleanSetting("Урон Булавы", false)
+    );
+    public final ModeListSetting watermarkElements = new ModeListSetting("Элементы ватермарки",
             new BooleanSetting("Ник в ватермарке", true),
             new BooleanSetting("FPS в ватермарке", true),
             new BooleanSetting("Пинг в ватермарке", true),
