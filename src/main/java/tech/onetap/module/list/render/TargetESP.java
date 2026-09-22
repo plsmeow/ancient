@@ -24,9 +24,11 @@ import tech.onetap.module.Module;
 import tech.onetap.module.ModuleCategory;
 import tech.onetap.module.ModuleInformation;
 import tech.onetap.module.list.combat.AutoFlyMace;
+import tech.onetap.module.list.combat.AimAssist;
 import tech.onetap.module.list.combat.BoatAura;
 import tech.onetap.module.list.combat.KillAura;
 import tech.onetap.module.list.combat.TpAura;
+import tech.onetap.module.list.combat.TriggerBot;
 import tech.onetap.module.settings.BooleanSetting;
 import tech.onetap.module.settings.ModeSetting;
 import tech.onetap.module.settings.SliderSetting;
@@ -114,6 +116,16 @@ public class TargetESP extends Module {
         KillAura killAura = Onetap.getInstance().getModuleStorage().get(KillAura.class);
         if (killAura != null && killAura.isEnabled() && killAura.getTarget() != null && killAura.getTarget().isAlive()) {
             return killAura.getTarget();
+        }
+
+        TriggerBot triggerBot = Onetap.getInstance().getModuleStorage().get(TriggerBot.class);
+        if (triggerBot != null && triggerBot.isEnabled() && triggerBot.getTarget() != null && triggerBot.getTarget().isAlive()) {
+            return triggerBot.getTarget();
+        }
+
+        AimAssist aimAssist = Onetap.getInstance().getModuleStorage().get(AimAssist.class);
+        if (aimAssist != null && aimAssist.isEnabled() && aimAssist.getTarget() != null && aimAssist.getTarget().isAlive()) {
+            return aimAssist.getTarget();
         }
 
         AutoFlyMace autoFlyMace = Onetap.getInstance().getModuleStorage().get(AutoFlyMace.class);

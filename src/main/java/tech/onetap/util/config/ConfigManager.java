@@ -39,6 +39,8 @@ public class ConfigManager {
                     settingsObject.addProperty(setting.getName(), s.getValue());
                 } else if (setting instanceof ThemeSetting s) {
                     settingsObject.addProperty(setting.getName(), s.getValue().name);
+                } else if (setting instanceof ColorSetting s) {
+                    settingsObject.addProperty(setting.getName(), s.getValue());
                 } else if (setting instanceof ModeListSetting s) {
                     JsonArray enabledModes = new JsonArray();
                     for (String name2 : s.getEnabledModules()) {
@@ -114,6 +116,25 @@ public class ConfigManager {
                                     s.setValue(theme);
                                     break;
                                 }
+                            }
+                        } else if (setting instanceof ColorSetting s) {
+                            try {
+                                if (element.isJsonPrimitive()) {
+                                    JsonPrimitive prim = element.getAsJsonPrimitive();
+                                    if (prim.isNumber()) {
+                                        s.setValue(prim.getAsInt());
+                                    } else if (prim.isString()) {
+                                        String str = prim.getAsString();
+                                        if (str.startsWith("#")) {
+                                            s.setValue((int) Long.parseLong(str.substring(1), 16));
+                                        } else if (str.startsWith("0x") || str.startsWith("0X")) {
+                                            s.setValue((int) Long.parseLong(str.substring(2), 16));
+                                        } else {
+                                            s.setValue(Integer.parseInt(str));
+                                        }
+                                    }
+                                }
+                            } catch (Exception ignored) {
                             }
                         } else if (setting instanceof ModeListSetting s && element.isJsonArray()) {
                             JsonArray array = element.getAsJsonArray();

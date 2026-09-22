@@ -18,6 +18,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import tech.onetap.module.list.render.Chams;
 import tech.onetap.module.list.render.SwingAnimations;
 import tech.onetap.module.list.render.ViewModel;
 import tech.onetap.util.base.Instance;
@@ -94,20 +95,39 @@ public abstract class HeldItemRendererMixin {
         float g = player.getLerpedPitch(tickDelta);
         HeldItemRenderer.HandRenderType handRenderType = this.getHandRenderType(player);
 
-        float j;
-        float k;
-        if (handRenderType.renderMainHand) {
-            j = hand == Hand.MAIN_HAND ? f : 0.0F;
-            k = 1.0F - MathHelper.lerp(tickDelta, this.prevEquipProgressMainHand, this.equipProgressMainHand);
-            this.renderFirstPersonItem(player, tickDelta, g, Hand.MAIN_HAND, j, this.mainHand, k, matrices, vertexConsumers, light);
+        var chams = Instance.get(Chams.class);
+        boolean chamsHands = chams != null && chams.isHandsEnabled();
+
+        if (!chamsHands || chams.shouldRenderNormalHands()) {
+            if (handRenderType.renderMainHand) {
+                float j = hand == Hand.MAIN_HAND ? f : 0.0F;
+                float k = 1.0F - MathHelper.lerp(tickDelta, this.prevEquipProgressMainHand, this.equipProgressMainHand);
+                this.renderFirstPersonItem(player, tickDelta, g, Hand.MAIN_HAND, j, this.mainHand, k, matrices, vertexConsumers, light);
+            }
+
+            if (handRenderType.renderOffHand) {
+                float j = hand == Hand.OFF_HAND ? f : 0.0F;
+                float k = 1.0F - MathHelper.lerp(tickDelta, this.prevEquipProgressOffHand, this.equipProgressOffHand);
+                this.renderFirstPersonItem(player, tickDelta, g, Hand.OFF_HAND, j, this.offHand, k, matrices, vertexConsumers, light);
+            }
+
+            vertexConsumers.draw();
         }
 
-        if (handRenderType.renderOffHand) {
-            j = hand == Hand.OFF_HAND ? f : 0.0F;
-            k = 1.0F - MathHelper.lerp(tickDelta, this.prevEquipProgressOffHand, this.equipProgressOffHand);
-            this.renderFirstPersonItem(player, tickDelta, g, Hand.OFF_HAND, j, this.offHand, k, matrices, vertexConsumers, light);
-        }
+        if (chamsHands) {
+            chams.renderHands(matrices, tickDelta, () -> {
+                if (handRenderType.renderMainHand) {
+                    float j = hand == Hand.MAIN_HAND ? f : 0.0F;
+                    float k = 1.0F - MathHelper.lerp(tickDelta, this.prevEquipProgressMainHand, this.equipProgressMainHand);
+                    this.renderFirstPersonItem(player, tickDelta, g, Hand.MAIN_HAND, j, this.mainHand, k, matrices, vertexConsumers, 15728880);
+                }
 
-        vertexConsumers.draw();
+                if (handRenderType.renderOffHand) {
+                    float j = hand == Hand.OFF_HAND ? f : 0.0F;
+                    float k = 1.0F - MathHelper.lerp(tickDelta, this.prevEquipProgressOffHand, this.equipProgressOffHand);
+                    this.renderFirstPersonItem(player, tickDelta, g, Hand.OFF_HAND, j, this.offHand, k, matrices, vertexConsumers, 15728880);
+                }
+            });
+        }
     }
 }

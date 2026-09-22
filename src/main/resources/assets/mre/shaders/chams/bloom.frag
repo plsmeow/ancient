@@ -3,111 +3,71 @@
 in vec2 v_TexCoord;
 in vec2 v_OneTexel;
 
-uniform sampler2D u_Texture;
-uniform bool u_Image;
-uniform sampler2D u_Overlay;
-uniform float u_OverlayAlpha;
-uniform int u_Width;
-uniform bool u_FastLines;
-uniform int u_ShapeMode;
-uniform float u_GlowMultiplier;
-uniform int u_GlowQuality;
-uniform vec4 u_FillColor;
-uniform vec4 u_OutlineColor;
-uniform int u_Dots;
-uniform int u_DotsRadius;
-uniform float u_DotsAlpha;
+uniform sampler2D u_Texture;      // Sharp silhouette
+uniform sampler2D u_BlurTexture;  // Horizontally blurred silhouette
 
-out vec4 color;
+uniform float u_LineWidth;        // Line thickness (0.1 to 20.0)
+uniform float u_FillOpacity;      // Fill opacity (0.0 to 1.0)
+uniform vec4 u_Color1;
+uniform vec4 u_Color2;
+uniform bool u_UseGradient;
+uniform float u_Time;
+uniform vec2 u_Size;
 
-bool decorator() {
-    if (u_Dots == 0) return false;
-    if (u_FillColor.a == 0) return false;
-    if (u_Dots == 1)
-    return int(gl_FragCoord.x) - (u_DotsRadius * int(gl_FragCoord.x / u_DotsRadius)) == 0
-        && int(gl_FragCoord.y) - (u_DotsRadius * int(gl_FragCoord.y / u_DotsRadius)) == 0;
-    return int(gl_FragCoord.x) % u_DotsRadius == 0 || int(gl_FragCoord.y) % u_DotsRadius == 0;
-}
+out vec4 fragColor;
 
-float blur(vec4 center, bool outline) {
-    if (u_Width == 0.0) return 0.0;
-
-    int w = u_GlowQuality * u_Width;
-    float blurred = 0.0;
-
-    blurred += sign(texture(u_Texture, v_TexCoord + v_OneTexel * vec2(w, 0)).a);
-    blurred += sign(texture(u_Texture, v_TexCoord + v_OneTexel * vec2(-w, 0)).a);
-    blurred += sign(texture(u_Texture, v_TexCoord + v_OneTexel * vec2(0, w)).a);
-    blurred += sign(texture(u_Texture, v_TexCoord + v_OneTexel * vec2(0, -w)).a);
-
-    blurred += sign(texture(u_Texture, v_TexCoord + v_OneTexel * vec2(w, w)).a);
-    blurred += sign(texture(u_Texture, v_TexCoord + v_OneTexel * vec2(w, -w)).a);
-    blurred += sign(texture(u_Texture, v_TexCoord + v_OneTexel * vec2(-w, w)).a);
-    blurred += sign(texture(u_Texture, v_TexCoord + v_OneTexel * vec2(-w, -w)).a);
-
-    if (u_FastLines && u_Width > 2 && blurred == 0.0) {
-        return 0.0;
+vec4 getShadedColor(vec2 coord) {
+    if (!u_UseGradient) {
+        return u_Color1;
     }
-
-    for (int x = -w; x <= w; x += u_GlowQuality) {
-        for (int y = -w; y <= w; y += u_GlowQuality) {
-            if (x == 0 && y == 0) {
-                continue;
-            }
-            if (sign(x) == w && sign(y) == w
-                || sign(x) == w && y == 0
-                || sign(y) == 0 && x == 0) {
-                continue;
-            }
-
-            blurred += sign(texture(u_Texture, v_TexCoord + v_OneTexel * vec2(x, y)).a);
-        }
-    }
-
-    return clamp(blurred / (((u_Width * u_Width) + u_Width) * 4), 0.0, 1.0) * u_GlowMultiplier;
+    vec2 pixelPos = coord * u_Size;
+    float diagonal = (pixelPos.x + pixelPos.y) * 0.003;
+    float t = sin(diagonal + u_Time) * 0.5 + 0.5;
+    return mix(u_Color1, u_Color2, t);
 }
 
 void main() {
-    vec4 center = texture(u_Texture, v_TexCoord);
-    vec4 overlay = texture(u_Overlay, v_TexCoord * vec2(1.0, -1.0));
+    // Static vertical Gaussian blur matching horizontal pass (1 texel spacing)
+    vec2 step = vec2(0.0, v_OneTexel.y);
 
-    if (center.a != 0.0) {
-        if (u_ShapeMode == 0) discard;
-        if (decorator()) {
-            center = vec4(u_FillColor.rgb, u_DotsAlpha);
-        } else if (u_Image) {
-            center.rgb = mix(overlay.rgb, u_FillColor.rgb, u_FillColor.a);
-            center.a = u_OverlayAlpha;
-        } else {
-            center = u_FillColor;
-        }
-        if (u_Width != 0) {
-            center = mix(center, u_OutlineColor, u_GlowMultiplier - blur(center, false));
-        }
-    } else {
-        if (u_ShapeMode == 1 || u_Width == 0.0) discard;
+    float totalWeight = 0.0;
+    float b = 0.0;
 
-        float blurFactor = blur(center, true);
+    for (int i = -12; i <= 12; i++) {
+        float w = exp(-float(i * i) / 50.8);
+        b += texture(u_BlurTexture, v_TexCoord + step * float(i)).a * w;
+        totalWeight += w;
+    }
+    b /= totalWeight;
 
-        if (blurFactor == 0.0) discard;
+    // Sharp silhouette alpha (1.0 inside entity, 0.0 outside)
+    float s = texture(u_Texture, v_TexCoord).a;
 
-        for (int x = -1; x <= 1; x++) {
-            for (int y = -1; y <= 1; y++) {
-                if (x == 0 && y == 0)
-                    continue;
+    // Distance metrics from silhouette perimeter (b == 0.5)
+    float dOut = clamp(1.0 - b * 2.0, 0.0, 1.0);
+    float dIn = clamp(b * 2.0 - 1.0, 0.0, 1.0);
+    float distToEdge = mix(dOut, dIn, s);
 
-                if (texture(u_Texture, v_TexCoord + v_OneTexel * vec2(x, y)).a > 0.0) {
-                    center = u_OutlineColor;
-                    center.a = 1.0;
-                }
-            }
-        }
+    // Line thickness (scalable up to thick outlines with anti-aliasing)
+    float w = clamp(u_LineWidth * 0.05, 0.005, 1.0);
+    float lineAlpha = 1.0 - smoothstep(w * 0.4, w, distToEdge);
 
-        if (center.a == 0.0) {
-            center = u_OutlineColor;
-            center.a = blurFactor;
-        }
+    // Natural built-in fade glow radiating outward and inward
+    float fadeOut = pow(1.0 - dOut, 1.8) * 0.85;
+    float fadeIn = pow(1.0 - dIn, 2.2) * 0.65;
+    float glowFade = mix(fadeOut, fadeIn, s);
+
+    // Combine contour and soft glow
+    float glowTotal = max(lineAlpha, glowFade);
+
+    // Subtle optional body fill
+    float fillAlpha = s * u_FillOpacity;
+
+    float totalAlpha = clamp(glowTotal + fillAlpha, 0.0, 1.0);
+    if (totalAlpha <= 0.002) {
+        discard;
     }
 
-    color = center;
+    vec4 color = getShadedColor(v_TexCoord);
+    fragColor = vec4(color.rgb, totalAlpha * color.a);
 }

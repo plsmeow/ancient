@@ -2,34 +2,33 @@ package tech.onetap.util.render.chams;
 
 import com.mojang.blaze3d.platform.GlStateManager;
 import net.minecraft.client.gl.SimpleFramebuffer;
-import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.GL11;
-import org.lwjgl.opengl.GL12;
-import org.lwjgl.opengl.GL13;
 import org.lwjgl.opengl.GL15;
 import org.lwjgl.opengl.GL20;
 import org.lwjgl.opengl.GL30;
 
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
-import java.nio.IntBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
 
 public final class ChamsShaders {
     private static final String RESOURCE_ROOT = "/assets/mre/shaders/chams/";
-    private static final String[] MODES = {"Solid", "Outline", "Gradient", "Rainbow", "Bloom"};
 
     private static ChamsShaders instance;
 
-    private final Map<String, Integer> programs = new HashMap<>();
+    private int blurHProgram = -1;
+    private int bloomProgram = -1;
+    private int sydneyProgram = -1;
     private final Map<String, Integer> uniformCache = new HashMap<>();
 
-    private SimpleFramebuffer framebuffer;
+    private SimpleFramebuffer worldFramebuffer;
+    private SimpleFramebuffer handFramebuffer;
+    private SimpleFramebuffer blurFramebuffer;
+
     private int quadVao = -1;
     private int quadVbo = -1;
-    private int whiteTexture = -1;
     private boolean initialized;
     private boolean failed;
 
@@ -50,7 +49,7 @@ public final class ChamsShaders {
         if (!initialized) {
             init();
         }
-        return !failed;
+        return !failed && bloomProgram > 0 && blurHProgram > 0 && sydneyProgram > 0;
     }
 
     private void init() {
@@ -58,33 +57,46 @@ public final class ChamsShaders {
             String vertexSource = readResource("base.vert");
             int vertexShader = compile(GL20.GL_VERTEX_SHADER, vertexSource, "base.vert");
 
-            for (String mode : MODES) {
-                String fragmentName = fragmentName(mode);
-                int fragmentShader = compile(GL20.GL_FRAGMENT_SHADER, readResource(fragmentName), fragmentName);
+            // Horizontal blur pass
+            int blurHFragmentShader = compile(GL20.GL_FRAGMENT_SHADER, readResource("blur_h.frag"), "blur_h.frag");
+            blurHProgram = linkProgram(vertexShader, blurHFragmentShader, "blur_h.frag");
+            GL20.glDeleteShader(blurHFragmentShader);
 
-                int program = GL20.glCreateProgram();
-                GL20.glAttachShader(program, vertexShader);
-                GL20.glAttachShader(program, fragmentShader);
-                GL20.glBindAttribLocation(program, 0, "pos");
-                GL20.glLinkProgram(program);
-                if (GL20.glGetProgrami(program, GL20.GL_LINK_STATUS) == GL11.GL_FALSE) {
-                    String log = GL20.glGetProgramInfoLog(program);
-                    throw new IllegalStateException("failed to link " + fragmentName + ": " + log);
-                }
-                GL20.glDetachShader(program, vertexShader);
-                GL20.glDetachShader(program, fragmentShader);
-                GL20.glDeleteShader(fragmentShader);
-                programs.put(mode, program);
-            }
+            // Vertical blur + composite pass
+            int bloomFragmentShader = compile(GL20.GL_FRAGMENT_SHADER, readResource("bloom.frag"), "bloom.frag");
+            bloomProgram = linkProgram(vertexShader, bloomFragmentShader, "bloom.frag");
+            GL20.glDeleteShader(bloomFragmentShader);
+
+            // Sydney direct outline pass
+            int sydneyFragmentShader = compile(GL20.GL_FRAGMENT_SHADER, readResource("sydney.frag"), "sydney.frag");
+            sydneyProgram = linkProgram(vertexShader, sydneyFragmentShader, "sydney.frag");
+            GL20.glDeleteShader(sydneyFragmentShader);
 
             GL20.glDeleteShader(vertexShader);
+
             createQuad();
-            createWhiteTexture();
             initialized = true;
         } catch (Throwable throwable) {
             failed = true;
             System.err.println("[Chams] shader initialization failed: " + throwable.getMessage());
         }
+    }
+
+    private int linkProgram(int vert, int frag, String name) {
+        int program = GL20.glCreateProgram();
+        GL20.glAttachShader(program, vert);
+        GL20.glAttachShader(program, frag);
+        GL20.glBindAttribLocation(program, 0, "pos");
+        GL20.glLinkProgram(program);
+
+        if (GL20.glGetProgrami(program, GL20.GL_LINK_STATUS) == GL11.GL_FALSE) {
+            String log = GL20.glGetProgramInfoLog(program);
+            throw new IllegalStateException("failed to link " + name + ": " + log);
+        }
+
+        GL20.glDetachShader(program, vert);
+        GL20.glDetachShader(program, frag);
+        return program;
     }
 
     private int compile(int type, String source, String name) {
@@ -117,40 +129,53 @@ public final class ChamsShaders {
         GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
     }
 
-    private void createWhiteTexture() {
-        whiteTexture = GlStateManager._genTexture();
-        GlStateManager._activeTexture(GL13.GL_TEXTURE0);
-        GlStateManager._bindTexture(whiteTexture);
-        GlStateManager._texParameter(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_NEAREST);
-        GlStateManager._texParameter(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_NEAREST);
-        GlStateManager._texParameter(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_S, GL12.GL_CLAMP_TO_EDGE);
-        GlStateManager._texParameter(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_T, GL12.GL_CLAMP_TO_EDGE);
-        IntBuffer pixel = BufferUtils.createIntBuffer(1);
-        pixel.put(0, 0xFFFFFFFF);
-        GlStateManager._texImage2D(GL11.GL_TEXTURE_2D, 0, GL11.GL_RGBA8, 1, 1, 0, GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, pixel);
-        GlStateManager._bindTexture(0);
-    }
-
-    public SimpleFramebuffer framebuffer(int width, int height) {
-        if (framebuffer == null) {
-            framebuffer = new SimpleFramebuffer(width, height, true);
-        } else if (framebuffer.textureWidth != width || framebuffer.textureHeight != height) {
-            framebuffer.resize(width, height);
+    public SimpleFramebuffer worldFramebuffer(int width, int height) {
+        if (worldFramebuffer == null) {
+            worldFramebuffer = new SimpleFramebuffer(width, height, true);
+            worldFramebuffer.setTexFilter(GL11.GL_LINEAR);
+        } else if (worldFramebuffer.textureWidth != width || worldFramebuffer.textureHeight != height) {
+            worldFramebuffer.resize(width, height);
+            worldFramebuffer.setTexFilter(GL11.GL_LINEAR);
         }
-        return framebuffer;
+        return worldFramebuffer;
     }
 
-    public int program(String mode) {
-        Integer program = programs.get(mode);
-        return program == null ? 0 : program;
+    public SimpleFramebuffer handFramebuffer(int width, int height) {
+        if (handFramebuffer == null) {
+            handFramebuffer = new SimpleFramebuffer(width, height, true);
+            handFramebuffer.setTexFilter(GL11.GL_LINEAR);
+        } else if (handFramebuffer.textureWidth != width || handFramebuffer.textureHeight != height) {
+            handFramebuffer.resize(width, height);
+            handFramebuffer.setTexFilter(GL11.GL_LINEAR);
+        }
+        return handFramebuffer;
+    }
+
+    public SimpleFramebuffer blurFramebuffer(int width, int height) {
+        if (blurFramebuffer == null) {
+            blurFramebuffer = new SimpleFramebuffer(width, height, false);
+            blurFramebuffer.setTexFilter(GL11.GL_LINEAR);
+        } else if (blurFramebuffer.textureWidth != width || blurFramebuffer.textureHeight != height) {
+            blurFramebuffer.resize(width, height);
+            blurFramebuffer.setTexFilter(GL11.GL_LINEAR);
+        }
+        return blurFramebuffer;
+    }
+
+    public int getBlurHProgram() {
+        return blurHProgram;
+    }
+
+    public int getBloomProgram() {
+        return bloomProgram;
+    }
+
+    public int getSydneyProgram() {
+        return sydneyProgram;
     }
 
     public int getQuadVao() {
         return quadVao;
-    }
-
-    public int getWhiteTexture() {
-        return whiteTexture;
     }
 
     private int location(int program, String name) {
@@ -190,10 +215,6 @@ public final class ChamsShaders {
         if (location != -1) {
             GL20.glUniform4f(location, x, y, z, w);
         }
-    }
-
-    private String fragmentName(String mode) {
-        return mode.toLowerCase() + ".frag";
     }
 
     private String readResource(String name) throws Exception {

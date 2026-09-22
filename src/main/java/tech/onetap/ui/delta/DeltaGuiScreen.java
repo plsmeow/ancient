@@ -42,7 +42,7 @@ public class DeltaGuiScreen extends Screen {
     private float searchY;
 
     public DeltaGuiScreen() {
-        super(Text.literal("Click Gui"));
+        super(Text.literal("Ancient"));
         for (ModuleCategory category : ModuleCategory.values()) {
             this.panels.add(new DeltaGuiPanel(category));
         }
@@ -305,6 +305,7 @@ public class DeltaGuiScreen extends Screen {
         super.close();
         this.searchFocused = false;
         this.panels.forEach(panel -> panel.getOpenAnimation().setCurrentValue(0.0f));
+        tech.onetap.util.config.ConfigManager.save("autocfg");
     }
 
     @Override

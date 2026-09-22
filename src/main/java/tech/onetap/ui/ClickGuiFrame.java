@@ -31,7 +31,7 @@ public class ClickGuiFrame extends Screen implements IMinecraft {
     private final ThemeManagerWindow themeManager;
 
     public ClickGuiFrame() {
-        super(Text.of("Avalora Frame"));
+        super(Text.of("Ancient"));
         searchField = new SearchField("Search...");
         for (ModuleCategory category : ModuleCategory.values()) {
             panels.add(new Panel(category, this));
@@ -249,6 +249,12 @@ public class ClickGuiFrame extends Screen implements IMinecraft {
     public boolean charTyped(char chr, int modifiers) {
         searchField.charTyped(chr, modifiers);
         return super.charTyped(chr, modifiers);
+    }
+
+    @Override
+    public void close() {
+        super.close();
+        tech.onetap.util.config.ConfigManager.save("autocfg");
     }
 
     @Override

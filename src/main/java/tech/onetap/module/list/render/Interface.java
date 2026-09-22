@@ -294,6 +294,16 @@ public class Interface extends Module {
             return killAura.getTarget();
         }
 
+        tech.onetap.module.list.combat.TriggerBot triggerBot = tech.onetap.util.base.Instance.get(tech.onetap.module.list.combat.TriggerBot.class);
+        if (triggerBot != null && triggerBot.isEnabled() && triggerBot.getTarget() != null && triggerBot.getTarget().isAlive()) {
+            return triggerBot.getTarget();
+        }
+
+        tech.onetap.module.list.combat.AimAssist aimAssist = tech.onetap.util.base.Instance.get(tech.onetap.module.list.combat.AimAssist.class);
+        if (aimAssist != null && aimAssist.isEnabled() && aimAssist.getTarget() != null && aimAssist.getTarget().isAlive()) {
+            return aimAssist.getTarget();
+        }
+
         AutoFlyMace autoFlyMaceHud = tech.onetap.util.base.Instance.get(AutoFlyMace.class);
         if (autoFlyMaceHud != null && autoFlyMaceHud.isEnabled() && autoFlyMaceHud.getTarget() != null && autoFlyMaceHud.getTarget().isAlive()) {
             return autoFlyMaceHud.getTarget();

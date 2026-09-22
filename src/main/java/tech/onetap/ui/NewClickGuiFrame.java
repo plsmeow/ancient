@@ -29,7 +29,7 @@ public class NewClickGuiFrame extends Screen implements IMinecraft {
     private boolean needToClose;
 
     public NewClickGuiFrame() {
-        super(Text.of("Avalora Frame"));
+        super(Text.of("Ancient"));
         this.openAnimation = new Animation(Easing.CUBIC_OUT, 200);
         state.refreshModules();
     }
@@ -94,6 +94,12 @@ public class NewClickGuiFrame extends Screen implements IMinecraft {
     public boolean charTyped(char chr, int modifiers) {
         if (needToClose) return true;
         return inputHandler.charTyped(chr, modifiers) || super.charTyped(chr, modifiers);
+    }
+
+    @Override
+    public void close() {
+        super.close();
+        tech.onetap.util.config.ConfigManager.save("autocfg");
     }
 
     @Override

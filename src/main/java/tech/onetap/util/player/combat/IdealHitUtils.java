@@ -78,6 +78,15 @@ public class IdealHitUtils implements IMinecraft {
         Vec3d jumpVec = new Vec3d(0, effectiveJumpHeight, 0);
         Vec3d allowedMovement = mc.player.adjustMovementForCollisions(jumpVec);
 
+        boolean groundSpoofActive = Onetap.getInstance().getModuleStorage().get(tech.onetap.module.list.movement.GroundSpoof.class).isEnabled()
+                && Onetap.getInstance().getModuleStorage().get(tech.onetap.module.list.movement.GroundSpoof.class).mode.is("False");
+        if (groundSpoofActive) return true;
+
+        boolean onlySpaceActive = Onetap.getInstance().getModuleStorage().get(KillAura.class).isEnabled()
+                ? Onetap.getInstance().getModuleStorage().get(KillAura.class).onlySpace.getValue()
+                : (Onetap.getInstance().getModuleStorage().get(tech.onetap.module.list.combat.TriggerBot.class).isEnabled()
+                        && Onetap.getInstance().getModuleStorage().get(tech.onetap.module.list.combat.TriggerBot.class).onlySpace.getValue());
+
         boolean notCrit = mc.player.isInLava()
                 || mc.player.isClimbing()
                 || mc.player.isSubmergedIn(FluidTags.WATER)
@@ -94,7 +103,7 @@ public class IdealHitUtils implements IMinecraft {
                 || Onetap.getInstance().getModuleStorage().get(AirStuck.class).isEnabled()
                 || Onetap.getInstance().getModuleStorage().get(Flight.class).isEnabled()
                 || Onetap.getInstance().getModuleStorage().get(MaceKill.class).isEnabled()
-                || mc.player.isOnGround() && !mc.options.jumpKey.isPressed() && !Onetap.getInstance().getModuleStorage().get(KillAura.class).onlySpace.getValue();
+                || mc.player.isOnGround() && !mc.options.jumpKey.isPressed() && !onlySpaceActive;
 
         // Крит засчитывается сервером по ПОСЛЕДНЕМУ отправленному пакету движения (конец прошлого тика),
         // а удар из EventTick уходит ДО sendMovementPackets текущего тика. Поэтому одного `fallDistance > 0`

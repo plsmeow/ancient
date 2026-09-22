@@ -27,43 +27,42 @@ import tech.onetap.module.settings.ColorSetting;
 import tech.onetap.module.settings.ModeSetting;
 import tech.onetap.module.settings.SliderSetting;
 import tech.onetap.util.render.chams.ChamsShaders;
+import tech.onetap.util.render.providers.ColorProvider;
 
 import java.util.ArrayList;
 import java.util.List;
 
-@ModuleInformation(moduleName = "Chams", moduleDesc = "Просвечивает сущности сквозь стены", moduleCategory = ModuleCategory.RENDER)
+@ModuleInformation(moduleName = "Chams", moduleDesc = "Мягкое свечение с эффектом fade наружу и внутрь контура", moduleCategory = ModuleCategory.RENDER)
 public class Chams extends Module {
     private static final int FULL_BRIGHT = 15728880;
 
-    private final ModeSetting mode = new ModeSetting("Режим", "Solid", "Solid", "Outline", "Gradient", "Rainbow", "Bloom");
-    private final ModeSetting shape = new ModeSetting("Отображение", "Обе", "Обводка", "Заливка", "Обе");
+    private final ModeSetting mode = new ModeSetting("Режим", "Main", "Main", "Smooth");
+    private final ModeSetting colorMode = new ModeSetting("Цвет", "Тема", "Тема", "Свой", "Градиент");
+    private final ColorSetting customColor = new ColorSetting("Свой цвет", 0xFF00AAFF);
+    private final ColorSetting customColor1 = new ColorSetting("Первый цвет", 0xFF00AAFF);
+    private final ColorSetting customColor2 = new ColorSetting("Второй цвет", 0xFFFF44AA);
+
+    private final SliderSetting lineWidth = new SliderSetting("Толщина линии", 2.0, 0.1, 20.0, 0.1);
+    private final SliderSetting fillOpacity = new SliderSetting("Прозрачность заливки", 0, 0, 100, 1);
+    private final SliderSetting animSpeed = new SliderSetting("Скорость градиента", 1.5, 0.1, 5.0, 0.1);
+
+    public final BooleanSetting hands = new BooleanSetting("Руки", true);
     private final BooleanSetting players = new BooleanSetting("Игроки", true);
     private final BooleanSetting mobs = new BooleanSetting("Мобы", true);
     private final BooleanSetting self = new BooleanSetting("Себя", false);
-    private final SliderSetting range = new SliderSetting("Дальность", 64, 4, 256, 1);
-    private final SliderSetting width = new SliderSetting("Толщина обводки", 2, 0, 10, 1);
-    private final SliderSetting glow = new SliderSetting("Свечение", 1.0, 0.0, 5.0, 0.05);
-    private final SliderSetting opacity = new SliderSetting("Прозрачность заливки", 100, 0, 100, 1);
-    private final BooleanSetting fastLines = new BooleanSetting("FastLines", true);
-    private final ColorSetting fillColor = new ColorSetting("Заливка", 0x6600AAFF);
-    private final ColorSetting outlineColor = new ColorSetting("Обводка", 0xFF00AAFF);
-    private final ColorSetting fillColor2 = new ColorSetting("Заливка 2", 0x66FF44AA);
-    private final ColorSetting outlineColor2 = new ColorSetting("Обводка 2", 0xFFFF44AA);
-    private final SliderSetting animSpeed = new SliderSetting("Скорость анимации", 1.0, 0.0, 5.0, 0.05);
-    private final SliderSetting glowQuality = new SliderSetting("Качество Bloom", 4, 1, 8, 1);
 
     private boolean registered;
     private final WorldRenderEvents.Last listener = context -> {
         if (isEnabled()) {
-            render(context.matrixStack(), context.camera(), context.tickCounter().getTickDelta(true));
+            renderWorld(context.matrixStack(), context.camera(), context.tickCounter().getTickDelta(true));
         }
     };
 
     public Chams() {
-        fillColor2.setVisible(() -> mode.is("Gradient"));
-        outlineColor2.setVisible(() -> mode.is("Gradient"));
-        animSpeed.setVisible(() -> mode.is("Gradient") || mode.is("Rainbow"));
-        glowQuality.setVisible(() -> mode.is("Bloom"));
+        customColor.setVisible(() -> colorMode.is("Свой"));
+        customColor1.setVisible(() -> colorMode.is("Градиент"));
+        customColor2.setVisible(() -> colorMode.is("Градиент"));
+        animSpeed.setVisible(() -> colorMode.is("Тема") || colorMode.is("Градиент"));
     }
 
     @Override
@@ -75,7 +74,55 @@ public class Chams extends Module {
         super.onEnable();
     }
 
-    private void render(MatrixStack matrices, Camera camera, float tickDelta) {
+    public boolean isHandsEnabled() {
+        return isEnabled() && hands.getValue();
+    }
+
+    public boolean shouldRenderNormalHands() {
+        return fillOpacity.getIntValue() < 100;
+    }
+
+    public void renderHands(MatrixStack matrices, float tickDelta, Runnable handRenderer) {
+        if (!isEnabled() || !hands.getValue()) {
+            return;
+        }
+
+        ChamsShaders shaders = ChamsShaders.getInstance();
+        if (!shaders.isReady()) {
+            return;
+        }
+
+        Framebuffer main = mc.getFramebuffer();
+        int width = main.textureWidth;
+        int height = main.textureHeight;
+        if (width <= 0 || height <= 0) {
+            return;
+        }
+
+        SimpleFramebuffer silhouette = shaders.handFramebuffer(width, height);
+        silhouette.setClearColor(0f, 0f, 0f, 0f);
+        silhouette.clear();
+        silhouette.beginWrite(true);
+
+        RenderSystem.enableDepthTest();
+        RenderSystem.depthMask(true);
+
+        VertexConsumerProvider.Immediate immediate = mc.getBufferBuilders().getEntityVertexConsumers();
+
+        ((IMinecraftClientAccessor) (Object) mc).setFramebuffer(silhouette);
+        try {
+            handRenderer.run();
+            immediate.draw();
+        } finally {
+            ((IMinecraftClientAccessor) (Object) mc).setFramebuffer(main);
+            silhouette.endWrite();
+        }
+
+        main.beginWrite(true);
+        drawPass(shaders, silhouette, width, height);
+    }
+
+    private void renderWorld(MatrixStack matrices, Camera camera, float tickDelta) {
         if (matrices == null || camera == null || mc.world == null || mc.player == null) {
             return;
         }
@@ -97,7 +144,7 @@ public class Chams extends Module {
             return;
         }
 
-        SimpleFramebuffer silhouette = shaders.framebuffer(width, height);
+        SimpleFramebuffer silhouette = shaders.worldFramebuffer(width, height);
         renderSilhouettes(main, silhouette, matrices, camera, tickDelta, targets);
 
         main.beginWrite(true);
@@ -120,69 +167,138 @@ public class Chams extends Module {
         ((IMinecraftClientAccessor) (Object) mc).setFramebuffer(silhouette);
         try {
             for (Entity entity : targets) {
-                double x = MathHelper.lerp(tickDelta, entity.lastRenderX, entity.getX()) - cam.x;
-                double y = MathHelper.lerp(tickDelta, entity.lastRenderY, entity.getY()) - cam.y;
-                double z = MathHelper.lerp(tickDelta, entity.lastRenderZ, entity.getZ()) - cam.z;
-                dispatcher.render(entity, x, y, z, tickDelta, matrices, immediate, FULL_BRIGHT);
+                matrices.push();
+                try {
+                    double x = MathHelper.lerp(tickDelta, entity.lastRenderX, entity.getX()) - cam.x;
+                    double y = MathHelper.lerp(tickDelta, entity.lastRenderY, entity.getY()) - cam.y;
+                    double z = MathHelper.lerp(tickDelta, entity.lastRenderZ, entity.getZ()) - cam.z;
+                    dispatcher.render(entity, x, y, z, tickDelta, matrices, immediate, FULL_BRIGHT);
+                } catch (Throwable ignored) {
+                } finally {
+                    matrices.pop();
+                }
             }
             immediate.draw();
         } finally {
             ((IMinecraftClientAccessor) (Object) mc).setFramebuffer(main);
             dispatcher.setRenderShadows(true);
+            silhouette.endWrite();
         }
-
-        silhouette.endWrite();
     }
 
     private void drawPass(ChamsShaders shaders, SimpleFramebuffer silhouette, int width, int height) {
-        int program = shaders.program(mode.getValue());
-        if (program <= 0) {
+        if (mode.is("Main")) {
+            drawSydneyPass(shaders, silhouette, width, height);
             return;
         }
 
-        int shapeMode = shapeMode();
-        int outlineWidth = this.width.getIntValue();
-        float glowMultiplier = glow.getFloatValue();
-        float fillAlpha = (float) (opacity.getIntValue() / 100.0);
-        boolean rainbow = mode.is("Rainbow");
-        float time = (System.currentTimeMillis() % 100000L) / 1000f * animSpeed.getFloatValue();
-        float rainbowOffset = (System.currentTimeMillis() % 5000L) / 5000f * Math.max(animSpeed.getFloatValue(), 0.01f);
+        int blurProg = shaders.getBlurHProgram();
+        int bloomProg = shaders.getBloomProgram();
+        if (blurProg <= 0 || bloomProg <= 0) {
+            return;
+        }
 
-        GlStateManager._glUseProgram(program);
+        SimpleFramebuffer blurFbo = shaders.blurFramebuffer(width, height);
+        float lineW = lineWidth.getFloatValue();
+
+        // Pass 1: Static horizontal Gaussian blur from silhouette into blurFbo
+        blurFbo.setClearColor(0f, 0f, 0f, 0f);
+        blurFbo.clear();
+        blurFbo.beginWrite(true);
+
+        GlStateManager._glUseProgram(blurProg);
+        GlStateManager._activeTexture(GL13.GL_TEXTURE0);
+        GlStateManager._bindTexture(silhouette.getColorAttachment());
+
+        shaders.set1i(blurProg, "u_Texture", 0);
+        shaders.set2f(blurProg, "u_Size", width, height);
+
+        RenderSystem.disableBlend();
+        RenderSystem.disableDepthTest();
+        RenderSystem.depthMask(false);
+        RenderSystem.disableCull();
+
+        GL30.glBindVertexArray(shaders.getQuadVao());
+        GL11.glDrawArrays(GL11.GL_TRIANGLE_STRIP, 0, 4);
+
+        blurFbo.endWrite();
+
+        // Pass 2: Vertical Gaussian blur + bidirectional fade glow into main
+        mc.getFramebuffer().beginWrite(true);
+
+        int[] colors = getColors();
+        boolean useGrad = isGradientActive();
+        float time = (System.currentTimeMillis() % 100000L) / 1000f * animSpeed.getFloatValue();
+
+        GlStateManager._glUseProgram(bloomProg);
 
         GlStateManager._activeTexture(GL13.GL_TEXTURE0);
         GlStateManager._bindTexture(silhouette.getColorAttachment());
-        GlStateManager._activeTexture(GL13.GL_TEXTURE0 + 1);
-        GlStateManager._bindTexture(shaders.getWhiteTexture());
+
+        GlStateManager._activeTexture(GL13.GL_TEXTURE1);
+        GlStateManager._bindTexture(blurFbo.getColorAttachment());
+
+        shaders.set1i(bloomProg, "u_Texture", 0);
+        shaders.set1i(bloomProg, "u_BlurTexture", 1);
+        shaders.set1f(bloomProg, "u_LineWidth", lineW);
+        shaders.set1f(bloomProg, "u_FillOpacity", (float) (fillOpacity.getIntValue() / 100.0));
+        shaders.set1i(bloomProg, "u_UseGradient", useGrad ? 1 : 0);
+        shaders.set1f(bloomProg, "u_Time", time);
+        shaders.set2f(bloomProg, "u_Size", width, height);
+
+        setColor(shaders, bloomProg, "u_Color1", colors[0]);
+        setColor(shaders, bloomProg, "u_Color2", colors[1]);
+
+        RenderSystem.enableBlend();
+        RenderSystem.defaultBlendFunc();
+        RenderSystem.disableDepthTest();
+        RenderSystem.depthMask(false);
+        RenderSystem.disableCull();
+
+        GL11.glDrawArrays(GL11.GL_TRIANGLE_STRIP, 0, 4);
+        GL30.glBindVertexArray(0);
+
+        GlStateManager._activeTexture(GL13.GL_TEXTURE1);
+        GlStateManager._bindTexture(0);
         GlStateManager._activeTexture(GL13.GL_TEXTURE0);
+        GlStateManager._bindTexture(0);
 
-        shaders.set1i(program, "u_Texture", 0);
-        shaders.set1i(program, "u_Overlay", 1);
-        shaders.set1f(program, "u_OverlayAlpha", 1f);
-        shaders.set1i(program, "u_Image", 0);
-        shaders.set1i(program, "u_Dots", 0);
-        shaders.set1i(program, "u_DotsRadius", 1);
-        shaders.set1f(program, "u_DotsAlpha", 1f);
-        shaders.set1i(program, "u_FastLines", fastLines.getValue() ? 1 : 0);
-        shaders.set2f(program, "u_Size", width, height);
-        shaders.set1i(program, "u_Width", outlineWidth);
-        shaders.set1i(program, "u_Radius", outlineWidth);
-        shaders.set1i(program, "u_ShapeMode", shapeMode);
-        shaders.set1f(program, "u_GlowMultiplier", glowMultiplier);
-        shaders.set1i(program, "u_GlowQuality", glowQuality.getIntValue());
-        shaders.set1f(program, "u_Time", time);
-        shaders.set1f(program, "u_Step", 1f);
+        GlStateManager._glUseProgram(0);
+        RenderSystem.clearShader();
 
-        setColor(shaders, program, "u_FillColor", fillColor.getValue(), fillAlpha);
-        setColor(shaders, program, "u_OutlineColor", outlineColor.getValue(), 1f);
-        setColor(shaders, program, "u_FillColor2", fillColor2.getValue(), fillAlpha);
-        setColor(shaders, program, "u_OutlineColor2", outlineColor2.getValue(), 1f);
-        setColor(shaders, program, "u_Fill", fillColor.getValue(), fillAlpha);
-        setColor(shaders, program, "u_Outline", outlineColor.getValue(), 1f);
-        shaders.set1f(program, "u_Fill_Offset", rainbow ? rainbowOffset : 0f);
-        shaders.set1f(program, "u_Fill_Strength", 1f);
-        shaders.set1f(program, "u_Outline_Offset", rainbow ? rainbowOffset : 0f);
-        shaders.set1f(program, "u_Outline_Strength", 1f);
+        RenderSystem.depthMask(true);
+        RenderSystem.enableDepthTest();
+        RenderSystem.enableCull();
+        RenderSystem.defaultBlendFunc();
+        RenderSystem.disableBlend();
+    }
+
+    private void drawSydneyPass(ChamsShaders shaders, SimpleFramebuffer silhouette, int width, int height) {
+        int sydneyProg = shaders.getSydneyProgram();
+        if (sydneyProg <= 0) {
+            return;
+        }
+
+        mc.getFramebuffer().beginWrite(true);
+
+        int[] colors = getColors();
+        boolean useGrad = isGradientActive();
+        float time = (System.currentTimeMillis() % 100000L) / 1000f * animSpeed.getFloatValue();
+
+        GlStateManager._glUseProgram(sydneyProg);
+
+        GlStateManager._activeTexture(GL13.GL_TEXTURE0);
+        GlStateManager._bindTexture(silhouette.getColorAttachment());
+
+        shaders.set1i(sydneyProg, "u_Texture", 0);
+        shaders.set1f(sydneyProg, "u_LineWidth", lineWidth.getFloatValue());
+        shaders.set1f(sydneyProg, "u_FillOpacity", (float) (fillOpacity.getIntValue() / 100.0));
+        shaders.set1i(sydneyProg, "u_UseGradient", useGrad ? 1 : 0);
+        shaders.set1f(sydneyProg, "u_Time", time);
+        shaders.set2f(sydneyProg, "u_Size", width, height);
+
+        setColor(shaders, sydneyProg, "u_Color1", colors[0]);
+        setColor(shaders, sydneyProg, "u_Color2", colors[1]);
 
         RenderSystem.enableBlend();
         RenderSystem.defaultBlendFunc();
@@ -194,7 +310,11 @@ public class Chams extends Module {
         GL11.glDrawArrays(GL11.GL_TRIANGLE_STRIP, 0, 4);
         GL30.glBindVertexArray(0);
 
+        GlStateManager._activeTexture(GL13.GL_TEXTURE0);
+        GlStateManager._bindTexture(0);
+
         GlStateManager._glUseProgram(0);
+        RenderSystem.clearShader();
 
         RenderSystem.depthMask(true);
         RenderSystem.enableDepthTest();
@@ -203,10 +323,25 @@ public class Chams extends Module {
         RenderSystem.disableBlend();
     }
 
+    private int[] getColors() {
+        if (colorMode.is("Тема")) {
+            int c1 = ColorProvider.getThemeColor();
+            int c2 = ColorProvider.getThemeColorTwo();
+            return new int[]{c1, c2};
+        } else if (colorMode.is("Градиент")) {
+            return new int[]{customColor1.getValue(), customColor2.getValue()};
+        } else {
+            int c = customColor.getValue();
+            return new int[]{c, c};
+        }
+    }
+
+    private boolean isGradientActive() {
+        return colorMode.is("Градиент") || colorMode.is("Тема");
+    }
+
     private List<Entity> collectTargets(Camera camera) {
         List<Entity> list = new ArrayList<>();
-        double maxDistance = range.getValue();
-        Vec3d cam = camera.getPos();
         boolean firstPerson = mc.options.getPerspective() == Perspective.FIRST_PERSON;
 
         for (Entity entity : mc.world.getEntities()) {
@@ -224,29 +359,17 @@ public class Chams extends Module {
             } else if (!mobs.getValue()) {
                 continue;
             }
-            if (cam.distanceTo(entity.getPos()) > maxDistance) {
-                continue;
-            }
             list.add(entity);
         }
         return list;
     }
 
-    private int shapeMode() {
-        if (shape.is("Обводка")) {
-            return 0;
-        }
-        if (shape.is("Заливка")) {
-            return 1;
-        }
-        return 2;
-    }
-
-    private void setColor(ChamsShaders shaders, int program, String name, int argb, float alphaScale) {
+    private void setColor(ChamsShaders shaders, int program, String name, int argb) {
         float r = (argb >> 16 & 0xFF) / 255f;
         float g = (argb >> 8 & 0xFF) / 255f;
         float b = (argb & 0xFF) / 255f;
-        float a = (argb >>> 24 & 0xFF) / 255f * alphaScale;
+        float a = (argb >>> 24 & 0xFF) / 255f;
+        if (a <= 0f) a = 1f;
         shaders.set4f(program, name, r, g, b, a);
     }
 }

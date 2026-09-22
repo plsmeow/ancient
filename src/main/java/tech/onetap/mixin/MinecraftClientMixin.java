@@ -16,6 +16,7 @@ import tech.onetap.event.list.EventTick;
 import tech.onetap.event.list.EventTickEnd;
 import tech.onetap.module.list.combat.AutoExplosion;
 import tech.onetap.module.list.combat.KillAura;
+import tech.onetap.module.list.combat.TriggerBot;
 import tech.onetap.module.list.render.Hide;
 import tech.onetap.util.base.Instance;
 
@@ -56,6 +57,8 @@ public class MinecraftClientMixin {
         }
         KillAura killAura = Instance.get(KillAura.class);
         if (killAura != null && killAura.isShieldSuppressed()) ci.cancel();
+        TriggerBot triggerBot = Instance.get(TriggerBot.class);
+        if (triggerBot != null && triggerBot.isShieldSuppressed()) ci.cancel();
     }
 
     @Inject(method = "render", at = @At(value = "HEAD"))
