@@ -58,8 +58,12 @@ public class DeltaModeElement extends DeltaElement<ModeSetting> {
         MatrixStack matrices = context.getMatrices();
         var draw = Delta2DHolder.get();
         var fonts = DeltaFonts.SF_REGULAR.get();
-        fonts.drawText(matrices, bindLabelText(), this.bounds.x, this.bounds.y, 6.5f,
-                ColorUtil.applyAlphaToColor(DeltaThemeInfo.TEXT.resolve(), extend));
+        float labelHeight = fonts.getHeight(6.5f);
+        float labelCenterY = this.bounds.y + labelHeight / 2.0f + 0.5f;
+        float badgeWidth = drawBindBadge(matrices, this.bounds.x + this.bounds.z, labelCenterY, extend);
+        drawLabel(matrices, fonts, bindLabelText(), this.bounds.x, this.bounds.y,
+                labelHeight, 6.5f, DeltaThemeInfo.TEXT.resolve(), this.bounds.z - badgeWidth,
+                false, extend, delta);
         float x = this.bounds.x;
         float y = this.bounds.y + fonts.getHeight(6.5f) + 5.0f;
         int i = 0;

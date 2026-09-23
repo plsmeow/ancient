@@ -47,8 +47,11 @@ public class DeltaBooleanElement extends DeltaElement<BooleanSetting> {
         float centerY = this.bounds.y + (this.bounds.w / 2.0f) + 0.5f;
         boolean hovered = DeltaMath.isHovered(mouseX, mouseY, this.bounds.x, this.bounds.y, this.bounds.z, this.bounds.w)
                 && extend >= 1.0f;
+        float checkboxX = (this.bounds.x + this.bounds.z) - 11.0f;
+        float badgeWidth = drawBindBadge(matrices, checkboxX - 4.0f, centerY, extend);
+        float labelMaxWidth = (this.bounds.z - 11.0f) - 4.0f - badgeWidth;
         drawLabel(matrices, DeltaFonts.SF_REGULAR.get(), bindLabelText(), this.bounds.x, this.bounds.y,
-                this.bounds.w, 6.5f, DeltaThemeInfo.TEXT.resolve(), (this.bounds.z - 11.0f) - 4.0f, hovered, extend, delta);
+                this.bounds.w, 6.5f, DeltaThemeInfo.TEXT.resolve(), labelMaxWidth, hovered, extend, delta);
         float boxX = (this.bounds.x + this.bounds.z) - 11.0f;
         float boxY = centerY - 5.5f;
         draw.drawRounded(matrices, boxX, boxY, 11.0f, 11.0f, 3.0f,

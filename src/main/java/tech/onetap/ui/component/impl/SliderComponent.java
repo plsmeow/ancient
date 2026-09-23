@@ -52,14 +52,19 @@ public class SliderComponent extends Component {
         DrawUtil.drawText(Fonts.SFREGULAR.get(), label, x + 4.5f, y + 3f, ColorProvider.rgba(255, 255, 255, alphaInt), 6.5f,0.6f,1.0f,trackWidth);
 
         if (!binding) {
-            // Цифра справа
-            DrawUtil.drawText(Fonts.SFREGULAR.get(), numberText, x + width - 4.5f - Fonts.SFREGULAR.get().getWidth(numberText, 6.5f), y + 1f, ColorProvider.rgba(200, 200, 200, alphaInt), 6.5f);
-
-            // Бейдж с привязанной клавишей
             if (setting.isBound()) {
-                String keyText = "[" + KeyStorage.getKey(setting.getKey()) + "]";
-                float nameWidth = Fonts.SFREGULAR.get().getWidth(setting.getName(), 6.5f);
-                DrawUtil.drawText(Fonts.SFREGULAR.get(), keyText, x + 4.5f + nameWidth + 4f, y + 3f, ColorProvider.setAlpha(ColorProvider.getThemeColor(), alphaInt), 6.5f);
+                // Бокс с привязанной клавишей справа (как в BindComponent)
+                String keyText = KeyStorage.getKey(setting.getKey());
+                float keyWidth = Fonts.SFREGULAR.get().getWidth(keyText, 6.5f) + 6f;
+                float boxX = x + width - keyWidth - 4f;
+                float boxY = y + 1f;
+                float boxHeight = 9f;
+                DrawUtil.drawRound(boxX - 0.5f, boxY - 0.5f, keyWidth + 1, boxHeight + 1, 2f, ColorProvider.rgba(60, 60, 65, (int)(150 * alpha)));
+                DrawUtil.drawRound(boxX, boxY, keyWidth, boxHeight, 2f, ColorProvider.setAlpha(ColorProvider.getThemeColorTwo(), alphaInt));
+                DrawUtil.drawText(Fonts.SFREGULAR.get(), keyText, boxX + 3f, boxY + 0.5f, ColorProvider.rgba(255, 255, 255, alphaInt), 6.5f);
+            } else {
+                // Цифра справа (только когда нет бинда)
+                DrawUtil.drawText(Fonts.SFREGULAR.get(), numberText, x + width - 4.5f - Fonts.SFREGULAR.get().getWidth(numberText, 6.5f), y + 1f, ColorProvider.rgba(200, 200, 200, alphaInt), 6.5f);
             }
         }
 

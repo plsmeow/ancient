@@ -47,9 +47,14 @@ public class ModeComponent extends Component {
         DrawUtil.drawText(Fonts.SFREGULAR.get(), title, x + 4.5f, y + 1.5f, ColorProvider.rgba(255, 255, 255, alphaInt), 6.5f);
 
         if (!binding && setting.isBound()) {
-            String keyText = "[" + KeyStorage.getKey(setting.getKey()) + "]";
-            float nameWidth = Fonts.SFREGULAR.get().getWidth(setting.getName(), 6.5f);
-            DrawUtil.drawText(Fonts.SFREGULAR.get(), keyText, x + 4.5f + nameWidth + 4f, y + 1.5f, ColorProvider.setAlpha(ColorProvider.getThemeColor(), alphaInt), 6.5f);
+            String keyText = KeyStorage.getKey(setting.getKey());
+            float keyWidth = Fonts.SFREGULAR.get().getWidth(keyText, 6.5f) + 6f;
+            float boxX = x + width - keyWidth - 4f;
+            float boxY = y + 0.5f;
+            float boxHeight = 9f;
+            DrawUtil.drawRound(boxX - 0.5f, boxY - 0.5f, keyWidth + 1, boxHeight + 1, 2f, ColorProvider.rgba(60, 60, 65, (int)(150 * alpha)));
+            DrawUtil.drawRound(boxX, boxY, keyWidth, boxHeight, 2f, ColorProvider.setAlpha(ColorProvider.getThemeColorTwo(), alphaInt));
+            DrawUtil.drawText(Fonts.SFREGULAR.get(), keyText, boxX + 3f, boxY + 0.5f, ColorProvider.rgba(255, 255, 255, alphaInt), 6.5f);
         }
 
         if (HoverUtil.isHovered(mouseX, mouseY, x + 4, btnY, width - 8, btnHeight)) CursorManager.requestHand();

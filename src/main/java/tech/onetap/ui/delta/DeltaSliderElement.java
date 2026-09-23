@@ -70,8 +70,10 @@ public class DeltaSliderElement extends DeltaElement<SliderSetting> {
         float boxWidth = fonts.getWidth(value, 6.25f) + 6.0f;
         float boxHeight = fonts.getHeight(6.25f) + 2.0f;
         float boxX = (this.bounds.x + this.bounds.z) - boxWidth;
+        float labelCenterY = this.bounds.y + (fonts.getHeight(6.5f) / 2.0f) + 0.5f;
+        float badgeWidth = drawBindBadge(matrices, boxX - 4.0f, labelCenterY, extend);
         drawLabel(matrices, fonts, bindLabelText(), this.bounds.x, this.bounds.y + 0.5f,
-                fonts.getHeight(6.5f), 6.5f, DeltaThemeInfo.TEXT.resolve(), (boxX - this.bounds.x) - 4.0f,
+                fonts.getHeight(6.5f), 6.5f, DeltaThemeInfo.TEXT.resolve(), (boxX - this.bounds.x) - 4.0f - badgeWidth,
                 hovered, extend, delta);
         draw.drawRounded(matrices, boxX, this.bounds.y, boxWidth, boxHeight, 2.0f,
                 ColorUtil.applyAlphaToColor(DeltaThemeInfo.PRIMARY.resolve(), 0.03137255f * extend));

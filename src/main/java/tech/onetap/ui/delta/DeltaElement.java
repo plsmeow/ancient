@@ -6,9 +6,11 @@ import org.joml.Vector4f;
 import org.lwjgl.glfw.GLFW;
 import tech.onetap.module.settings.Setting;
 import tech.onetap.util.KeyUtil;
-import tech.onetap.util.render.DeltaAnimation;
 import tech.onetap.util.render.ColorUtil;
+import tech.onetap.util.render.Delta2DHolder;
+import tech.onetap.util.render.DeltaAnimation;
 import tech.onetap.util.render.DeltaThemeInfo;
+import tech.onetap.util.render.font.DeltaFonts;
 import tech.onetap.util.render.font.Font;
 
 /**
@@ -79,21 +81,53 @@ public abstract class DeltaElement<SettingType extends Setting> {
     }
 
     /**
-     * Подпись настройки: во время прослушивания — подсказка,
-     * при привязанной клавише — имя с бейджем [клавиша].
+     * Подпись настройки: во время прослушивания — подсказка, иначе — просто имя.
      */
     protected String bindLabelText() {
         if (this.bindListening) {
             return "Нажмите клавишу...";
-        }
-        if (this.setting.canBind() && this.setting.isBound()) {
-            return this.setting.getName() + " [" + bindKeyLabel(this.setting.getKey()) + "]";
         }
         return this.setting.getName();
     }
 
     private static String bindKeyLabel(int key) {
         return KeyUtil.getKeyName(key >= 0 && key <= 7 ? -100 + key : key);
+    }
+
+    /**
+     * Рисует бокс с привязанной клавишей справа от лейбла в стиле Delta панели модулей.
+     * Вызывать после рисования label; возвращает ширину бокса (0 если не нужен).
+     *
+     * @param rightEdge  правая граница доступной области (bounds.x + bounds.z)
+     * @param centerY    центр строки по Y
+     * @param extend     alpha-анимация раскрытия панели
+     */
+    protected float drawBindBadge(MatrixStack matrices, float rightEdge, float centerY, float extend) {
+        if (!this.setting.canBind()) return 0.0f;
+        if (!this.bindListening && !this.setting.isBound()) return 0.0f;
+
+        var draw = Delta2DHolder.get();
+        var fonts = DeltaFonts.SF_REGULAR.get();
+        var icons = DeltaFonts.ICONS.get();
+
+        String keyText = this.bindListening ? "?" : bindKeyLabel(this.setting.getKey());
+        float iconWidth = icons.getWidth("C", 6.0f);
+        float boxWidth = 4.0f + iconWidth + 2.5f + fonts.getWidth(keyText, 6.0f) + 4.0f;
+        float boxX = rightEdge - boxWidth;
+        float boxY = centerY - 4.5f;
+
+        draw.drawRounded(matrices, boxX, boxY, boxWidth, 9.0f, 2.0f,
+                ColorUtil.applyAlphaToColor(DeltaThemeInfo.PRIMARY.resolve(), 0.15686275f * extend));
+        draw.drawOutline(matrices, boxX, boxY, boxWidth, 9.0f, 2.0f, 0.5f,
+                ColorUtil.applyAlphaToColor(DeltaThemeInfo.OUTLINE_MEDIUM.resolve(),
+                        DeltaThemeInfo.OUTLINE_MEDIUM.alphaFloat() * extend));
+        icons.drawText(matrices, "C", boxX + 4.0f, icons.centerInkY("C", 6.0f, centerY), 6.0f,
+                ColorUtil.applyAlphaToColor(DeltaThemeInfo.TEXT.resolve(), extend));
+        fonts.drawText(matrices, keyText, boxX + 4.0f + iconWidth + 2.5f,
+                fonts.centerInkY(keyText, 6.0f, centerY), 6.0f,
+                ColorUtil.applyAlphaToColor(DeltaThemeInfo.TEXT.resolve(), extend));
+
+        return boxWidth + 4.0f; // отступ чтобы label не лез под бокс
     }
 
     public boolean onMouseClick(double mouseX, double mouseY, int button) {

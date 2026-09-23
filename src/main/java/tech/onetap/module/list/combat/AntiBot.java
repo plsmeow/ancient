@@ -7,6 +7,7 @@ import tech.onetap.event.list.EventTick;
 import tech.onetap.module.Module;
 import tech.onetap.module.ModuleCategory;
 import tech.onetap.module.ModuleInformation;
+import tech.onetap.module.settings.BooleanSetting;
 import tech.onetap.module.settings.ModeSetting;
 
 import java.util.ArrayList;
@@ -16,6 +17,7 @@ import java.util.List;
 public class AntiBot extends Module {
 
     private final ModeSetting mode = new ModeSetting("Режим", "Normal", "Normal", "Test");
+    private final BooleanSetting ignoreNpc = new BooleanSetting("Игнорировать NPC", true);
 
     private final List<PlayerEntity> botsMap = new ArrayList<>();
 
@@ -80,6 +82,10 @@ public class AntiBot extends Module {
     }
 
     public boolean isBot(PlayerEntity player) {
+        if (ignoreNpc.getValue()) {
+            String name = player.getName().getString();
+            if (name.startsWith("CIT-")) return true;
+        }
         return botsMap.contains(player);
     }
 }
