@@ -20,13 +20,14 @@ import net.minecraft.util.math.Box;
 import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.RaycastContext;
-import org.lwjgl.glfw.GLFW;
 import tech.onetap.Onetap;
 import tech.onetap.event.EventGameUpdate;
+import tech.onetap.event.list.EventHUD;
 import tech.onetap.module.Module;
 import tech.onetap.module.ModuleCategory;
 import tech.onetap.module.ModuleInformation;
 import tech.onetap.module.settings.BooleanSetting;
+import tech.onetap.module.settings.ColorSetting;
 import tech.onetap.module.settings.ModeListSetting;
 import tech.onetap.module.settings.ModeSetting;
 import tech.onetap.module.settings.SliderSetting;
@@ -34,6 +35,8 @@ import tech.onetap.util.friend.FriendRepository;
 import tech.onetap.util.math.BestPoint;
 import tech.onetap.util.math.RotationUtil;
 import tech.onetap.util.player.combat.RaytraceUtil;
+import tech.onetap.util.render.Delta2DHolder;
+import tech.onetap.util.render.Draw2D;
 import tech.onetap.util.render.math.GCDFixer;
 import tech.onetap.util.text.ValueUnit;
 
@@ -44,7 +47,7 @@ public class AimAssist extends Module {
             "Дистанция", ValueUnit.countable("блок", "блока", "блоков"), 4.0f, 2.0f, 6.0f, 0.1f
     );
     public final SliderSetting fov = new SliderSetting(
-            "FOV", ValueUnit.abbreviation("°"), 60.0f, 10.0f, 180.0f, 1.0f
+            "FOV", ValueUnit.abbreviation("°"), 60.0f, 10.0f, 360.0f, 1.0f
     );
     public final SliderSetting horizontalSpeed = new SliderSetting(
             "Горизонтальная скорость", 4.0f, 0.5f, 20.0f, 0.5f
@@ -64,7 +67,8 @@ public class AimAssist extends Module {
             new BooleanSetting("Монстры", true),
             new BooleanSetting("Животные", false)
     );
-    public final BooleanSetting onlyClick = new BooleanSetting("Только при нажатии ЛКМ", true);
+    public final BooleanSetting drawFov = new BooleanSetting("Отображение FOV", true);
+    public final ColorSetting fovColor = new ColorSetting("Цвет FOV", 0x80FFFFFF).setVisible(() -> drawFov.getValue());
     public final BooleanSetting weaponOnly = new BooleanSetting("Только с оружием", true);
     public final BooleanSetting stopOnTarget = new BooleanSetting("Остановка на цели", true);
     public final BooleanSetting noWallHit = new BooleanSetting("Не наводить через стены", true);
@@ -85,6 +89,34 @@ public class AimAssist extends Module {
         yawRemainder = 0.0f;
         pitchRemainder = 0.0f;
         super.onDisable();
+    }
+
+    @EventHandler
+    private void onRenderHUD(EventHUD e) {
+        if (!isEnabled()) return;
+        if (!drawFov.getValue()) return;
+        if (mc.player == null || mc.world == null) return;
+        if (mc.options.hudHidden) return;
+
+        float cx = mc.getWindow().getScaledWidth() / 2.0f;
+        float cy = mc.getWindow().getScaledHeight() / 2.0f;
+
+        double gameFov = mc.options.getFov().getValue();
+        if (mc.gameRenderer != null && mc.getEntityRenderDispatcher() != null && mc.getEntityRenderDispatcher().camera != null) {
+            gameFov = mc.gameRenderer.getFov(mc.getEntityRenderDispatcher().camera, mc.getRenderTickCounter().getTickDelta(true), true);
+        }
+
+        float assistFov = (float) fov.getValue();
+        float halfAssistFov = assistFov / 2.0f;
+        if (halfAssistFov >= 85.0f) {
+            return;
+        }
+
+        float radius = cy * (float) (Math.tan(Math.toRadians(halfAssistFov)) / Math.tan(Math.toRadians(gameFov / 2.0)));
+        if (radius <= 1.0f) return;
+
+        Draw2D draw = Delta2DHolder.get();
+        draw.drawOutline(e.getDrawContext().getMatrices(), cx - radius, cy - radius, radius * 2.0f, radius * 2.0f, radius, 1.25f, fovColor.getValue());
     }
 
     @EventHandler
@@ -122,17 +154,6 @@ public class AimAssist extends Module {
             yawRemainder = 0.0f;
             pitchRemainder = 0.0f;
             return;
-        }
-
-        if (onlyClick.getValue()) {
-            boolean attackPressed = mc.options.attackKey.isPressed()
-                    || GLFW.glfwGetMouseButton(mc.getWindow().getHandle(), GLFW.GLFW_MOUSE_BUTTON_LEFT) == GLFW.GLFW_PRESS;
-            if (!attackPressed) {
-                target = null;
-                yawRemainder = 0.0f;
-                pitchRemainder = 0.0f;
-                return;
-            }
         }
 
         Vec3d eyePos = mc.player.getEyePos();
@@ -252,10 +273,8 @@ public class AimAssist extends Module {
             double dist = eyePos.distanceTo(point);
             if (dist <= reach && (!noWallHit.getValue() || isPointVisible(eyePos, point) || BestPoint.hasVisiblePoint(target, reach))) {
                 float[] angles = RotationUtil.calculateAngle(eyePos, point);
-                float yawDiff = Math.abs(MathHelper.wrapDegrees(angles[0] - mc.player.getYaw()));
-                float pitchDiff = Math.abs(MathHelper.wrapDegrees(angles[1] - mc.player.getPitch()));
-                double fovDist = Math.hypot(yawDiff, pitchDiff);
-                if (fovDist <= maxFov / 2.0) {
+                float fovAngle = RotationUtil.calculateFov(mc.player.getYaw(), mc.player.getPitch(), angles[0], angles[1]);
+                if (maxFov >= 360.0f || fovAngle <= maxFov / 2.0f) {
                     return target;
                 }
             }
@@ -275,12 +294,10 @@ public class AimAssist extends Module {
             if (noWallHit.getValue() && !isPointVisible(eyePos, point) && !BestPoint.hasVisiblePoint(living, reach)) continue;
 
             float[] angles = RotationUtil.calculateAngle(eyePos, point);
-            float yawDiff = Math.abs(MathHelper.wrapDegrees(angles[0] - mc.player.getYaw()));
-            float pitchDiff = Math.abs(MathHelper.wrapDegrees(angles[1] - mc.player.getPitch()));
-            double fovDist = Math.hypot(yawDiff, pitchDiff);
+            float fovAngle = RotationUtil.calculateFov(mc.player.getYaw(), mc.player.getPitch(), angles[0], angles[1]);
 
-            if (fovDist <= maxFov / 2.0 && fovDist < bestFov) {
-                bestFov = fovDist;
+            if ((maxFov >= 360.0f || fovAngle <= maxFov / 2.0f) && fovAngle < bestFov) {
+                bestFov = fovAngle;
                 best = living;
             }
         }

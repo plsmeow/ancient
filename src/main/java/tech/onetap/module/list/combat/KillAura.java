@@ -63,13 +63,6 @@ import tech.onetap.util.rotation.Rotation;
 import tech.onetap.util.rotation.RotationComponent;
 import tech.onetap.util.rotation.MoveFixMode;
 import tech.onetap.util.text.ValueUnit;
-import tech.onetap.util.neuro.rotation.ActiveModel;
-import tech.onetap.util.neuro.rotation.AIRotationManager;
-import tech.onetap.util.neuro.rotation.AIRotationRecorder;
-import tech.onetap.util.neuro.rotation.NeuroModelMeta;
-import tech.onetap.util.neuro.rotation.NeuroRotationController;
-import tech.onetap.util.neuro.rotation.RotationDumpRecorder;
-import tech.onetap.util.neuro.rotation.TrainingLauncher;
 import tech.onetap.module.list.combat.rotations.*;
 import tech.onetap.module.list.combat.rotations.test2.RotationState;
 
@@ -150,13 +143,6 @@ public class KillAura extends Module {
 
     public final BooleanSetting freeze = new BooleanSetting("Freeze", false)
             .setVisible(() -> elytraTarget.getValue());
-
-    public final SliderSetting neuroYawMultiplier = new SliderSetting("Yaw множитель", 1.0, 0.5, 2.0, 0.05)
-            .setVisible(() -> rotation.is("Neuro"));
-    public final SliderSetting neuroPitchMultiplier = new SliderSetting("Pitch множитель", 1.0, 0.5, 2.0, 0.05)
-            .setVisible(() -> rotation.is("Neuro"));
-    public final BooleanSetting neuroDebug = new BooleanSetting("Neuro отладка", false)
-            .setVisible(() -> rotation.is("Neuro"));
 
     public final BooleanSetting universalCustom = new BooleanSetting("Universal: свои значения", false)
             .setVisible(() -> rotation.is("Universal"));
@@ -297,10 +283,12 @@ public class KillAura extends Module {
             .setVisible(this::test2SettingsVisible);
     public final BooleanSetting test2Debug = new BooleanSetting("Test2: отладка", false)
             .setVisible(this::test2SettingsVisible);
+    public final BooleanSetting neuroDebug = new BooleanSetting("Neuro отладка", false)
+            .setVisible(() -> rotation.is("Neuro"));
 
     // Draggable-панели отладки: перетаскиваются в чате как элементы Interface
-    public final Draggable neuroDebugDrag = DragManager.installDrag(this, "NeuroDebug", 4, 110);
     public final Draggable test2DebugDrag = DragManager.installDrag(this, "Test2Debug", 4, 210);
+    public final Draggable neuroDebugDrag = DragManager.installDrag(this, "NeuroDebug", 4, 110);
 
     // Экземпляры ротаций (каждая хранит своё внутреннее состояние)
     private final VanillaRotation vanillaRotation = new VanillaRotation();
@@ -420,9 +408,6 @@ public class KillAura extends Module {
         if (isEnabled() && elytraTarget.getValue() && showPredictPoint.getValue()) {
             renderPredictPoint(context.matrixStack(), context.camera(), context.tickCounter().getTickDelta(true));
         }
-        if (isEnabled() && rotation.is("Neuro") && neuroDebug.getValue()) {
-            renderNeuroDebug(context.matrixStack(), context.camera());
-        }
         if (isEnabled() && (rotation.is("Test2") || rotation.is("Test")) && test2Debug.getValue()) {
             Vec3d actual = rotation.is("Test") ? testRotation.getDebugActualPoint() : test2Rotation.getDebugActualPoint();
             Vec3d approach = rotation.is("Test") ? testRotation.getDebugApproachPoint() : test2Rotation.getDebugApproachPoint();
@@ -432,51 +417,32 @@ public class KillAura extends Module {
             renderTest2Debug(context.matrixStack(), context.camera(),
                     sloth070926Rotation.getDebugActualPoint(), sloth070926Rotation.getDebugApproachPoint());
         }
+        if (isEnabled() && rotation.is("Neuro") && neuroDebug.getValue()) {
+            renderNeuroDebug(context.matrixStack(), context.camera());
+        }
     };
 
     /**
-     * Отладка Neuro: точка прицеливания, куда реально целится модель.
+     * Отладка Neuro: визуализация точки наведения и вектора взгляда.
      */
     private void renderNeuroDebug(MatrixStack matrices, Camera camera) {
+        if (mc.player == null) return;
         Vec3d aimPoint = neuroRotation.getDebugAimPoint();
+        if (aimPoint == null && target != null) {
+            aimPoint = target.getBoundingBox().getCenter();
+        }
         if (aimPoint == null) return;
 
-        Vec3d camPos = camera.getPos();
-        double renderX = aimPoint.x - camPos.x;
-        double renderY = aimPoint.y - camPos.y;
-        double renderZ = aimPoint.z - camPos.z;
+        boolean loaded = neuroRotation.isModelLoaded();
+        float r = loaded ? 0.2f : 1.0f;
+        float g = loaded ? 1.0f : 0.2f;
+        float b = 0.35f;
 
-        // Зелёный при уверенной модели, красный при откате в fallback
-        float confidence = neuroRotation.getDebugConfidence();
-        boolean fallback = neuroRotation.isFallbackActive();
-        float r = fallback ? 1.0f : (1.0f - confidence);
-        float g = fallback ? 0.0f : confidence;
-        float b = 0.2f;
+        drawTest2Point(matrices, camera, aimPoint, r, g, b, 0.15f);
 
-        float size = 0.12f;
-
-        matrices.push();
-        matrices.translate(renderX, renderY, renderZ);
-
-        RenderSystem.enableBlend();
-        RenderSystem.defaultBlendFunc();
-        RenderSystem.disableDepthTest();
-        RenderSystem.disableCull();
-        RenderSystem.setShader(ShaderProgramKeys.POSITION_COLOR);
-
-        Matrix4f matrix = matrices.peek().getPositionMatrix();
-        Tessellator tessellator = Tessellator.getInstance();
-        BufferBuilder buffer = tessellator.begin(VertexFormat.DrawMode.DEBUG_LINES, VertexFormats.POSITION_COLOR);
-
-        drawLineBox(buffer, matrix, -size, -size, -size, size, size, size, r, g, b, 1f);
-
-        BufferRenderer.drawWithGlobalProgram(buffer.end());
-
-        RenderSystem.enableDepthTest();
-        RenderSystem.enableCull();
-        RenderSystem.disableBlend();
-
-        matrices.pop();
+        Rotation current = new Rotation(lastYaw, lastPitch);
+        Vec3d vecEnd = mc.player.getEyePos().add(current.toVector().multiply(3.0D));
+        drawTest2Point(matrices, camera, vecEnd, 0.95f, 0.95f, 0.95f, 0.08f);
     }
 
     /**
@@ -524,107 +490,6 @@ public class KillAura extends Module {
         matrices.pop();
     }
 
-    /**
-     * Текстовая debug-панель Neuro: модель, inference, бюджет, aim point, запись.
-     */
-    @EventHandler
-    private void onHud(EventHUD e) {
-        if (!isEnabled() || !rotation.is("Neuro") || !neuroDebug.getValue()) return;
-        if (mc.player == null || mc.options.hudHidden || mc.getDebugHud().shouldShowDebugHud()) return;
-
-        int white = ColorProvider.rgba(235, 235, 235, 255);
-        int gray = ColorProvider.rgba(170, 170, 170, 255);
-        int red = ColorProvider.rgba(255, 90, 90, 255);
-
-        java.util.List<String[]> lines = new java.util.ArrayList<>(); // [текст, цвет]
-
-        ActiveModel model = AIRotationManager.getActive();
-        if (model == null) {
-            lines.add(new String[]{"Модель: не загружена (fallback NoRot)", "red"});
-        } else {
-            NeuroModelMeta meta = model.getMeta();
-            lines.add(new String[]{"Модель: " + model.getName()
-                    + String.format(" (%s, seq %d, сэмплов %d)", meta.getArch(), meta.getSeqLen(), meta.getTrainSamples()), "white"});
-            lines.add(new String[]{String.format("loss %.4f | yaw MAE %.2f° | pitch MAE %.2f° | источник %s",
-                    meta.getValLoss(), meta.getYawMae(), meta.getPitchMae(), meta.getSource()), "gray"});
-        }
-
-        lines.add(new String[]{String.format("inference %d мкс | conf %.2f | история %s",
-                neuroRotation.getDebugInferenceNanos() / 1000,
-                neuroRotation.getDebugConfidence(),
-                neuroRotation.isHistoryWarm() ? "тёплая" : "прогрев"), "white"});
-
-        NeuroRotationController ctrl = neuroRotation.getController();
-        lines.add(new String[]{String.format("предсказание %+.2f° / %+.2f° | бюджет %+.2f° / %+.2f°",
-                neuroRotation.getDebugPredYaw(), neuroRotation.getDebugPredPitch(),
-                ctrl.getBudgetYaw(), ctrl.getBudgetPitch()), "white"});
-        lines.add(new String[]{String.format("остаток %+.2f° / %+.2f° | geo ошибка %.2f° / %.2f°",
-                ctrl.getRemainingYaw(), ctrl.getRemainingPitch(),
-                neuroRotation.getDebugGeoYaw(), neuroRotation.getDebugGeoPitch()), "gray"});
-
-        if (target != null) {
-            lines.add(new String[]{String.format("цель %s (%.1f м) | cooldown %.2f",
-                    target.getName().getString(),
-                    mc.player.distanceTo(target),
-                    mc.player.getAttackCooldownProgress(0.5f)), "white"});
-        } else {
-            lines.add(new String[]{"цель —", "gray"});
-        }
-
-        Vec3d aim = neuroRotation.getDebugAimPoint();
-        if (aim != null) {
-            lines.add(new String[]{String.format("aim point %.2f %.2f %.2f", aim.x, aim.y, aim.z), "gray"});
-        }
-
-        if (neuroRotation.isFallbackActive()) {
-            lines.add(new String[]{String.format("fallback: %s (%d тиков подряд)",
-                    neuroRotation.getFallbackReason(), neuroRotation.getFallbackTicks()), "red"});
-        }
-
-        StringBuilder status = new StringBuilder();
-        if (AIRotationRecorder.isRecording()) {
-            status.append("запись: ").append(AIRotationRecorder.getRowCount()).append("  ");
-        }
-        if (RotationDumpRecorder.isRecording()) {
-            status.append("дамп ").append(RotationDumpRecorder.getNamesLine())
-                    .append(": ").append(RotationDumpRecorder.getTotalRows()).append("  ");
-        }
-        if (TrainingLauncher.isRunning()) {
-            status.append("обучение идёт");
-        }
-        if (status.length() > 0) {
-            lines.add(new String[]{status.toString().trim(), "gray"});
-        }
-
-        // Рисуем панель
-        MsdfFont font = Fonts.SFMEDIUM.get();
-        float fontSize = 7f;
-        float x = neuroDebugDrag.getX();
-        float y = neuroDebugDrag.getY();
-
-        float maxWidth = font.getWidth("[ Neuro ]", fontSize);
-        for (String[] line : lines) {
-            maxWidth = Math.max(maxWidth, font.getWidth(line[0], fontSize));
-        }
-        float panelHeight = 10f + lines.size() * 9f;
-        neuroDebugDrag.setWidth(maxWidth + 8f);
-        neuroDebugDrag.setHeight(panelHeight + 4f);
-
-        DrawUtil.drawRound(x - 3f, y - 3f, maxWidth + 8f, panelHeight + 4f, 3f,
-                ColorProvider.rgba(15, 15, 15, 140));
-
-        DrawUtil.drawText(font, "[ Neuro ]", x, y, ColorProvider.getThemeColor(), fontSize);
-        y += 10f;
-        for (String[] line : lines) {
-            int color = switch (line[1]) {
-                case "red" -> red;
-                case "gray" -> gray;
-                default -> white;
-            };
-            DrawUtil.drawText(font, line[0], x, y, color, fontSize);
-            y += 9f;
-        }
-    }
 
     /**
      * Текстовая debug-панель Test2: фаза, углы, ошибки, скорость, прогресс.
@@ -688,6 +553,82 @@ public class KillAura extends Module {
         }
     }
 
+    /**
+     * Текстовая debug-панель Neuro: модель, инференс, предсказанная дельта, ошибки, заморозка, статус.
+     */
+    @EventHandler
+    private void onNeuroHud(EventHUD e) {
+        if (!isEnabled() || !rotation.is("Neuro") || !neuroDebug.getValue()) return;
+        if (mc.player == null || mc.options.hudHidden || mc.getDebugHud().shouldShowDebugHud()) return;
+
+        int white = ColorProvider.rgba(235, 235, 235, 255);
+        int gray = ColorProvider.rgba(170, 170, 170, 255);
+        int green = ColorProvider.rgba(90, 220, 130, 255);
+        int red = ColorProvider.rgba(255, 90, 90, 255);
+
+        java.util.List<String[]> lines = new java.util.ArrayList<>();
+
+        boolean loaded = neuroRotation.isModelLoaded();
+        if (loaded) {
+            lines.add(new String[]{"Модель: " + tech.onetap.util.neuro.rotation.NeuroModel.getActiveName() + " (GRU 48 units, MDN 4)", "green"});
+        } else {
+            lines.add(new String[]{"Модель: не загружена (используйте .neuro)", "red"});
+        }
+
+        long micros = neuroRotation.getDebugInferenceNanos() / 1000L;
+        lines.add(new String[]{String.format("Инференс: %d мкс | Частота: 20 Hz (субтиковая)", micros), "white"});
+
+        lines.add(new String[]{String.format("Δyaw: %+.2f° | Δpitch: %+.2f°",
+                neuroRotation.getDebugPredYaw(), neuroRotation.getDebugPredPitch()), "white"});
+
+        lines.add(new String[]{String.format("Ошибка: yaw %.2f° / pitch %.2f°",
+                neuroRotation.getDebugYawError(), neuroRotation.getDebugPitchError()), "gray"});
+
+        lines.add(new String[]{String.format("Aim offset: %.2f | Заморозка: %d тиков",
+                neuroRotation.getDebugAimOffset(), neuroRotation.getDebugFrozenTicks()), "gray"});
+
+        if (target != null) {
+            lines.add(new String[]{String.format("Цель: %s (дист. %.2f м)",
+                    target.getName().getString(), mc.player.distanceTo(target)), "white"});
+        } else {
+            lines.add(new String[]{"Цель: нет", "gray"});
+        }
+
+        if (neuroRotation.getRecorder().isRecording()) {
+            lines.add(new String[]{"Запись датасета: " + neuroRotation.getRecorder().getRowCount() + " строк", "green"});
+        }
+
+        MsdfFont font = Fonts.SFMEDIUM.get();
+        float fontSize = 7f;
+        float x = neuroDebugDrag.getX();
+        float y = neuroDebugDrag.getY();
+
+        String title = "[ Neuro GRU+MDN ]";
+        float maxWidth = font.getWidth(title, fontSize);
+        for (String[] line : lines) {
+            maxWidth = Math.max(maxWidth, font.getWidth(line[0], fontSize));
+        }
+        float panelHeight = 10f + lines.size() * 9f;
+        neuroDebugDrag.setWidth(maxWidth + 8f);
+        neuroDebugDrag.setHeight(panelHeight + 4f);
+
+        DrawUtil.drawRound(x - 3f, y - 3f, maxWidth + 8f, panelHeight + 4f, 3f,
+                ColorProvider.rgba(15, 15, 15, 140));
+
+        DrawUtil.drawText(font, title, x, y, ColorProvider.getThemeColor(), fontSize);
+        y += 10f;
+        for (String[] line : lines) {
+            int color = switch (line[1]) {
+                case "green" -> green;
+                case "red" -> red;
+                case "gray" -> gray;
+                default -> white;
+            };
+            DrawUtil.drawText(font, line[0], x, y, color, fontSize);
+            y += 9f;
+        }
+    }
+
     @EventHandler
     private void onGameUpdate(EventGameUpdate e) {
         if (mc.player == null) return;
@@ -697,7 +638,7 @@ public class KillAura extends Module {
 
         // Идёт запись датасета (учитель всегда человек) —
         // ротация не должна мешать демонстратору.
-        if (AIRotationRecorder.isRecording()) {
+        if (neuroRotation.getRecorder().isRecording()) {
             return;
         }
 
@@ -822,6 +763,10 @@ public class KillAura extends Module {
                 }
 
                 mc.interactionManager.attackEntity(mc.player, target);
+
+                if (rotation.is("Neuro")) {
+                    neuroRotation.attack();
+                }
 
                 crits.killAuraTriggered = false;
                 maceKill.killAuraTriggered = false;
@@ -1477,5 +1422,9 @@ public class KillAura extends Module {
         RotationComponent.getInstance().stopRotation();
         stopFreeze();
         super.onDisable();
+    }
+
+    public NeuroRotation getNeuroRotation() {
+        return this.neuroRotation;
     }
 }

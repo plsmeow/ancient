@@ -44,17 +44,6 @@ dependencies {
 	implementation files('libs/BareAPI_lib.jar')
 
 	implementation(include("meteordevelopment:orbit:0.2.4"))
-
-	// ONNX Runtime для AI inference.
-	// Обычная библиотека, не мод — поэтому implementation(include(...)), как oshi/gson.
-	// Нативы лежат внутри jar и распаковываются в temp при первой загрузке,
-	// поэтому вложение через Fabric JiJ работает.
-	//
-	// Jar тяжёлый (~43 МБ): туда входят нативы win/linux/macos плюс 47.8 МБ
-	// несжатых .dSYM (символы отладки macOS). Вырезать их не выходит —
-	// Loom вкладывает только полноценные module-компоненты, а не собранные
-	// вручную файлы. Итоговый jar мода ~48 МБ; это цена локального inference.
-	implementation(include("com.microsoft.onnxruntime:onnxruntime:1.28.0"))
 }
 
 processResources {

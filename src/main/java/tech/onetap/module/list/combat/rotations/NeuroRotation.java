@@ -1,374 +1,291 @@
 package tech.onetap.module.list.combat.rotations;
 
 import net.minecraft.entity.LivingEntity;
+import net.minecraft.util.math.Box;
 import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.Vec3d;
 import tech.onetap.module.list.combat.KillAura;
-import tech.onetap.util.neuro.rotation.AIRotationManager;
-import tech.onetap.util.neuro.rotation.ActiveModel;
-import tech.onetap.util.neuro.rotation.AimPointController;
-import tech.onetap.util.neuro.rotation.NeuroFeatureCollector;
-import tech.onetap.util.neuro.rotation.NeuroFeatureSchema;
-import tech.onetap.util.neuro.rotation.NeuroMdn;
-import tech.onetap.util.neuro.rotation.NeuroRotationController;
+import tech.onetap.util.chat.ChatUtil;
+import tech.onetap.util.math.RotationUtil;
+import tech.onetap.util.neuro.rotation.NeuroModel;
+import tech.onetap.util.neuro.rotation.NeuroRecorder;
+import tech.onetap.util.neuro.rotation.NeuroRotationTracker;
+import tech.onetap.util.player.combat.PredictUtils;
+import tech.onetap.util.render.math.GCDFixer;
 import tech.onetap.util.rotation.Rotation;
 import tech.onetap.util.rotation.RotationComponent;
 
+import java.util.concurrent.ThreadLocalRandom;
+
 /**
- * Нейро-ротация: прицел ведёт TCN+MDN модель (train_neuro.py).
+ * Нейросетевая ротация на основе GRU+MDN архитектуры из ROKSTAR.
+ * Инференс выполняется на чистом Java без ONNX Runtime.
  *
- * Канонический такт — игровой тик (20 Гц). Раз в тик собирается RAW-строка
- * (тот же формат, что пишется в датасет), из окна 16 тиков выводятся фичи,
- * модель выдаёт распределение дельт, и СРЕДНЕЕ смеси становится бюджетом
- * поворота. Никакого сведения к геометрии: предикт модели применяется как есть
- * (кламп только в диапазоне обученных меток ±25°), поэтому траектория
- * повторяет человеческую, а не идеальную прямую на цель.
- *
- * При отсутствии модели, ошибке inference или невалидном выходе — откат
- * в NoRotRotation/геометрию (§23). Прогрев (первые 16 тиков окна) —
- * геометрическое наведение, модель на неполном окне выдаёт мусор.
+ * Математика шага модели синхронизирована строго с 20 TPS (1 вызов GRU на игровой тик),
+ * а между тиками применяется плавная покадровая субтиковая интерполяция (lerp по tickDelta),
+ * обеспечивая плавность на любой герцовке монитора.
  */
 public class NeuroRotation extends RotationMode {
+    private static final float AIM_OFFSET_SCALE = 0.45f;
+    private static final float TEMPERATURE = 0.7f;
+    private static final int CANDIDATES = 4;
+    private static final float DEFAULT_SPEED = 1.1f;
+    private static final float WATER_SPEED = 0.8f;
+    private static final int MAX_FREEZE = 12;
+    private static final int MAX_RETURN_TICKS = 30;
+    private static final float MIN_RETURN_DELTA = 3.0f;
 
-    private static final int SUBSTEPS_PER_TICK = 12;
+    private final NeuroRotationTracker combatTracker = new NeuroRotationTracker();
+    private final NeuroRotationTracker returnTracker = new NeuroRotationTracker();
+    private final NeuroRecorder recorder = new NeuroRecorder();
+    private final float[] deltaOut = new float[2];
 
-    /** Причина отката в fallback — для debug-панели. */
-    public enum FallbackReason {
-        NONE,
-        NO_MODEL,
-        AIM_POINT,
-        INFERENCE,
-        INVALID_OUTPUT
+    private int lastTickAge = -1;
+    private int lastTargetId = -1;
+    private int returnTicks;
+    private float currentAimOffset = 0.0f;
+    private boolean attacked;
+    private boolean modelWarned;
+
+    // Субтиковая интерполяция (20 Hz step -> кадровая интерполяция)
+    private float tickStartYaw;
+    private float tickStartPitch;
+    private float tickTargetYaw;
+    private float tickTargetPitch;
+
+    // Переменные для debug панели
+    private Vec3d debugAimPoint;
+    private long lastInferenceNanos;
+    private float lastPredDeltaYaw;
+    private float lastPredDeltaPitch;
+
+    /**
+     * Целевая точка наведения.
+     * Нейросеть обучалась целиться в центр хитбокса (getCenter()), а физиологический
+     * разброс и естественные микросмещения обеспечивает встроенный MDN (sampleAimError).
+     * Фиксированный центр исключает джиттер и скачки между гранями хитбокса.
+     */
+    public static Vec3d getAimPoint(KillAura ka, LivingEntity target) {
+        if (target == null || mc.player == null) {
+            return target != null ? target.getBoundingBox().getCenter() : Vec3d.ZERO;
+        }
+        if (target.isGliding() && ka != null && ka.isElytraPredictActive() && !ka.isTurnaroundActive) {
+            return PredictUtils.getPredicted(target, ka.predictValue.getValue());
+        }
+        return target.getBoundingBox().getCenter();
     }
 
-    private final NeuroFeatureCollector collector = new NeuroFeatureCollector();
-    private final AimPointController aimController = new AimPointController();
-    private final NeuroRotationController controller = new NeuroRotationController();
-    private final NoRotRotation noRotFallback = new NoRotRotation();
-
-    /** Преаллоцированный вход модели — переиспользуется каждый тик. */
-    private final float[] flatInput =
-            new float[NeuroFeatureSchema.SEQ_LEN * NeuroFeatureSchema.FEATURE_COUNT];
-
-    private LivingEntity lastTarget = null;
-    private long lastTickHandled = -1;
-    private long tickCounter = 0;
-    private boolean fallbackActive = false;
-
-    /** Диагностика для debug-рендера. */
-    private Vec3d debugAimPoint = null;
-    private float debugConfidence = 0.0f;
-    private long debugInferenceNanos = 0;
-    private FallbackReason fallbackReason = FallbackReason.NONE;
-    private int fallbackTicks = 0;
-    private float debugPredYaw = 0.0f;
-    private float debugPredPitch = 0.0f;
-    private float debugGeoYaw = 0.0f;
-    private float debugGeoPitch = 0.0f;
+    public static Vec3d getAimPoint(LivingEntity target) {
+        return getAimPoint(null, target);
+    }
 
     @Override
     public void update(KillAura ka, LivingEntity target) {
-        var mc = ka.mc;
-        if (target == null || mc.player == null) return;
+        if (mc.player == null || target == null) {
+            return;
+        }
 
-        // Читаем активную модель ОДИН раз — дальше работаем только с локальной ссылкой
-        ActiveModel model = AIRotationManager.getActive();
+        NeuroModel model = NeuroModel.getActive();
         if (model == null) {
-            fallbackActive = true;
-            fallbackReason = FallbackReason.NO_MODEL;
-            noRotFallback.update(ka, target);
+            warnModelNotLoaded();
+            Vec3d targetPoint = getAimPoint(ka, target);
+            this.debugAimPoint = targetPoint;
+            Rotation rotation = new Rotation(RotationUtil.calculate(targetPoint));
+            RotationComponent.update(rotation, 360, 360, 360, 360, 0, 1, ka.clientLook.getValue(), ka.getMoveFixMode(), ka.otvodkaActive());
             return;
         }
 
-        boolean targetChanged = target != lastTarget;
-        if (targetChanged) {
-            onTargetSwitch(target);
+        int currentAge = mc.player.age;
+        boolean isNewTick = (currentAge != this.lastTickAge);
+
+        if (isNewTick) {
+            this.lastTickAge = currentAge;
+
+            Box box = target.getBoundingBox();
+            Vec3d eyePos = mc.player.getEyePos();
+            Vec3d aimPoint = getAimPoint(ka, target);
+            this.debugAimPoint = aimPoint;
+
+            Vec3d diff = aimPoint.subtract(eyePos);
+            double d = Math.max(Math.hypot(diff.x, diff.z), 0.05);
+
+            float targetYaw = (float) Math.toDegrees(Math.atan2(diff.z, diff.x)) - 90.0f;
+            float targetPitch = (float) (-Math.toDegrees(Math.atan2(diff.y, d)));
+            float fovX = Math.max((float) Math.toDegrees(Math.atan2(box.getLengthX() / 2.0, d)), 0.5f);
+            float fovY = Math.max((float) Math.toDegrees(Math.atan2(box.getLengthY() / 2.0, d)), 0.5f);
+            double dist = NeuroRecorder.distanceToBox(eyePos, box);
+
+            // Начальные углы для нового тика
+            float currentBaseYaw = (this.lastTargetId == target.getId() && this.combatTracker.isInitialized())
+                    ? this.tickTargetYaw
+                    : ((ka.lastYaw != 0 && RotationComponent.getInstance().isRotating()) ? ka.lastYaw : mc.player.getYaw());
+            float currentBasePitch = (this.lastTargetId == target.getId() && this.combatTracker.isInitialized())
+                    ? this.tickTargetPitch
+                    : ((ka.lastPitch != 0 && RotationComponent.getInstance().isRotating()) ? ka.lastPitch : mc.player.getPitch());
+
+            if (target.getId() != this.lastTargetId || !this.combatTracker.isInitialized()) {
+                this.combatTracker.init(model, currentBaseYaw, currentBasePitch, targetYaw, targetPitch);
+                this.lastTargetId = target.getId();
+                this.currentAimOffset = AIM_OFFSET_SCALE * model.sampleAimError(ThreadLocalRandom.current().nextFloat());
+                this.tickStartYaw = currentBaseYaw;
+                this.tickStartPitch = currentBasePitch;
+                this.tickTargetYaw = currentBaseYaw;
+                this.tickTargetPitch = currentBasePitch;
+            } else {
+                this.tickStartYaw = this.tickTargetYaw;
+                this.tickStartPitch = this.tickTargetPitch;
+            }
+
+            this.returnTicks = 0;
+            float aimOffset = this.currentAimOffset;
+            float speedMul = getSpeedMultiplier();
+
+            long t0 = System.nanoTime();
+            boolean stepped = this.combatTracker.step(
+                    model, this.tickStartYaw, this.tickStartPitch, targetYaw, targetPitch,
+                    fovX, fovY, dist, aimOffset, MAX_FREEZE, TEMPERATURE, CANDIDATES, speedMul, this.deltaOut);
+            this.lastInferenceNanos = System.nanoTime() - t0;
+
+            if (stepped) {
+                this.lastPredDeltaYaw = this.deltaOut[0];
+                this.lastPredDeltaPitch = this.deltaOut[1];
+
+                this.tickTargetYaw = this.tickStartYaw + this.deltaOut[0];
+                this.tickTargetPitch = MathHelper.clamp(this.tickStartPitch + this.deltaOut[1], -90.0f, 90.0f);
+
+                if (this.attacked) {
+                    this.attacked = false;
+                    this.combatTracker.onAttack();
+                    this.currentAimOffset = AIM_OFFSET_SCALE * model.sampleAimError(ThreadLocalRandom.current().nextFloat());
+                } else {
+                    this.combatTracker.tick();
+                }
+            }
         }
 
-        // Новый тик? Тогда собираем фичи и делаем одно предсказание.
-        long currentTick = mc.world != null ? mc.world.getTime() : lastTickHandled;
-        if (currentTick != lastTickHandled) {
-            lastTickHandled = currentTick;
-            runInference(ka, target, model, targetChanged);
+        // Субтиковая интерполяция: между тиками плавно ведём прицел к tickTarget
+        float tickDelta = 1.0f;
+        if (mc.getRenderTickCounter() != null) {
+            tickDelta = MathHelper.clamp(mc.getRenderTickCounter().getTickDelta(true), 0.0f, 1.0f);
         }
 
-        if (fallbackActive) {
-            holdOrFallback(ka, target);
-            return;
-        }
+        float interpolatedYaw = MathHelper.lerpAngleDegrees(tickDelta, this.tickStartYaw, this.tickTargetYaw);
+        float interpolatedPitch = MathHelper.lerp(tickDelta, this.tickStartPitch, this.tickTargetPitch);
 
-        applySubStep(ka);
+        float gcd = GCDFixer.getGCDValue();
+        if (gcd > 0.001f) {
+            interpolatedYaw = this.tickStartYaw + Math.round(MathHelper.wrapDegrees(interpolatedYaw - this.tickStartYaw) / gcd) * gcd;
+            interpolatedPitch = this.tickStartPitch + Math.round((interpolatedPitch - this.tickStartPitch) / gcd) * gcd;
+        }
+        interpolatedPitch = MathHelper.clamp(interpolatedPitch, -90.0f, 90.0f);
+
+        Rotation nextRotation = new Rotation(interpolatedYaw, interpolatedPitch);
+        RotationComponent.update(nextRotation, 360, 360, 360, 360, 0, 1, ka.clientLook.getValue(), ka.getMoveFixMode(), ka.otvodkaActive());
+        ka.lastYaw = this.tickTargetYaw;
+        ka.lastPitch = this.tickTargetPitch;
     }
 
-    /**
-     * Обработка тика, когда модель есть, но предсказание непригодно.
-     *
-     * В полёте делегируем NoRot (он там реально крутит). На земле держим
-     * текущий поворот keep-alive пингом, пока модель не восстановится,
-     * чтобы RotationComponent не снапнул поворот на взгляд игрока.
-     */
-    private void holdOrFallback(KillAura ka, LivingEntity target) {
-        var mc = ka.mc;
-        if (mc.player.isGliding() && target.isGliding()) {
-            noRotFallback.update(ka, target);
-            return;
+    public Rotation stepReturn(Rotation current, Rotation target) {
+        NeuroModel model = NeuroModel.getActive();
+        if (model == null || mc.player == null) {
+            return null;
         }
-
-        // Не морозим взгляд: пока модель не восстановится, ведём прицел к точке
-        // геометрически — иначе фолбэк выглядит как «застрял на одном месте»
-        Vec3d aimPoint = aimController.update(ka, target, false);
-        Rotation targetRotation = new Rotation(aimPoint);
-        float dYaw = MathHelper.wrapDegrees(targetRotation.getYaw() - mc.player.getYaw());
-        float dPitch = targetRotation.getPitch() - mc.player.getPitch();
-
-        if (Math.abs(dYaw) < 1.0f && Math.abs(dPitch) < 1.0f) {
-            keepAlive(ka);
-            return;
+        float gcd = Math.max(MIN_RETURN_DELTA, GCDFixer.getGCDValue());
+        if (Math.abs(MathHelper.wrapDegrees(target.getYaw() - current.getYaw())) <= gcd
+                && Math.abs(target.getPitch() - current.getPitch()) <= gcd) {
+            this.returnTracker.reset();
+            this.returnTicks = 0;
+            return null;
         }
-
-        float stepYaw = MathHelper.clamp(dYaw * 0.35f, -20.0f, 20.0f);
-        float stepPitch = MathHelper.clamp(dPitch * 0.35f, -15.0f, 15.0f);
-        setBudget(ka, stepYaw, stepPitch);
-        applySubStep(ka);
-    }
-
-    /**
-     * Пинг RotationComponent текущим поворотом: видимого движения нет,
-     * но AIM-задача остаётся живой и idleTicks сбрасывается — иначе
-     * по таймауту 0 сработает RESET со снапом на FreeLook (камеру).
-     */
-    private void keepAlive(KillAura ka) {
-        var mc = ka.mc;
-        if (mc.player == null) return;
-        Rotation current = new Rotation(
-                MathHelper.wrapDegrees(mc.player.getYaw()),
-                mc.player.getPitch()
+        if (++this.returnTicks > MAX_RETURN_TICKS) {
+            this.returnTracker.reset();
+            return null;
+        }
+        if (!this.returnTracker.isInitialized()) {
+            this.returnTracker.init(model, current.getYaw(), current.getPitch(), target.getYaw(), target.getPitch());
+        }
+        if (!this.returnTracker.step(
+                model, current.getYaw(), current.getPitch(), target.getYaw(), target.getPitch(),
+                5.0f, 15.0f, 3.0, 0.0f, MAX_FREEZE, TEMPERATURE, CANDIDATES, DEFAULT_SPEED, this.deltaOut)) {
+            return null;
+        }
+        this.returnTracker.tick();
+        return new Rotation(
+                current.getYaw() + this.deltaOut[0],
+                MathHelper.clamp(current.getPitch() + this.deltaOut[1], -90.0f, 90.0f)
         );
-        RotationComponent.update(current, 360, 360, 360, 360, 0, 1,
-                ka.clientLook.getValue(), ka.getMoveFixMode(), ka.otvodkaActive());
     }
 
-    /**
-     * Раз в тик: RAW-строка -> окно фич -> предсказание модели -> бюджет.
-     * Модель непригодна только при реальной ошибке (нет точки, сбой inference,
-     * мусорный выход) — предикт по направлению НЕ корректируется, иначе
-     * ротация вырождается в ванильную.
-     */
-    private void runInference(KillAura ka, LivingEntity target, ActiveModel model, boolean targetChanged) {
-        var mc = ka.mc;
-
-        Vec3d aimPoint = aimController.update(ka, target, targetChanged);
-        if (aimPoint == null || aimPoint.equals(Vec3d.ZERO)) {
-            fail(FallbackReason.AIM_POINT);
-            return;
-        }
-        debugAimPoint = aimPoint;
-
-        // RAW-строка текущего тика: dyaw/dpitch коллектор берёт из своей истории —
-        // это ровно дельта, применённая на прошлом тике, как и в датасете
-        collector.pushFrame(mc.player, target, aimPoint, !targetChanged, tickCounter++);
-
-        // Пока окно не набрано, ведём цель геометрически — модель на неполном
-        // окне выдаёт мусор, а padding нулями сместил бы распределение
-        if (!collector.isWarm()) {
-            warmUpBudget(ka, target);
-            debugConfidence = 1.0f;
-            debugPredYaw = 0.0f;
-            debugPredPitch = 0.0f;
-            return;
-        }
-
-        collector.collect(flatInput);
-        int last = (NeuroFeatureSchema.SEQ_LEN - 1) * NeuroFeatureSchema.FEATURE_COUNT;
-        debugGeoYaw = flatInput[last + NeuroFeatureSchema.F_ERR_YAW];
-        debugGeoPitch = flatInput[last + NeuroFeatureSchema.F_ERR_PITCH];
-
-        float[] output;
-        long start = System.nanoTime();
-        try {
-            output = model.getEngine().predict(flatInput);
-        } catch (Throwable t) {
-            fail(FallbackReason.INFERENCE);
-            return;
-        }
-        debugInferenceNanos = System.nanoTime() - start;
-
-        NeuroMdn.Prediction pred = NeuroMdn.decode(output);
-        if (pred == null) {
-            fail(FallbackReason.INVALID_OUTPUT);
-            return;
-        }
-
-        // Кламп только в диапазоне обученных меток — форму движения задаёт модель
-        float deltaYaw = MathHelper.clamp(pred.deltaYaw(), -NeuroFeatureSchema.LABEL_CLIP_DEG,
-                NeuroFeatureSchema.LABEL_CLIP_DEG);
-        float deltaPitch = MathHelper.clamp(pred.deltaPitch(), -NeuroFeatureSchema.LABEL_CLIP_DEG,
-                NeuroFeatureSchema.LABEL_CLIP_DEG);
-
-        debugPredYaw = deltaYaw;
-        debugPredPitch = deltaPitch;
-        debugConfidence = NeuroMdn.confidence(pred.sigma());
-
-        if (fallbackActive) {
-            // В окне истории за время простоя образовалась дыра — сбрасываем,
-            // следующие SEQ_LEN тиков цель ведётся геометрически (warm-up)
-            collector.reset();
-        }
-        fallbackActive = false;
-        fallbackReason = FallbackReason.NONE;
-        fallbackTicks = 0;
-
-        setBudget(ka, deltaYaw, deltaPitch);
+    private float getSpeedMultiplier() {
+        return mc.player != null && mc.player.isSubmergedInWater() ? WATER_SPEED : DEFAULT_SPEED;
     }
 
-    /**
-     * Прогрев: геометрическое наведение, пока окно истории не набрано.
-     */
-    private void warmUpBudget(KillAura ka, LivingEntity target) {
-        var mc = ka.mc;
-        Vec3d aimPoint = debugAimPoint;
-        if (aimPoint == null) return;
-        Rotation targetRotation = new Rotation(aimPoint);
-        float dYaw = MathHelper.wrapDegrees(targetRotation.getYaw() - mc.player.getYaw());
-        float dPitch = targetRotation.getPitch() - mc.player.getPitch();
-        setBudget(ka,
-                MathHelper.clamp(dYaw * 0.5f, -20.0f, 20.0f),
-                MathHelper.clamp(dPitch * 0.5f, -15.0f, 15.0f));
-    }
-
-    private void fail(FallbackReason reason) {
-        if (!fallbackActive) {
-            collector.reset();
-        }
-        fallbackActive = true;
-        fallbackReason = reason;
-        fallbackTicks++;
-        debugConfidence = 0.0f;
-    }
-
-    private void setBudget(KillAura ka, float deltaYaw, float deltaPitch) {
-        float yawMul = (float) ka.neuroYawMultiplier.getValue();
-        float pitchMul = (float) ka.neuroPitchMultiplier.getValue();
-        controller.setBudget(deltaYaw * yawMul, deltaPitch * pitchMul);
-    }
-
-    /**
-     * Каждый субшаг: выплатить долю бюджета. Без inference и аллокаций.
-     */
-    private void applySubStep(KillAura ka) {
-        var mc = ka.mc;
-        if (!controller.hasBudget()) return;
-
-        float[] step = controller.getStepDelta(SUBSTEPS_PER_TICK, true);
-        float stepYaw = step[0];
-        float stepPitch = step[1];
-
-        if (stepYaw == 0.0f && stepPitch == 0.0f) {
-            // Нулевой шаг (бюджет выплачен или GCD округлил в ноль) —
-            // без keep-alive тик без updateRotation завершится RESET-ом
-            // со снапом поворота на взгляд игрока.
-            keepAlive(ka);
-            return;
-        }
-
-        float currentYaw = MathHelper.wrapDegrees(mc.player.getYaw());
-        float currentPitch = mc.player.getPitch();
-
-        float nextYaw = currentYaw + stepYaw;
-        float nextPitch = MathHelper.clamp(currentPitch + stepPitch, -89.0f, 90.0f);
-
-        Rotation rotation = new Rotation(nextYaw, nextPitch);
-        RotationComponent.update(rotation, 360, 360, 360, 360, 0, 1,
-                ka.clientLook.getValue(), ka.getMoveFixMode(), ka.otvodkaActive());
-
-        ka.lastYaw = rotation.getYaw();
-        ka.lastPitch = rotation.getPitch();
-    }
-
-    /**
-     * §15: при смене цели история должна быть очищена, иначе модель продолжит
-     * траекторию старой цели.
-     */
-    private void onTargetSwitch(LivingEntity newTarget) {
-        lastTarget = newTarget;
-        collector.reset();
-        controller.reset();
-        aimController.reset();
+    public void attack() {
+        this.attacked = true;
     }
 
     @Override
     public void reset(KillAura ka) {
-        collector.reset();
-        controller.reset();
-        aimController.reset();
-        noRotFallback.reset(ka);
-        lastTarget = null;
-        lastTickHandled = -1;
-        tickCounter = 0;
-        fallbackActive = false;
-        fallbackReason = FallbackReason.NONE;
-        fallbackTicks = 0;
-        debugAimPoint = null;
-        debugConfidence = 0.0f;
-        debugInferenceNanos = 0;
-        debugPredYaw = 0.0f;
-        debugPredPitch = 0.0f;
-        debugGeoYaw = 0.0f;
-        debugGeoPitch = 0.0f;
+        super.reset(ka);
+        this.combatTracker.reset();
+        this.returnTracker.reset();
+        this.lastTickAge = -1;
+        this.lastTargetId = -1;
+        this.currentAimOffset = 0.0f;
+        this.attacked = false;
+        this.modelWarned = false;
+        this.debugAimPoint = null;
     }
 
-    // ------------------------------------------------------------------
-    // Диагностика для debug-рендера
-    // ------------------------------------------------------------------
+    private void warnModelNotLoaded() {
+        if (this.modelWarned) {
+            return;
+        }
+        this.modelWarned = true;
+        ChatUtil.send("§cМодель " + NeuroModel.getActiveName() + " не загрузилась — обучи через .neuro train или выбери другую: .neuro list");
+    }
+
+    public NeuroRecorder getRecorder() {
+        return this.recorder;
+    }
+
+    public boolean isModelLoaded() {
+        return NeuroModel.getActive() != null;
+    }
 
     public Vec3d getDebugAimPoint() {
-        return debugAimPoint;
-    }
-
-    public float getDebugConfidence() {
-        return debugConfidence;
+        return this.debugAimPoint;
     }
 
     public long getDebugInferenceNanos() {
-        return debugInferenceNanos;
+        return this.lastInferenceNanos;
     }
 
-    public boolean isFallbackActive() {
-        return fallbackActive;
-    }
-
-    public FallbackReason getFallbackReason() {
-        return fallbackReason;
-    }
-
-    /** Сколько тиков подряд модель в fallback (0 — модель работает). */
-    public int getFallbackTicks() {
-        return fallbackTicks;
-    }
-
-    /** Предсказание модели (после клампа, до множителей). */
     public float getDebugPredYaw() {
-        return debugPredYaw;
+        return this.lastPredDeltaYaw;
     }
 
     public float getDebugPredPitch() {
-        return debugPredPitch;
+        return this.lastPredDeltaPitch;
     }
 
-    /** Геометрическая ошибка до точки прицеливания (последний тик окна). */
-    public float getDebugGeoYaw() {
-        return debugGeoYaw;
+    public float getDebugAimOffset() {
+        return this.currentAimOffset;
     }
 
-    public float getDebugGeoPitch() {
-        return debugGeoPitch;
+    public int getDebugFrozenTicks() {
+        return (int) this.combatTracker.getFrozenTicks();
     }
 
-    public NeuroRotationController getController() {
-        return controller;
+    public float getDebugYawError() {
+        return this.combatTracker.getLastYawError();
     }
 
-    public boolean isHistoryWarm() {
-        return collector.isWarm();
+    public float getDebugPitchError() {
+        return this.combatTracker.getLastPitchError();
+    }
+
+    public NeuroRotationTracker getCombatTracker() {
+        return this.combatTracker;
     }
 }

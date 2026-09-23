@@ -41,7 +41,7 @@ public final class DefaultCommands {
                 new TpCommand(),
                 new GmCommand(),
                 new GpsCommand(),
-                new AICommand(),
+                new NeuroCommand(),
                 new BotCommand(),
                 new BlockEspCommand(),
                 new NukerCommand(),
