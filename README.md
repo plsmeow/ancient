@@ -4,7 +4,7 @@
 
 ## О проекте
 
-Чит был основан на базе [moonward](https://yougame.biz/threads/376596/)
+Чит был создан на базе [moonward](https://yougame.biz/threads/376596/)
 
 ## Требования
 
