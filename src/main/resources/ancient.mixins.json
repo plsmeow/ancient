@@ -1,0 +1,48 @@
+{
+  "required": true,
+  "package": "meow.ancient.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "CobWebMixin",
+    "EnderPearlEntityMixin",
+    "EntityMixin",
+    "IFireworkRocketEntityAccessor",
+    "MixinClientConnection",
+    "ScoreboardMixin",
+    "TeamMixin",
+    "TextVisitFactoryMixin"
+  ],
+  "client": [
+    "AbstractClientPlayerEntityMixin",
+    "BlockMixin",
+    "CameraMixin",
+    "ChatHudMixin",
+    "ChatInputSuggestorMixin",
+    "ChatScreenMixin",
+    "ChunkOcclusionDataBuilderMixin",
+    "ClientPlayerEntityMixin",
+    "ClientPlayerInteractionManagerMixin",
+    "ClientPlayNetworkHandlerMixin",
+    "EntityRendererMixin",
+    "FireworkRocketEntityMixin",
+    "FogMixin",
+    "GameRendererMixin",
+    "HandledScreenMixin",
+    "HeldItemRendererMixin",
+    "IMinecraftClientAccessor",
+    "InGameHudMixin",
+    "InGameOverlayRendererMixin",
+    "KeyboardInputMixin",
+    "KeyboardMixin",
+    "LivingEntityMixin",
+    "MinecraftClientMixin",
+    "MouseMixin",
+    "RenderTickCounterAccessor",
+    "ScreenMixin",
+
+    "WorldMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

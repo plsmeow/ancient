@@ -1,0 +1,81 @@
+package meow.ancient.mixin;
+
+import com.llamalad7.mixinextras.injector.ModifyExpressionValue;
+import net.minecraft.client.network.ClientPlayNetworkHandler;
+import net.minecraft.client.world.ClientWorld;
+import net.minecraft.network.packet.s2c.play.EntitySpawnS2CPacket;
+import net.minecraft.network.packet.s2c.play.ExplosionS2CPacket;
+import net.minecraft.util.math.Vec3d;
+import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Shadow;
+import org.spongepowered.asm.mixin.injection.At;
+import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import meow.ancient.event.list.ChatEvent;
+import meow.ancient.event.list.EventEntitySpawn;
+import meow.ancient.module.list.combat.Velocity;
+import meow.ancient.util.base.Instance;
+
+import java.util.Optional;
+
+@Mixin(ClientPlayNetworkHandler.class)
+public class ClientPlayNetworkHandlerMixin {
+    @Inject(
+            method = "sendChatMessage(Ljava/lang/String;)V",
+            at = @At("HEAD"),
+            cancellable = true
+    )
+    private void sendChatMessage(String string, CallbackInfo ci) {
+        var event = new ChatEvent(string, false);
+        event.post();
+        if (event.isCancelled()) {
+            ci.cancel();
+        }
+    }
+
+    @Inject(
+            method = "sendChatCommand(Ljava/lang/String;)V",
+            at = @At("HEAD"),
+            cancellable = true
+    )
+    private void sendChatCommand(String string, CallbackInfo ci) {
+        var event = new ChatEvent(string, true);
+        event.post();
+        if (event.isCancelled()) {
+            ci.cancel();
+        }
+    }
+
+    @Shadow
+    private ClientWorld world;
+
+    @Inject(
+            method = "onEntitySpawn",
+            at = @At(
+                    value = "INVOKE",
+                    target = "Lnet/minecraft/client/network/ClientPlayNetworkHandler;playSpawnSound(Lnet/minecraft/entity/Entity;)V",
+                    shift = At.Shift.AFTER
+            )
+    )
+    private void hookEntitySpawn(EntitySpawnS2CPacket packet, CallbackInfo ci) {
+        var entity = this.world.getEntityById(packet.getEntityId());
+
+        if (entity == null) return;
+
+        var event = new EventEntitySpawn(entity);
+        event.post();
+    }
+
+    @ModifyExpressionValue(
+            method = "onExplosion",
+            at = @At(
+                    value = "INVOKE",
+                    target = "Lnet/minecraft/network/packet/s2c/play/ExplosionS2CPacket;playerKnockback()Ljava/util/Optional;"
+            )
+    )
+    private Optional<Vec3d> modifyExplosionKnockback(Optional<Vec3d> original) {
+        Velocity velocity = Instance.get(Velocity.class);
+        if (velocity == null || !velocity.isEnabled() || original.isEmpty()) return original;
+        return velocity.modifyExplosionKnockback();
+    }
+}

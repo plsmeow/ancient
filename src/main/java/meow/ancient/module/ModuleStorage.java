@@ -1,0 +1,133 @@
+package meow.ancient.module;
+
+import meteordevelopment.orbit.EventHandler;
+import lombok.Getter;
+import lombok.Setter;
+import net.minecraft.client.option.Perspective;
+import meow.ancient.Ancient;
+import meow.ancient.event.EventGameUpdate;
+import meow.ancient.event.list.EventHUD;
+import meow.ancient.event.list.EventKeyInput;
+import meow.ancient.event.list.EventTick;
+import meow.ancient.module.list.combat.*;
+import meow.ancient.module.list.misc.*;
+import meow.ancient.module.list.movement.*;
+import meow.ancient.module.list.player.*;
+import meow.ancient.module.list.render.*;
+import meow.ancient.module.list.render.Interface;
+import meow.ancient.module.settings.BooleanSetting;
+import meow.ancient.module.settings.ThemeSetting;
+import meow.ancient.util.IMinecraft;
+import meow.ancient.util.player.other.SlownessManager;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.stream.Collectors;
+
+@Getter
+public class ModuleStorage implements IMinecraft {
+    private final List<Module> modules = new ArrayList<>();
+
+    public void injectRegisterModules() {
+        modules.addAll(List.of(
+                new FullBright(), new ClickGui(), new Optimization(), new Sprint(), new Troll(), new AiRecord(),
+                  new TriggerBot(), new AimAssist(), new Criticals(), new MaceKill(), new AutoMace(), new BreachSwap(), new DamageSwap(), new FunskyMace(), new BoatAura(), new TpAura(),
+                new NoRender(), new KillAura(), new KBDisplacement(), new Backtrack(), new AutoFlyMace(),
+                new Tags(), new TargetESP(), new NoPush(), new SoulESP(), new DragonFly(),
+                new NoJumpDelay(), new TeleportBack(), new ElytraHelper(), new HotbarRefill(), new Flight(),
+                new AutoTotem(), new ClickPearl(), new ClickTP(), new UseTracker(), new PlayerTP(), new CrystalAura(), new AnchorAura(), new Scaffold(),
+                new ClientSounds(), new NoFriendDamage(), new ElytraBooster(),
+                new FreeCamera(), new SwingAnimations(), new Predictions(), new HighJump(),
+                new DogFly(), new AutoTpaccept(), new RPSpoofer(), new FireFly(), new AutoTrap(), new AutoPot(), new GroundSpoof(),
+                new AntiBot(), new AutoExplosion(), new DeathCoords(), new CrystalOptimizer(), new InstantRebreak(), new BowBomb(),
+                new KillSay(), new KillSound(),
+                new GuiMove(), new Tracers(), new ElytraMotion(), new Velocity(), new ElytraFlight(), new ElytraFly(), new ElytraJump(), new ElytraBounce(),
+                new ViewModel(), new KillEffect(), new AutoArmor(), new LonyHelper(), new FtHelper(), new Speed(), new GrimGlide(),
+                new GrimStrafe(), new HWHelper(),
+                new AutoTool(), new AirPlace(), new TapeMouse(), new Ambience(), new BlockOverlay(), new FreeLook(),
+                new Trails(), new FastExp(), new FastCrossbow(), new NameProtect(), new CrystalSpammer(), new ChinaHat(),
+                new AirStuck(), new AutoSwap(), new NoSlow(), new NoWeb(), new DiscordRPC(), new FakePlayer(), new Interface(), new AutoEat(), new GapFix(), new AutoLeave(), new Hide(), new SpecCordExploit(),
+                new Nuker(), new BlockEsp(), new TPLoot(), new ScoreboardHealth(), new BoatFly(), new AutoCart(),
+                new AutoCaptcha(), new Step(), new Arrows(), new PrefixFixer(), new CustomCape(), new Chams()
+        ));
+
+        Ancient.getInstance().getEventBus().subscribe(this);
+    }
+
+    public <T extends Module> T get(final String name) {
+        return this.modules.stream()
+                .filter(module -> module.getName().equalsIgnoreCase(name))
+                .map(module -> (T) module)
+                .findFirst()
+                .orElse(null);
+    }
+
+    public <T extends Module> T get(final Class<T> clazz) {
+        return this.modules.stream()
+                .filter(module -> clazz.isAssignableFrom(module.getClass()))
+                .map(clazz::cast)
+                .findFirst()
+                .orElse(null);
+    }
+
+    public List<Module> get(final ModuleCategory category) {
+        return this.modules.stream()
+                .filter(module -> module.getCategory() == category)
+                .collect(Collectors.toList());
+    }
+
+    @Setter private float speedAcceleration;
+    @Setter private float randomness;
+
+    @EventHandler
+    private void onGameUpdate(EventGameUpdate e) {
+        if (mc.player == null) return;
+
+        if (!SlownessManager.slowTasksIsEmpty()) SlownessManager.updateSlowTasks();
+        if (!SlownessManager.timeTasksIsEmpty()) SlownessManager.updateTimeTasks(false);
+
+        var aura = get(KillAura.class);
+
+        if (!aura.isEnabled() || aura.getTarget() == null) {
+            if (mc.options.getPerspective() == Perspective.THIRD_PERSON_FRONT) {
+                aura.lastYaw = (mc.gameRenderer.getCamera().getYaw() - 180);
+                aura.lastPitch = -mc.gameRenderer.getCamera().getPitch();
+            } else {
+                aura.lastYaw = mc.gameRenderer.getCamera().getYaw();
+                aura.lastPitch = mc.gameRenderer.getCamera().getPitch();
+            }
+        }
+    }
+
+    @EventHandler
+    private void onRender(EventHUD ignored) {
+        for (var module : getModules()) {
+            module.getAnimation().run(module.isEnabled());
+            for (var setting : module.getSettings()) {
+                if (setting instanceof BooleanSetting b) b.getAnimation().run(b.getValue());
+                if (setting instanceof ThemeSetting t) t.getValue().animation.run(1);
+            }
+        }
+    }
+
+    @EventHandler
+    private void onKey(EventKeyInput e) {
+        if (Hide.isActive) return;
+        if (e.getAction() != 1) return;
+        for (var module : getModules())
+            for (var setting : module.getSettings())
+                if (setting.isBound() && e.getKey() == setting.getKey()) {
+                    setting.triggerBind();
+                    ClientSounds soundsModule = get(ClientSounds.class);
+                    if (soundsModule != null && soundsModule.isEnabled()) {
+                        ClientSounds.play(true);
+                    }
+                }
+    }
+
+    @EventHandler
+    private void onUpdate(EventTick ignored) {
+        if (!SlownessManager.timeTasksIsEmpty()) SlownessManager.updateTimeTasks(true);
+    }
+
+}

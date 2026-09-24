@@ -1,0 +1,105 @@
+package meow.ancient.module.list.player;
+
+import meteordevelopment.orbit.EventHandler;
+import net.minecraft.block.BlockState;
+import net.minecraft.item.ItemStack;
+import net.minecraft.screen.slot.SlotActionType;
+import net.minecraft.util.hit.BlockHitResult;
+import net.minecraft.util.math.BlockPos;
+import meow.ancient.event.list.EventPlayerUpdate;
+import meow.ancient.module.Module;
+import meow.ancient.module.ModuleCategory;
+import meow.ancient.module.ModuleInformation;
+import meow.ancient.util.player.other.InventoryUtil;
+
+@ModuleInformation(moduleName = "Auto Tool", moduleDesc = "Выбирает лучший инструмент для добычи блоков", moduleCategory = ModuleCategory.PLAYER)
+public class AutoTool extends Module {
+
+    private int itemIndex = -1, oldSlot = -1;
+    private boolean status;
+
+    @EventHandler
+    private void onTick(final EventPlayerUpdate ignored) {
+        if (mc.player == null || mc.player.isCreative()) {
+            itemIndex = -1;
+            return;
+        }
+
+        if (mc.player.isUsingItem()) return;
+
+        if (isMousePressed()) {
+            if (oldSlot == -1) {
+                itemIndex = findBestToolSlot();
+
+                if (itemIndex != -1) {
+                    if (itemIndex >= 0 && itemIndex <= 8) {
+                        oldSlot = mc.player.getInventory().selectedSlot;
+                        mc.player.getInventory().selectedSlot = itemIndex;
+                        mc.interactionManager.syncSelectedSlot();
+                        status = true;
+                    } else {
+                        InventoryUtil.clickWithGuiBypass(this::swap);
+                        oldSlot = itemIndex;
+                    }
+                }
+            }
+        } else if (oldSlot != -1) {
+            if (oldSlot >= 0 && oldSlot <= 8) {
+                mc.player.getInventory().selectedSlot = oldSlot;
+                mc.interactionManager.syncSelectedSlot();
+                oldSlot = -1;
+                status = false;
+            } else {
+                InventoryUtil.clickWithGuiBypass(this::swapBack);
+            }
+        }
+    }
+
+    private void swap() {
+        if (itemIndex == -1) return;
+        status = true;
+        mc.interactionManager.clickSlot(0, itemIndex, mc.player.getInventory().selectedSlot, SlotActionType.SWAP, mc.player);
+    }
+
+    private void swapBack() {
+        if (oldSlot == -1 || !status) return;
+        mc.interactionManager.clickSlot(0, oldSlot, mc.player.getInventory().selectedSlot, SlotActionType.SWAP, mc.player);
+        oldSlot = -1;
+        status = false;
+    }
+
+    @Override
+    public void onDisable() {
+        super.onDisable();
+        status = false;
+        itemIndex = -1;
+        oldSlot = -1;
+    }
+
+    private int findBestToolSlot() {
+        if (mc.crosshairTarget instanceof BlockHitResult blockHitResult) {
+            BlockPos pos = blockHitResult.getBlockPos();
+            BlockState state = mc.world.getBlockState(pos);
+
+            int bestSlot = -1;
+            float bestSpeed = 1.0f;
+
+            for (int slot = 0; slot < 36; slot++) {
+                ItemStack stack = mc.player.getInventory().getStack(slot);
+                float speed = stack.getMiningSpeedMultiplier(state);
+
+                if (speed > bestSpeed) {
+                    bestSpeed = speed;
+                    bestSlot = slot;
+                }
+            }
+            return bestSlot;
+        }
+        return -1;
+    }
+
+
+    private boolean isMousePressed() {
+        return mc.crosshairTarget != null && mc.options.attackKey.isPressed();
+    }
+}

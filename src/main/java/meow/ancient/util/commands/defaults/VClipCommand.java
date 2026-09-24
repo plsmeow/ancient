@@ -1,0 +1,135 @@
+package meow.ancient.util.commands.defaults;
+
+import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.network.ClientPlayerEntity;
+import net.minecraft.client.world.ClientWorld;
+import net.minecraft.network.packet.c2s.play.PlayerMoveC2SPacket;
+import net.minecraft.util.Formatting;
+import net.minecraft.util.math.BlockPos;
+import meow.ancient.util.commands.api.Command;
+import meow.ancient.util.commands.api.argument.IArgConsumer;
+import meow.ancient.util.commands.api.exception.CommandException;
+
+import java.util.List;
+import java.util.stream.Stream;
+
+public class VClipCommand extends Command {
+    public VClipCommand() {
+        super("vclip");
+    }
+
+    @Override
+    public void execute(String label, IArgConsumer args) throws CommandException {
+        args.requireMin(1);
+        String input = args.getString();
+
+        ClientPlayerEntity player = MinecraftClient.getInstance().player;
+        ClientWorld world = MinecraftClient.getInstance().world;
+
+        double yOffset;
+        switch (input.toLowerCase()) {
+            case "up" -> yOffset = findOffset(player.getBlockPos(), true, world);
+            case "down" -> yOffset = findOffset(player.getBlockPos(), false, world);
+            default -> {
+                try {
+                    yOffset = Double.parseDouble(input);
+                } catch (NumberFormatException e) {
+                    logDirect(Formatting.RED + input + " не является числом.");
+                    return;
+                }
+            }
+        }
+
+        if (yOffset == 0) {
+            logDirect(Formatting.RED + "Не удалось выполнить телепортацию.");
+            return;
+        }
+
+        // Необязательные аргументы — тип байпаса и количество пакетов
+        ClipBypass.BypassArgs bypassArgs = ClipBypass.parseArgs(this, args);
+        if (bypassArgs == ClipBypass.INVALID) return;
+
+        double x = player.getX();
+        double y = player.getY();
+        double z = player.getZ();
+
+        if (ClipBypass.teleport(this, x, y + yOffset, z, bypassArgs.mode(), bypassArgs.packets())) {
+            logDirect("Телепортировано на " + (int) yOffset + " блоков по вертикали"
+                    + (bypassArgs.mode() != null ? " [" + bypassArgs.mode() + "]" : ""));
+        }
+    }
+
+    private double findOffset(BlockPos pos, boolean toUp, ClientWorld world) {
+        ClientPlayerEntity player = MinecraftClient.getInstance().player;
+
+        if (toUp) {
+            for (int i = 3; i < 255; i++) {
+                BlockPos base = pos.add(0, i, 0);
+                BlockPos head = base.up();
+                if (world.getBlockState(base).isAir() && world.getBlockState(head).isAir()) {
+                    return base.getY() - player.getY();
+                }
+            }
+        } else {
+            for (int i = -1; i > -255; i--) {
+                BlockPos solid = pos.add(0, i, 0);
+                BlockPos air1 = solid.down();
+                BlockPos air2 = air1.down();
+
+                boolean isSolid = !world.getBlockState(solid).isAir();
+                boolean isAirBelow1 = world.getBlockState(air1).isAir();
+                boolean isAirBelow2 = world.getBlockState(air2).isAir();
+
+                if (isSolid && isAirBelow1 && isAirBelow2) {
+                    return air2.getY() - player.getY();
+                }
+            }
+        }
+
+        return 0;
+    }
+
+
+    @Override
+    public String getShortDesc() {
+        return "Телепорт по вертикали";
+    }
+
+    @Override
+    public List<String> getLongDesc() {
+        return List.of(
+                "Телепортирует игрока вверх или вниз",
+                "",
+                "> vclip <расстояние> — телепорт на определенное количество блоков",
+                "> vclip up — вверх до свободного блока",
+                "> vclip down — вниз до свободного блока",
+                "",
+                "Необязательный второй аргумент — тип байпаса:",
+                "> vclip <расстояние|up|down> [pos|bypass|vault|fs]",
+                "",
+                "fs — телепорт с полётом как в High Jump (Funsky Elytra): нужна",
+                "надетая элитра и положение не на земле, после /fly и включения",
+                "ability выполняется телепорт как в режиме bypass.",
+                "",
+                "После режимов bypass и fs можно указать количество пакетов:",
+                "> vclip <расстояние|up|down> bypass [пакеты]",
+                "",
+                "Без указания типа используется дефолтная логика (pos)."
+        );
+    }
+
+    @Override
+    public Stream<String> tabComplete(String label, IArgConsumer args) throws CommandException {
+        if (args.hasExactlyOne()) {
+            return Stream.of("up", "down");
+        }
+        if (args.hasExactly(2)) {
+            String prefix = args.peekString().toLowerCase();
+            return ClipBypass.BYPASS_TYPES.stream().filter(s -> s.startsWith(prefix));
+        }
+        if (args.hasExactly(3) && ClipBypass.BYPASS_TYPES.contains(args.peekString(1).toLowerCase())) {
+            return Stream.of("10", "20", "50");
+        }
+        return Stream.empty();
+    }
+}

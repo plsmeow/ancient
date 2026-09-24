@@ -1,0 +1,68 @@
+package meow.ancient.module.list.movement;
+
+import meteordevelopment.orbit.EventHandler;
+import net.minecraft.util.math.MathHelper;
+import meow.ancient.Ancient;
+import meow.ancient.event.list.MoveInputEvent;
+import meow.ancient.module.Module;
+import meow.ancient.module.ModuleCategory;
+import meow.ancient.module.ModuleInformation;
+import meow.ancient.module.list.combat.KillAura;
+import meow.ancient.util.render.math.GCDFixer;
+import meow.ancient.util.rotation.MoveFixMode;
+import meow.ancient.util.rotation.Rotation;
+import meow.ancient.util.rotation.RotationComponent;
+
+@ModuleInformation(moduleName = "GrimStrafe", moduleDesc = "Стрэйфы через ротацию", moduleCategory = ModuleCategory.MOVEMENT)
+public class GrimStrafe extends Module {
+
+    @EventHandler
+    private void onMoveInput(MoveInputEvent e) {
+        if (mc.player == null) return;
+
+        KillAura aura = Ancient.getInstance().getModuleStorage().get(KillAura.class);
+        if (aura != null && aura.isEnabled() && (aura.getTarget() != null || aura.isSnapActive())) return;
+
+        float forward = e.forward;
+        float strafe = e.strafe;
+        if (forward == 0 && strafe == 0) return;
+
+        float cameraYaw = mc.gameRenderer.getCamera().getYaw();
+        float moveYaw = cameraYaw;
+
+        if (forward != 0) {
+            if (strafe > 0) moveYaw += (forward > 0) ? -45 : 45;
+            else if (strafe < 0) moveYaw += (forward > 0) ? 45 : -45;
+        } else {
+            if (strafe > 0) moveYaw -= 90;
+            else if (strafe < 0) moveYaw += 90;
+        }
+        if (forward < 0) moveYaw += 180;
+
+        float gcd = GCDFixer.getGCDValue();
+        if (gcd > 0) {
+            moveYaw = mc.player.getYaw() + Math.round((moveYaw - mc.player.getYaw()) / gcd) * gcd;
+        }
+
+        mc.player.setYaw(moveYaw);
+        mc.player.headYaw = moveYaw;
+        mc.player.bodyYaw = moveYaw;
+
+        RotationComponent.update(
+                new Rotation(moveYaw, 0),
+                360, 360, 360, 360,
+                0, 0, false, MoveFixMode.CORRECT
+        );
+
+        RotationComponent.fixMovement(e, moveYaw);
+
+        e.forward = 1f;
+        e.strafe = 0f;
+    }
+
+    @Override
+    public void onDisable() {
+        super.onDisable();
+        RotationComponent.getInstance().stopRotation();
+    }
+}

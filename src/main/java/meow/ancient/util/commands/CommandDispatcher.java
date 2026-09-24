@@ -1,0 +1,134 @@
+/*
+ * This file is part of Baritone.
+ *
+ * Baritone is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * Baritone is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with Baritone.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
+package meow.ancient.util.commands;
+
+import meteordevelopment.orbit.EventHandler;
+import net.minecraft.util.Pair;
+import meow.ancient.Ancient;
+import meow.ancient.event.list.ChatEvent;
+import meow.ancient.event.list.TabCompleteEvent;
+import meow.ancient.module.list.render.Hide;
+import meow.ancient.util.commands.api.argument.ICommandArgument;
+import meow.ancient.util.commands.api.exception.CommandNotEnoughArgumentsException;
+import meow.ancient.util.commands.api.exception.CommandNotFoundException;
+import meow.ancient.util.commands.api.helpers.TabCompleteHelper;
+import meow.ancient.util.commands.api.manager.ICommandManager;
+import meow.ancient.util.commands.argument.ArgConsumer;
+import meow.ancient.util.commands.argument.CommandArguments;
+import meow.ancient.util.commands.manager.CommandRepository;
+
+import java.util.List;
+import java.util.stream.Stream;
+
+import static meow.ancient.util.commands.api.IBaritoneChatControl.FORCE_COMMAND_PREFIX;
+
+public class CommandDispatcher {
+
+    public static final String DEFAULT_PREFIX = ".";
+
+    private final ICommandManager manager;
+    private String commandPrefix = DEFAULT_PREFIX;
+
+    public CommandDispatcher() {
+        this.manager = Ancient.getInstance().getCommandRepository();
+        Ancient.getInstance().getEventBus().subscribe(this);
+    }
+
+    public String getCommandPrefix() {
+        return this.commandPrefix;
+    }
+
+    public void setCommandPrefix(String prefix) {
+        this.commandPrefix = prefix;
+    }
+
+    @EventHandler
+    public void onSendChatMessage(ChatEvent event) {
+        String msg = event.getMessage();
+        String prefix = this.commandPrefix;
+        boolean forceRun = msg.startsWith(FORCE_COMMAND_PREFIX);
+        if ((msg.startsWith(prefix)) || forceRun) {
+            if (Hide.isActive) return;
+            event.setCancelled(true);
+            String commandStr = msg.substring(forceRun ? FORCE_COMMAND_PREFIX.length() : prefix.length());
+            if (!runCommand(commandStr) && !commandStr.trim().isEmpty()) {
+                new CommandNotFoundException(CommandRepository.expand(commandStr).getLeft()).handle(null, null);
+            }
+        }
+    }
+
+    public boolean runCommand(String msg) {
+        if (msg.isEmpty()) {
+            return this.runCommand("help");
+        }
+        Pair<String, List<ICommandArgument>> pair = CommandRepository.expand(msg);
+        return this.manager.execute(pair);
+    }
+
+    @EventHandler
+    public void onPreTabComplete(TabCompleteEvent event) {
+        String prefix = event.getPrefix();
+        String commandPrefix = this.commandPrefix;
+        if (!prefix.startsWith(commandPrefix)) {
+            return;
+        }
+        if (Hide.isActive) {
+            event.setCancelled(true);
+            return;
+        }
+        String msg = prefix.substring(commandPrefix.length());
+        List<ICommandArgument> args = CommandArguments.from(msg, true);
+        Stream<String> stream = tabComplete(msg);
+        if (args.size() == 1) {
+            stream = stream.map(x -> commandPrefix + x);
+        }
+        event.completions = stream.toArray(String[]::new);
+    }
+
+    public Stream<String> tabComplete(String msg) {
+        try {
+            List<ICommandArgument> args = CommandArguments.from(msg, true);
+            ArgConsumer argc = new ArgConsumer(this.manager, args);
+            if (argc.hasAtMost(2)) {
+                if (argc.hasExactly(1)) {
+                    return new TabCompleteHelper()
+                            .addCommands(this.manager)
+                            .filterPrefix(argc.getString())
+                            .stream();
+                }
+          /*      Settings.Setting setting = settings.byLowerName.get(argc.getString().toLowerCase(Locale.US));
+                if (setting != null && !setting.isJavaOnly()) {
+                    if (setting.getValueClass() == Boolean.class) {
+                        TabCompleteHelper helper = new TabCompleteHelper();
+                        if ((Boolean) setting.value) {
+                            helper.append("true", "false");
+                        } else {
+                            helper.append("false", "true");
+                        }
+                        return helper.filterPrefix(argc.getString()).stream();
+                    } else {
+                        return Stream.of(SettingsUtil.settingValueToString(setting));
+                    }
+                }*/
+            }
+            return this.manager.tabComplete(msg);
+        } catch (CommandNotEnoughArgumentsException ignored) { // Shouldn't happen, the operation is safe
+            return Stream.empty();
+        }
+    }
+}

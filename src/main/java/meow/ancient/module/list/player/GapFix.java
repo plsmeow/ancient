@@ -1,0 +1,81 @@
+package meow.ancient.module.list.player;
+
+import meteordevelopment.orbit.EventHandler;
+import net.minecraft.item.ItemStack;
+import net.minecraft.item.Items;
+import meow.ancient.event.list.EventHUD;
+import meow.ancient.event.list.EventItemUseFinish;
+import meow.ancient.event.list.EventPlayerUpdate;
+import meow.ancient.event.list.EventUseItem;
+import meow.ancient.module.Module;
+import meow.ancient.module.ModuleCategory;
+import meow.ancient.module.ModuleInformation;
+import meow.ancient.module.settings.BooleanSetting;
+import meow.ancient.module.settings.SliderSetting;
+import meow.ancient.util.render.msdf.Fonts;
+import meow.ancient.util.render.msdf.MsdfFont;
+import meow.ancient.util.render.providers.ColorProvider;
+import meow.ancient.util.render.renderers.DrawUtil;
+
+@ModuleInformation(moduleName = "GapFix", moduleDesc = "Фикс гэпла на MetaHVH", moduleCategory = ModuleCategory.PLAYER)
+public class GapFix extends Module {
+
+    private final SliderSetting delay = new SliderSetting("Задержка", 10, 0, 40, 1);
+    private final BooleanSetting enchanted = new BooleanSetting("Зачарованное яблоко", true);
+    private final BooleanSetting counter = new BooleanSetting("Счётчик", true);
+
+    private int cooldownTicks;
+
+    @EventHandler
+    private void onUpdate(EventPlayerUpdate ignored) {
+        if (mc.player == null) {
+            reset();
+            return;
+        }
+
+        if (cooldownTicks > 0) cooldownTicks--;
+    }
+
+    @EventHandler
+    private void onUseItem(EventUseItem e) {
+        if (mc.player == null || cooldownTicks <= 0) return;
+        if (isGapple(mc.player.getStackInHand(e.getHand()))) e.cancelEvent();
+    }
+
+    @EventHandler
+    private void onItemUseFinish(EventItemUseFinish e) {
+        if (isGapple(e.getStack())) {
+            cooldownTicks = delay.getIntValue();
+        }
+    }
+
+    @EventHandler
+    private void onRender(EventHUD ignored) {
+        if (!counter.getValue() || cooldownTicks <= 0) return;
+        if (mc.player == null || mc.options.hudHidden) return;
+
+        MsdfFont font = Fonts.SFBOLD.get();
+        String text = String.valueOf(cooldownTicks);
+        float size = 9f;
+        float width = font.getWidth(text, size);
+        float x = (mc.getWindow().getScaledWidth() - width) / 2f;
+        float y = mc.getWindow().getScaledHeight() / 2f - 22f;
+
+        DrawUtil.drawText(font, text, x, y, ColorProvider.rgba(255, 255, 255, 255), size);
+    }
+
+    private boolean isGapple(ItemStack stack) {
+        if (stack == null || stack.isEmpty()) return false;
+        return stack.isOf(Items.GOLDEN_APPLE) || (enchanted.getValue() && stack.isOf(Items.ENCHANTED_GOLDEN_APPLE));
+    }
+
+    private void reset() {
+        cooldownTicks = 0;
+    }
+
+    @Override
+    public void onDisable() {
+        super.onDisable();
+        reset();
+    }
+}

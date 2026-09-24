@@ -1,0 +1,40 @@
+package meow.ancient.module.list.movement;
+
+import meteordevelopment.orbit.EventHandler;
+import net.minecraft.entity.attribute.EntityAttributes;
+import meow.ancient.event.list.EventTick;
+import meow.ancient.module.Module;
+import meow.ancient.module.ModuleCategory;
+import meow.ancient.module.ModuleInformation;
+import meow.ancient.module.settings.SliderSetting;
+
+@ModuleInformation(moduleName = "Step", moduleDesc = "Поднимается на блоки без прыжка", moduleCategory = ModuleCategory.MOVEMENT)
+public class Step extends Module {
+
+    private final SliderSetting height = new SliderSetting("Высота", 1.25, 1.0, 10.0, 0.5);
+
+    private double prevStepHeight = 0.5;
+
+    @EventHandler
+    private void onTick(EventTick ignored) {
+        if (mc.player == null) return;
+        mc.player.getAttributeInstance(EntityAttributes.STEP_HEIGHT).setBaseValue(height.getValue());
+    }
+
+    @Override
+    public void onEnable() {
+        super.onEnable();
+        if (mc.player != null) {
+            prevStepHeight = mc.player.getAttributeValue(EntityAttributes.STEP_HEIGHT);
+            mc.player.getAttributeInstance(EntityAttributes.STEP_HEIGHT).setBaseValue(height.getValue());
+        }
+    }
+
+    @Override
+    public void onDisable() {
+        if (mc.player != null) {
+            mc.player.getAttributeInstance(EntityAttributes.STEP_HEIGHT).setBaseValue(prevStepHeight);
+        }
+        super.onDisable();
+    }
+}

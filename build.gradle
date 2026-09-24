@@ -56,7 +56,7 @@ processResources {
 	// Питоновский тренер уезжает внутрь jar, чтобы клиент мог распаковать его
 	// на любой машине — в игре нет папки проекта с tools/neuro.
 	from('tools/neuro') {
-		into 'onetap/neuro'
+		into 'ancient/neuro'
 		include '*.py'
 		include 'requirements.txt'
 		include 'README.md'
@@ -64,7 +64,7 @@ processResources {
 }
 
 loom {
-	accessWidenerPath = file("src/main/resources/onetap.accesswidener")
+	accessWidenerPath = file("src/main/resources/ancient.accesswidener")
 	runs {
 		client {
 			programArgs '--username', 'plsmeow'

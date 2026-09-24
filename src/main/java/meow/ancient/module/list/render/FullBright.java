@@ -1,0 +1,29 @@
+package meow.ancient.module.list.render;
+
+import meteordevelopment.orbit.EventHandler;
+import net.minecraft.entity.effect.StatusEffectInstance;
+import meow.ancient.event.list.EventTick;
+import meow.ancient.module.Module;
+import meow.ancient.module.ModuleCategory;
+import meow.ancient.module.ModuleInformation;
+
+import static net.minecraft.entity.effect.StatusEffects.NIGHT_VISION;
+
+@ModuleInformation(moduleName = "Full Bright", moduleDesc = "Гамма", moduleCategory = ModuleCategory.RENDER)
+public class FullBright extends Module {
+
+    @EventHandler
+    private void onUpdate(EventTick e) {
+        if (mc.player == null || mc.world == null) return;
+        if (!mc.player.hasStatusEffect(NIGHT_VISION)) {
+            mc.player.addStatusEffect(new StatusEffectInstance(NIGHT_VISION, -1, 3));
+        }
+    }
+
+    @Override
+    public void onDisable() {
+        if (mc.player == null) return;
+        mc.player.removeStatusEffect(NIGHT_VISION);
+        super.onDisable();
+    }
+}

@@ -1,0 +1,417 @@
+package meow.ancient.module.list.movement;
+
+import meteordevelopment.orbit.EventHandler;
+import net.minecraft.block.BlockState;
+import net.minecraft.entity.vehicle.BoatEntity;
+import net.minecraft.network.packet.c2s.play.ClientCommandC2SPacket;
+import net.minecraft.util.Hand;
+import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.Box;
+import net.minecraft.util.math.MathHelper;
+import net.minecraft.util.math.Vec3d;
+import meow.ancient.event.list.EventAttack;
+import meow.ancient.event.list.EventTick;
+import meow.ancient.event.list.MoveInputEvent;
+import meow.ancient.module.Module;
+import meow.ancient.module.ModuleCategory;
+import meow.ancient.module.ModuleInformation;
+import meow.ancient.module.settings.BooleanSetting;
+import meow.ancient.module.settings.SliderSetting;
+
+@ModuleInformation(moduleName = "BoatFly", moduleDesc = "Полет на лодке", moduleCategory = ModuleCategory.MOVEMENT)
+public final class BoatFly extends Module {
+
+    private static final int BYPASS_IDLE_REMOUNT_TICKS = 15;
+
+    private final SliderSetting boatUpSpeed = new SliderSetting("Вверх", 0.4, 0.05, 5.0, 0.05);
+    private final SliderSetting boatDownSpeed = new SliderSetting("Вниз", 0.4, 0.05, 5.0, 0.05);
+    private final SliderSetting boatHorizontalSpeed = new SliderSetting("В стороны", 0.6, 0.05, 5.0, 0.05);
+    private final BooleanSetting bypass = new BooleanSetting("Обход(тест, удары вроде идут)", false);
+    private final SliderSetting bypassTicks = new SliderSetting("Тики обхода", 3.0, 1.0, 5.0, 1.0).setVisible(() -> bypass.getValue());
+    private final BooleanSetting noClipMode = new BooleanSetting("NoClip", true);
+    private final BooleanSetting antiKick = new BooleanSetting("Анти-кик", true);
+    private final BooleanSetting rehook = new BooleanSetting("Rehook", false);
+    private final SliderSetting rehookUnhookAfter = new SliderSetting("Отцепить через", 4.0, 1.0, 10.0, 1.0).setVisible(() -> rehook.getValue());
+    private final SliderSetting rehookHookAfter = new SliderSetting("Зацепить через", 2.0, 1.0, 10.0, 1.0).setVisible(() -> rehook.getValue());
+
+    private boolean wasInsideBlock;
+    private BoatEntity bypassBoat;
+    private int bypassWaitRemaining;
+    private boolean bypassDismounted;
+    private boolean bypassPendingRemount;
+    private int bypassRemountDelay;
+    private int bypassIdleTicks;
+
+    private int antiKickDelayLeft;
+    private int antiKickOffLeft;
+
+    private int rehookPhase = -1;
+    private int rehookTickCounter = 0;
+    private int rehookVehicleId = -1;
+    private boolean rehookForceAttempt = false;
+
+    public BoatFly() {
+    }
+
+    @EventHandler
+    private void onTick(EventTick event) {
+        if (mc.player == null || mc.world == null) {
+            return;
+        }
+
+        BoatEntity boat = this.getActiveBoat();
+        if (boat == null) {
+            return;
+        }
+
+        if (noClipMode.getValue()) {
+            boat.noClip = true;
+            boat.setNoGravity(true);
+            mc.player.noClip = true;
+        }
+
+        boolean sneakDown = mc.options.sneakKey.isPressed();
+        if (!this.isBypassWaiting()) {
+            mc.options.sneakKey.setPressed(false);
+        }
+        mc.options.useKey.setPressed(false);
+
+        boolean insideBlock = noClipMode.getValue() && this.isInsideSolidBlock();
+        double horizontalSpeed = insideBlock ? 0.25D : this.boatHorizontalSpeed.getValue();
+
+        boat.setYaw(mc.player.getYaw());
+        boat.prevYaw = boat.getYaw();
+        mc.player.setYaw(mc.player.getYaw());
+
+        double motionX = 0.0D;
+        double motionY = 0.0D;
+        double motionZ = 0.0D;
+        float yaw = boat.getYaw();
+        double rad = Math.toRadians(yaw);
+
+        if (mc.options.jumpKey.isPressed()) {
+            motionY += this.boatUpSpeed.getValue();
+        }
+        if (sneakDown) {
+            motionY -= this.boatDownSpeed.getValue();
+        }
+        if (mc.options.forwardKey.isPressed()) {
+            motionX -= MathHelper.sin((float) rad) * horizontalSpeed;
+            motionZ += MathHelper.cos((float) rad) * horizontalSpeed;
+        }
+        if (mc.options.backKey.isPressed()) {
+            motionX += MathHelper.sin((float) rad) * horizontalSpeed;
+            motionZ -= MathHelper.cos((float) rad) * horizontalSpeed;
+        }
+        if (mc.options.rightKey.isPressed()) {
+            motionX -= MathHelper.cos((float) rad) * horizontalSpeed;
+            motionZ -= MathHelper.sin((float) rad) * horizontalSpeed;
+        }
+        if (mc.options.leftKey.isPressed()) {
+            motionX += MathHelper.cos((float) rad) * horizontalSpeed;
+            motionZ += MathHelper.sin((float) rad) * horizontalSpeed;
+        }
+
+        if (tickAntiKick()) {
+            motionY += -0.0313;
+        }
+
+        boat.setVelocity(new Vec3d(motionX, motionY, motionZ));
+
+        if (this.bypass.getValue()) {
+            this.handleBypassTick(boat);
+        } else {
+            this.resetBypassState();
+        }
+
+        if (this.rehook.getValue()) {
+            this.handleRehookTick(boat);
+        } else {
+            this.resetRehookState();
+        }
+
+        if (!this.isBypassWaiting() && !this.isRehookWaiting() && !mc.player.hasVehicle()) {
+            mc.player.startRiding(boat, true);
+        }
+
+        this.wasInsideBlock = insideBlock;
+    }
+
+    @EventHandler
+    private void onAttack(EventAttack event) {
+        if (!this.isEnabled() || !this.bypass.getValue() || mc.player == null) {
+            return;
+        }
+
+        if (mc.player.getVehicle() instanceof BoatEntity boat) {
+            event.cancelEvent();
+            if (this.bypassDismounted) {
+                return;
+            }
+            this.bypassBoat = boat;
+            this.bypassDismounted = true;
+            this.bypassPendingRemount = false;
+            this.bypassRemountDelay = 0;
+            this.bypassIdleTicks = 0;
+            this.bypassWaitRemaining = MathHelper.clamp((int) this.bypassTicks.getValue(), 1, 5);
+            this.dismountFromBoat();
+            return;
+        }
+
+        if (this.bypassDismounted && this.bypassWaitRemaining > 0) {
+            event.cancelEvent();
+            return;
+        }
+
+        if (this.bypassDismounted && this.bypassWaitRemaining <= 0) {
+            this.bypassPendingRemount = true;
+            this.bypassRemountDelay = 2;
+            this.bypassIdleTicks = 0;
+        }
+    }
+
+    private void handleBypassTick(BoatEntity boat) {
+        if (!this.bypassDismounted || mc.player.hasVehicle()) {
+            if (mc.player.hasVehicle() && this.bypassDismounted) {
+                this.finishBypassCycle();
+            }
+            return;
+        }
+
+        mc.player.setPosition(boat.getX(), boat.getY() + boat.getHeight() * 0.5D, boat.getZ());
+
+        if (this.bypassWaitRemaining > 0) {
+            this.bypassWaitRemaining--;
+            return;
+        }
+
+        if (this.bypassPendingRemount) {
+            if (this.bypassRemountDelay > 0) {
+                this.bypassRemountDelay--;
+                return;
+            }
+            this.remountBoat(boat);
+            return;
+        }
+
+        this.bypassIdleTicks++;
+        if (this.bypassIdleTicks >= BYPASS_IDLE_REMOUNT_TICKS) {
+            this.remountBoat(boat);
+        }
+    }
+
+    private void dismountFromBoat() {
+        if (mc.player == null || mc.getNetworkHandler() == null) {
+            return;
+        }
+        mc.getNetworkHandler().sendPacket(new ClientCommandC2SPacket(mc.player, ClientCommandC2SPacket.Mode.PRESS_SHIFT_KEY));
+        mc.getNetworkHandler().sendPacket(new ClientCommandC2SPacket(mc.player, ClientCommandC2SPacket.Mode.RELEASE_SHIFT_KEY));
+        mc.player.stopRiding();
+    }
+
+    private void remountBoat(BoatEntity boat) {
+        if (mc.player == null || boat == null || boat.isRemoved()) {
+            this.finishBypassCycle();
+            return;
+        }
+
+        mc.player.setPosition(boat.getX(), boat.getY() + boat.getHeight() * 0.5D, boat.getZ());
+
+        if (!mc.player.hasVehicle()) {
+            mc.player.startRiding(boat, true);
+        }
+
+        this.finishBypassCycle();
+    }
+
+    private void finishBypassCycle() {
+        this.bypassDismounted = false;
+        this.bypassPendingRemount = false;
+        this.bypassRemountDelay = 0;
+        this.bypassWaitRemaining = 0;
+        this.bypassIdleTicks = 0;
+    }
+
+    private BoatEntity getActiveBoat() {
+        if (mc.player == null) {
+            return null;
+        }
+        if (mc.player.getVehicle() instanceof BoatEntity boat) {
+            return boat;
+        }
+        if (this.bypassBoat != null && !this.bypassBoat.isRemoved()) {
+            return this.bypassBoat;
+        }
+        if (this.rehookVehicleId >= 0 && mc.world != null) {
+            var entity = mc.world.getEntityById(this.rehookVehicleId);
+            if (entity instanceof BoatEntity boat && !boat.isRemoved()) {
+                return boat;
+            }
+        }
+        return null;
+    }
+
+    private boolean isBypassWaiting() {
+        return this.bypass.getValue() && (this.bypassDismounted || this.bypassPendingRemount);
+    }
+
+    private boolean isRehookWaiting() {
+        return this.rehook.getValue() && (this.rehookPhase == 1 || this.rehookPhase == 2);
+    }
+
+    private void handleRehookTick(BoatEntity boat) {
+        if (this.rehookPhase == -1) {
+            this.rehookPhase = 0;
+            this.rehookTickCounter = (int) this.rehookUnhookAfter.getValue();
+            this.rehookForceAttempt = false;
+        }
+
+        if (this.rehookPhase == 0) {
+            this.rehookTickCounter--;
+            if (this.rehookTickCounter <= 0) {
+                this.rehookVehicleId = boat.getId();
+                this.dismountFromBoat();
+                this.rehookPhase = 1;
+                this.rehookTickCounter = (int) this.rehookHookAfter.getValue();
+            }
+        } else if (this.rehookPhase == 1) {
+            this.rehookTickCounter--;
+            if (this.rehookTickCounter <= 0) {
+                this.rehookPhase = 2;
+                this.rehookForceAttempt = false;
+            }
+        } else if (this.rehookPhase == 2) {
+            if (mc.player.hasVehicle()) {
+                this.rehookPhase = 0;
+                this.rehookTickCounter = (int) this.rehookUnhookAfter.getValue();
+                this.rehookForceAttempt = false;
+                return;
+            }
+
+            BoatEntity vehicle = null;
+            if (mc.world != null && this.rehookVehicleId >= 0) {
+                var entity = mc.world.getEntityById(this.rehookVehicleId);
+                if (entity instanceof BoatEntity b) {
+                    vehicle = b;
+                }
+            }
+
+            if (vehicle == null || vehicle.isRemoved()) {
+                this.resetRehookState();
+                return;
+            }
+
+            if (mc.player.distanceTo(vehicle) > 6.0D) {
+                this.resetRehookState();
+                return;
+            }
+
+            if (!this.rehookForceAttempt) {
+                mc.interactionManager.interactEntity(mc.player, vehicle, Hand.MAIN_HAND);
+                this.rehookForceAttempt = true;
+            } else {
+                mc.player.startRiding(vehicle, true);
+                this.rehookPhase = 0;
+                this.rehookTickCounter = (int) this.rehookUnhookAfter.getValue();
+                this.rehookForceAttempt = false;
+            }
+        }
+    }
+
+    private void resetRehookState() {
+        this.rehookPhase = -1;
+        this.rehookTickCounter = 0;
+        this.rehookVehicleId = -1;
+        this.rehookForceAttempt = false;
+    }
+
+    @EventHandler
+    private void onMoveInput(MoveInputEvent event) {
+        if (mc.player == null) return;
+
+        if (mc.player.hasVehicle() || this.rehookVehicleId >= 0) {
+            boolean isVehicleSafe = false;
+            if (mc.player.getVehicle() != null) {
+                isVehicleSafe = mc.player.getVehicle().isOnGround() || mc.player.getVehicle().isTouchingWater();
+            }
+            event.sneak = event.sneak && isVehicleSafe;
+            if (event.sneak) {
+                this.rehookVehicleId = -1;
+            }
+        }
+    }
+
+    private void resetBypassState() {
+        this.bypassBoat = null;
+        this.finishBypassCycle();
+    }
+
+    private boolean isInsideSolidBlock() {
+        if (mc.player == null || mc.world == null) {
+            return false;
+        }
+
+        Box box = mc.player.getBoundingBox().expand(0.001D);
+        int minX = MathHelper.floor(box.minX);
+        int minY = MathHelper.floor(box.minY);
+        int minZ = MathHelper.floor(box.minZ);
+        int maxX = MathHelper.floor(box.maxX);
+        int maxY = MathHelper.floor(box.maxY);
+        int maxZ = MathHelper.floor(box.maxZ);
+
+        for (int x = minX; x <= maxX; x++) {
+            for (int y = minY; y <= maxY; y++) {
+                for (int z = minZ; z <= maxZ; z++) {
+                    BlockPos pos = BlockPos.ofFloored(x, y, z);
+                    BlockState state = mc.world.getBlockState(pos);
+                    if (state.isSolid()) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    private boolean tickAntiKick() {
+        if (!antiKick.getValue()) return false;
+
+        if (antiKickDelayLeft > 0) antiKickDelayLeft--;
+
+        if (antiKickDelayLeft <= 0 && antiKickOffLeft <= 0) {
+            antiKickDelayLeft = 20;
+            antiKickOffLeft = 1;
+            return false;
+        }
+
+        if (antiKickDelayLeft <= 0 && antiKickOffLeft > 0) {
+            antiKickOffLeft--;
+            return true;
+        }
+
+        return false;
+    }
+
+    private void resetAntiKickState() {
+        antiKickDelayLeft = 0;
+        antiKickOffLeft = 0;
+    }
+
+    @Override
+    public void onDisable() {
+        super.onDisable();
+        this.wasInsideBlock = false;
+        this.resetBypassState();
+        this.resetRehookState();
+        this.resetAntiKickState();
+
+        if (mc.player != null) {
+            mc.player.noClip = false;
+
+            if (mc.player.getVehicle() instanceof BoatEntity boat) {
+                boat.noClip = false;
+                boat.setNoGravity(false);
+            }
+        }
+    }
+}

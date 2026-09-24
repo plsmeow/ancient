@@ -1,0 +1,28 @@
+package meow.ancient.mixin;
+
+import net.minecraft.client.render.VertexConsumerProvider;
+import net.minecraft.client.render.entity.EntityRenderer;
+import net.minecraft.client.render.entity.state.EntityRenderState;
+import net.minecraft.client.render.entity.state.PlayerEntityRenderState;
+import net.minecraft.client.util.math.MatrixStack;
+import net.minecraft.text.Text;
+import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.injection.At;
+import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import meow.ancient.module.list.render.Tags;
+import meow.ancient.util.base.Instance;
+
+@Mixin(EntityRenderer.class)
+public class EntityRendererMixin<S extends EntityRenderState> {
+
+    @Inject(method = "renderLabelIfPresent", at = @At(value = "HEAD"), cancellable = true)
+    private void renderLabelIfPresent(S state, Text text, MatrixStack matrices, VertexConsumerProvider vertexConsumers, int light, CallbackInfo ci) {
+        if (!(state instanceof PlayerEntityRenderState)) return;
+
+        Tags tags = Instance.get(Tags.class);
+        if (tags != null && tags.isEnabled() && tags.hidesPlayerNametags()) {
+            ci.cancel();
+        }
+    }
+}
