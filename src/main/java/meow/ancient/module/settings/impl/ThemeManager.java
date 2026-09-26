@@ -58,7 +58,7 @@ public class ThemeManager {
     }
 
     public List<ThemePreset> getCustomThemes() {
-        return customThemes;
+        return new ArrayList<>(customThemes);
     }
 
     public ThemePreset getActivePreset() {
@@ -93,18 +93,21 @@ public class ThemeManager {
     }
 
     public void saveThemes(List<ThemePreset> customThemes, String activeThemeName) {
+        List<ThemePreset> copy = (customThemes != null && customThemes != this.customThemes)
+                ? new ArrayList<>(customThemes)
+                : new ArrayList<>(this.customThemes);
         this.customThemes.clear();
-        this.customThemes.addAll(customThemes);
+        this.customThemes.addAll(copy);
         this.activePreset = findPreset(activeThemeName);
 
         try {
             if (!THEME_DIR.exists()) THEME_DIR.mkdirs();
 
             JsonObject json = new JsonObject();
-            json.addProperty("activeTheme", activeThemeName);
+            json.addProperty("activeTheme", activeThemeName != null ? activeThemeName : "");
 
             JsonArray customThemesArray = new JsonArray();
-            for (ThemePreset theme : customThemes) {
+            for (ThemePreset theme : this.customThemes) {
                 JsonObject themeObj = new JsonObject();
                 themeObj.addProperty("name", theme.name());
                 themeObj.addProperty("color1", theme.color1());
@@ -118,13 +121,22 @@ public class ThemeManager {
         }
     }
 
-    private ThemePreset findPreset(String name) {
+    public ThemePreset findPreset(String name) {
+        if (name == null || name.isBlank()) return null;
         for (ThemePreset preset : DEFAULT_THEMES) {
-            if (preset.name().equals(name)) return preset;
+            if (preset.name().equalsIgnoreCase(name)) return preset;
         }
         for (ThemePreset preset : customThemes) {
-            if (preset.name().equals(name)) return preset;
+            if (preset.name().equalsIgnoreCase(name)) return preset;
         }
         return null;
+    }
+
+    public static boolean isDefaultTheme(String name) {
+        if (name == null || name.isBlank()) return false;
+        for (ThemePreset preset : DEFAULT_THEMES) {
+            if (preset.name().equalsIgnoreCase(name.strip())) return true;
+        }
+        return false;
     }
 }

@@ -91,7 +91,7 @@ public final class CelestialScreen extends Screen {
     private static final int HEADER_HEIGHT = 17;
     private static final int PANEL_HEIGHT = 250;
     private static final int CONFIG_HEIGHT = 168;
-    private static final int THEMES_HEIGHT = 168;
+    private static final int THEMES_HEIGHT = 250;
     private static final int MODULE_HEIGHT = 18;
 
     private static final int PANEL_BODY = 0x96FFFFFF;
@@ -136,6 +136,8 @@ public final class CelestialScreen extends Screen {
     private float themesTargetScroll;
     private String themeName = "";
     private String selectedTheme = "";
+    private String editingCustomTheme = null;
+    private int themeColorTab = 1;
     private boolean editingThemeName;
     private final ColorSetting themeColor1 = new ColorSetting("Theme Color 1", 0xFFBF68FF);
     private final ColorSetting themeColor2 = new ColorSetting("Theme Color 2", 0xFF110122);
@@ -168,7 +170,7 @@ public final class CelestialScreen extends Screen {
             themeColor2.setValue(activeTheme.color2);
             ThemeManager.ThemePreset activePreset = ThemeManager.getInstance().getActivePreset();
             selectedTheme = activePreset != null ? activePreset.name() : (activeTheme.name != null ? activeTheme.name : "");
-            themeName = selectedTheme;
+            themeName = isCustomTheme(selectedTheme) ? selectedTheme : "";
         }
 
         applyStoredPanelPositions();
@@ -229,7 +231,7 @@ public final class CelestialScreen extends Screen {
                 COLUMN_WIDTH, panel.height + 1, 5.5f, PANEL_BODY);
 
         Rect clip = new Rect(panel.x, panel.y + 4, COLUMN_WIDTH,
-                panel.kind == PanelKind.CATEGORY ? 247 : 133);
+                panel.kind == PanelKind.CATEGORY ? 247 : panel.height - 35);
         context.enableScissor(clip.x, clip.y, clip.right(), clip.bottom());
         if (panel.kind == PanelKind.THEMES) {
             drawThemePresets(context, panel, clip, mouseX, mouseY, animationStep);
@@ -743,26 +745,20 @@ public final class CelestialScreen extends Screen {
     }
 
     private int themeContentHeight() {
-        int height = 0;
         ThemeManager manager = ThemeManager.getInstance();
-        List<ThemeManager.ThemePreset> presets = new ArrayList<>(ThemeManager.DEFAULT_THEMES);
-        presets.addAll(manager.getCustomThemes());
-        for (ThemeManager.ThemePreset preset : presets) {
-            height += 18;
-            String expandKey = "theme/" + preset.name();
-            if (expandedSettings.contains(expandKey)) {
-                height += 36;
-                if (expandedSettings.contains(expandKey + "/c1")) height += 72;
-                if (expandedSettings.contains(expandKey + "/c2")) height += 72;
-            }
+        int count = ThemeManager.DEFAULT_THEMES.size() + manager.getCustomThemes().size();
+        int height = count * 18;
+        if (editingCustomTheme != null && isCustomTheme(editingCustomTheme)) {
+            height += 84;
         }
         return height;
     }
 
     private boolean isCustomTheme(String name) {
         if (name == null || name.isBlank()) return false;
+        if (ThemeManager.isDefaultTheme(name)) return false;
         for (ThemeManager.ThemePreset p : ThemeManager.getInstance().getCustomThemes()) {
-            if (p.name().equalsIgnoreCase(name)) return true;
+            if (p.name().equalsIgnoreCase(name.strip())) return true;
         }
         return false;
     }
@@ -789,8 +785,18 @@ public final class CelestialScreen extends Screen {
         drawConfigButton(context, add, "+", mouseX, mouseY, panel, Action.THEME_CREATE, canSave);
         drawConfigButton(context, remove, "-", mouseX, mouseY, panel, Action.THEME_DELETE, canDelete);
 
-        fillRounded(context, color1Box.x, color1Box.y, color1Box.width, color1Box.height, 1, primaryColor());
-        fillRounded(context, color2Box.x, color2Box.y, color2Box.width, color2Box.height, 1, secondaryColor());
+        boolean custom = isCustomTheme(selectedTheme);
+        fillRounded(context, color1Box.x, color1Box.y, color1Box.width, color1Box.height, 1, themeColor1.getValue());
+        fillRounded(context, color2Box.x, color2Box.y, color2Box.width, color2Box.height, 1, themeColor2.getValue());
+
+        if (custom && editingCustomTheme != null && editingCustomTheme.equalsIgnoreCase(selectedTheme)) {
+            if (themeColorTab == 1) {
+                fillLegacyPoint(context, color1Box.x + color1Box.width / 2.0f, color1Box.y + color1Box.height / 2.0f, 3.0f, WHITE);
+            } else {
+                fillLegacyPoint(context, color2Box.x + color2Box.width / 2.0f, color2Box.y + color2Box.height / 2.0f, 3.0f, WHITE);
+            }
+        }
+
         hitTargets.add(new HitTarget(color1Box, Action.THEME_COLOR1_HEADER, panel, null, null, selectedTheme));
         hitTargets.add(new HitTarget(color2Box, Action.THEME_COLOR2_HEADER, panel, null, null, selectedTheme));
 
@@ -807,7 +813,7 @@ public final class CelestialScreen extends Screen {
         List<ThemeManager.ThemePreset> presets = new ArrayList<>(ThemeManager.DEFAULT_THEMES);
         presets.addAll(manager.getCustomThemes());
 
-        float minimumScroll = Math.min(0, -themeContentHeight() + (panel.height - 52));
+        float minimumScroll = Math.min(0, -themeContentHeight() + (panel.height - 48));
         themesTargetScroll = (float) clamp(themesTargetScroll, minimumScroll, 0);
         themesScroll += (themesTargetScroll - themesScroll)
                 * Math.min(1.0f, Math.max(0.12f, animationStep));
@@ -821,10 +827,13 @@ public final class CelestialScreen extends Screen {
         String activeName = activePreset != null ? activePreset.name() : (active != null ? active.name : "");
 
         for (ThemeManager.ThemePreset preset : presets) {
-            Rect row = new Rect(panel.x + 3, y, COLUMN_WIDTH - 6, 14);
+            Rect row = new Rect(panel.x + 3, y, COLUMN_WIDTH - 6, 15);
             boolean hovered = row.contains(mouseX, mouseY) && viewport.contains(mouseX, mouseY);
             boolean selected = preset.name().equalsIgnoreCase(activeName)
-                    || (active != null && preset.color1() == active.color1 && preset.color2() == active.color2);
+                    || (selectedTheme != null && selectedTheme.equalsIgnoreCase(preset.name()));
+            boolean custom = isCustomTheme(preset.name());
+            boolean isEditingThis = custom && editingCustomTheme != null
+                    && editingCustomTheme.equalsIgnoreCase(preset.name());
 
             if (shadowsEnabled()) {
                 fillLegacyShadow(context, row.x, row.y,
@@ -835,14 +844,14 @@ public final class CelestialScreen extends Screen {
                         shade(secondaryColor(), 0.7f));
             } else {
                 fillRounded(context, row.x, row.y, row.width, row.height, 1,
-                        hovered ? 0xFFF5F5F5 : 0xFFFFFFFF);
+                        hovered ? 0xFFEEEEEE : 0xFFFFFFFF);
             }
 
-            fillLegacyPoint(context, row.x + 7.5f, row.y + 7.0f, 6.0f, preset.color1());
-            fillLegacyPoint(context, row.x + 14.5f, row.y + 7.0f, 6.0f, preset.color2());
+            fillLegacyPoint(context, row.x + 7.5f, row.y + 7.5f, 6.0f, preset.color1());
+            fillLegacyPoint(context, row.x + 14.5f, row.y + 7.5f, 6.0f, preset.color2());
 
-            boolean custom = isCustomTheme(preset.name());
-            String shown = trim(preset.name() + (custom ? " *" : ""), row.width - 26, FONT_15);
+            String tag = isEditingThis ? " ▲" : (custom ? " *" : "");
+            String shown = trim(preset.name() + tag, row.width - 26, FONT_15);
             drawFont(context, shown, row.x + 22, (int) Math.round(row.y + 2.5f),
                     selected ? WHITE : BLACK, FONT_15, false);
 
@@ -852,69 +861,64 @@ public final class CelestialScreen extends Screen {
             }
             y += 18;
 
-            String expandKey = "theme/" + preset.name();
-            if (expandedSettings.contains(expandKey)) {
-                Rect c1Row = new Rect(panel.x + 8, y, COLUMN_WIDTH - 16, 14);
-                fillRounded(context, c1Row.x, c1Row.y, c1Row.width, c1Row.height, 1, 0x50202020);
-                drawFont(context, "Color 1", c1Row.x + 5, (int) Math.round(c1Row.y + 2.5f), WHITE, FONT_14, false);
-                Rect swatch1 = new Rect(c1Row.right() - 14, c1Row.y + 2, 10, 10);
-                fillRounded(context, swatch1.x, swatch1.y, swatch1.width, swatch1.height, 1, themeColor1.getValue());
-                if (c1Row.intersects(viewport)) {
-                    hitTargets.add(new HitTarget(c1Row.intersection(viewport),
+            if (isEditingThis) {
+                Rect editorBox = new Rect(panel.x + 4, y, COLUMN_WIDTH - 8, 80);
+                fillRounded(context, editorBox.x, editorBox.y, editorBox.width, editorBox.height, 2, 0x55000000);
+
+                int tabW = (editorBox.width - 6) / 2;
+                int tabH = 13;
+                Rect tab1 = new Rect(editorBox.x + 2, editorBox.y + 2, tabW, tabH);
+                Rect tab2 = new Rect(tab1.right() + 2, editorBox.y + 2, tabW, tabH);
+
+                // Tab 1 (Color 1)
+                fillRounded(context, tab1.x, tab1.y, tab1.width, tab1.height, 1,
+                        themeColorTab == 1 ? 0x90404040 : 0x40202020);
+                fillLegacyPoint(context, tab1.x + 6.0f, tab1.y + 6.5f, 5.0f, themeColor1.getValue());
+                drawFont(context, "Цвет 1", tab1.x + 13, (int) Math.round(tab1.y + 2.0f),
+                        themeColorTab == 1 ? WHITE : MUTED, FONT_14, false);
+                if (tab1.intersects(viewport)) {
+                    hitTargets.add(new HitTarget(tab1.intersection(viewport),
                             Action.THEME_COLOR1_HEADER, panel, null, null, preset.name()));
                 }
-                y += 18;
 
-                if (expandedSettings.contains(expandKey + "/c1")) {
-                    Rect sv = new Rect(panel.x + 6, y, 66, 66);
-                    Rect hue = new Rect(sv.right() + 4, y, 10, 66);
-                    Rect alpha = new Rect(hue.right() + 4, y, 10, 66);
-                    drawColorPicker(context, sv, hue, alpha, themeColor1);
-                    if (sv.intersects(viewport)) {
-                        hitTargets.add(new HitTarget(sv.intersection(viewport),
-                                Action.COLOR_SV, panel, null, themeColor1, null, sv));
-                    }
-                    if (hue.intersects(viewport)) {
-                        hitTargets.add(new HitTarget(hue.intersection(viewport),
-                                Action.COLOR_HUE, panel, null, themeColor1, null, hue));
-                    }
-                    if (alpha.intersects(viewport)) {
-                        hitTargets.add(new HitTarget(alpha.intersection(viewport),
-                                Action.COLOR_ALPHA, panel, null, themeColor1, null, alpha));
-                    }
-                    y += 72;
-                }
-
-                Rect c2Row = new Rect(panel.x + 8, y, COLUMN_WIDTH - 16, 14);
-                fillRounded(context, c2Row.x, c2Row.y, c2Row.width, c2Row.height, 1, 0x50202020);
-                drawFont(context, "Color 2", c2Row.x + 5, (int) Math.round(c2Row.y + 2.5f), WHITE, FONT_14, false);
-                Rect swatch2 = new Rect(c2Row.right() - 14, c2Row.y + 2, 10, 10);
-                fillRounded(context, swatch2.x, swatch2.y, swatch2.width, swatch2.height, 1, themeColor2.getValue());
-                if (c2Row.intersects(viewport)) {
-                    hitTargets.add(new HitTarget(c2Row.intersection(viewport),
+                // Tab 2 (Color 2)
+                fillRounded(context, tab2.x, tab2.y, tab2.width, tab2.height, 1,
+                        themeColorTab == 2 ? 0x90404040 : 0x40202020);
+                fillLegacyPoint(context, tab2.x + 6.0f, tab2.y + 6.5f, 5.0f, themeColor2.getValue());
+                drawFont(context, "Цвет 2", tab2.x + 13, (int) Math.round(tab2.y + 2.0f),
+                        themeColorTab == 2 ? WHITE : MUTED, FONT_14, false);
+                if (tab2.intersects(viewport)) {
+                    hitTargets.add(new HitTarget(tab2.intersection(viewport),
                             Action.THEME_COLOR2_HEADER, panel, null, null, preset.name()));
                 }
-                y += 18;
 
-                if (expandedSettings.contains(expandKey + "/c2")) {
-                    Rect sv = new Rect(panel.x + 6, y, 66, 66);
-                    Rect hue = new Rect(sv.right() + 4, y, 10, 66);
-                    Rect alpha = new Rect(hue.right() + 4, y, 10, 66);
-                    drawColorPicker(context, sv, hue, alpha, themeColor2);
-                    if (sv.intersects(viewport)) {
-                        hitTargets.add(new HitTarget(sv.intersection(viewport),
-                                Action.COLOR_SV, panel, null, themeColor2, null, sv));
-                    }
-                    if (hue.intersects(viewport)) {
-                        hitTargets.add(new HitTarget(hue.intersection(viewport),
-                                Action.COLOR_HUE, panel, null, themeColor2, null, hue));
-                    }
-                    if (alpha.intersects(viewport)) {
-                        hitTargets.add(new HitTarget(alpha.intersection(viewport),
-                                Action.COLOR_ALPHA, panel, null, themeColor2, null, alpha));
-                    }
-                    y += 72;
+                // Color Picker for the selected tab
+                ColorSetting activeColor = themeColorTab == 1 ? themeColor1 : themeColor2;
+                int pickerY = tab1.bottom() + 3;
+                int svSize = 58;
+                int barW = 8;
+                int barGap = 3;
+                int pickerX = editorBox.x + (editorBox.width - (svSize + barGap + barW + barGap + barW)) / 2;
+                Rect sv = new Rect(pickerX, pickerY, svSize, svSize);
+                Rect hue = new Rect(sv.right() + barGap, pickerY, barW, svSize);
+                Rect alpha = new Rect(hue.right() + barGap, pickerY, barW, svSize);
+
+                drawColorPicker(context, sv, hue, alpha, activeColor);
+
+                if (sv.intersects(viewport)) {
+                    hitTargets.add(new HitTarget(sv.intersection(viewport),
+                            Action.COLOR_SV, panel, null, activeColor, null, sv));
                 }
+                if (hue.intersects(viewport)) {
+                    hitTargets.add(new HitTarget(hue.intersection(viewport),
+                            Action.COLOR_HUE, panel, null, activeColor, null, hue));
+                }
+                if (alpha.intersects(viewport)) {
+                    hitTargets.add(new HitTarget(alpha.intersection(viewport),
+                            Action.COLOR_ALPHA, panel, null, activeColor, null, alpha));
+                }
+
+                y += 84;
             }
         }
 
@@ -1184,6 +1188,9 @@ public final class CelestialScreen extends Screen {
                     };
                     updateColor(setting, target.valueBounds,
                             mouseX, mouseY, draggedColorPart);
+                    if (setting == themeColor1 || setting == themeColor2) {
+                        saveCurrentCustomThemeColors();
+                    }
                     return true;
                 }
             }
@@ -1262,33 +1269,42 @@ public final class CelestialScreen extends Screen {
             }
             case THEME_SELECT -> {
                 ThemeManager manager = ThemeManager.getInstance();
-                ThemeManager.ThemePreset found = null;
-                for (ThemeManager.ThemePreset preset : ThemeManager.DEFAULT_THEMES) {
-                    if (preset.name().equalsIgnoreCase(target.value)) {
-                        found = preset;
-                        break;
-                    }
-                }
-                if (found == null) {
-                    for (ThemeManager.ThemePreset preset : manager.getCustomThemes()) {
-                        if (preset.name().equalsIgnoreCase(target.value)) {
-                            found = preset;
-                            break;
-                        }
-                    }
-                }
+                ThemeManager.ThemePreset found = manager.findPreset(target.value);
                 if (found != null) {
-                    selectedTheme = found.name();
-                    themeName = found.name();
-                    themeColor1.setValue(found.color1());
-                    themeColor2.setValue(found.color2());
+                    boolean custom = isCustomTheme(found.name());
                     if (button == 0) {
+                        selectedTheme = found.name();
+                        themeColor1.setValue(found.color1());
+                        themeColor2.setValue(found.color2());
                         manager.getCurrentTheme().setColors(found.color1(), found.color2());
                         manager.saveThemes(manager.getCustomThemes(), found.name());
-                        setStatus("Theme: " + found.name());
+                        if (custom) {
+                            themeName = found.name();
+                            setStatus("Theme: " + found.name());
+                        } else {
+                            editingCustomTheme = null;
+                            themeName = "";
+                            setStatus("Default theme: " + found.name());
+                        }
                     } else if (button == 1) {
-                        toggleSet(expandedSettings, "theme/" + found.name());
-                        setStatus("Theme colors: " + found.name());
+                        if (!custom) {
+                            setStatus("Default themes cannot be edited");
+                        } else {
+                            if (editingCustomTheme != null && editingCustomTheme.equalsIgnoreCase(found.name())) {
+                                editingCustomTheme = null;
+                                setStatus("Closed editor: " + found.name());
+                            } else {
+                                selectedTheme = found.name();
+                                editingCustomTheme = found.name();
+                                themeName = found.name();
+                                themeColor1.setValue(found.color1());
+                                themeColor2.setValue(found.color2());
+                                manager.getCurrentTheme().setColors(found.color1(), found.color2());
+                                manager.saveThemes(manager.getCustomThemes(), found.name());
+                                themeColorTab = 1;
+                                setStatus("Editing: " + found.name());
+                            }
+                        }
                     }
                 }
                 return true;
@@ -1317,21 +1333,27 @@ public final class CelestialScreen extends Screen {
             case THEME_COLOR1_HEADER -> {
                 if (button == 0 || button == 1) {
                     String theme = target.value != null && !target.value.isBlank() ? target.value : selectedTheme;
-                    if (theme != null && !theme.isBlank()) {
-                        toggleSet(expandedSettings, "theme/" + theme);
-                        toggleSet(expandedSettings, "theme/" + theme + "/c1");
-                        return true;
+                    if (isCustomTheme(theme)) {
+                        editingCustomTheme = theme;
+                        themeColorTab = 1;
+                        setStatus("Color 1: " + theme);
+                    } else {
+                        setStatus("Default themes cannot be edited");
                     }
+                    return true;
                 }
             }
             case THEME_COLOR2_HEADER -> {
                 if (button == 0 || button == 1) {
                     String theme = target.value != null && !target.value.isBlank() ? target.value : selectedTheme;
-                    if (theme != null && !theme.isBlank()) {
-                        toggleSet(expandedSettings, "theme/" + theme);
-                        toggleSet(expandedSettings, "theme/" + theme + "/c2");
-                        return true;
+                    if (isCustomTheme(theme)) {
+                        editingCustomTheme = theme;
+                        themeColorTab = 2;
+                        setStatus("Color 2: " + theme);
+                    } else {
+                        setStatus("Default themes cannot be edited");
                     }
+                    return true;
                 }
             }
         }
@@ -1422,7 +1444,7 @@ public final class CelestialScreen extends Screen {
             updateColor(draggedColor, draggedColorBounds,
                     mouseX, mouseY, draggedColorPart);
             if (draggedColor == themeColor1 || draggedColor == themeColor2) {
-                updateActiveThemeColors(themeColor1.getValue(), themeColor2.getValue());
+                saveCurrentCustomThemeColors();
             }
             return true;
         }
@@ -1433,7 +1455,7 @@ public final class CelestialScreen extends Screen {
     public boolean mouseReleased(double mouseX, double mouseY, int button) {
         if (button == 0 && (draggedPanel != null || draggedSlider != null || draggedColor != null)) {
             if (draggedColor == themeColor1 || draggedColor == themeColor2) {
-                updateActiveThemeColors(themeColor1.getValue(), themeColor2.getValue());
+                saveCurrentCustomThemeColors();
             }
             boolean movedPanel = draggedPanel != null;
             draggedPanel = null;
@@ -1499,17 +1521,15 @@ public final class CelestialScreen extends Screen {
 
     private void createTheme() {
         ThemeManager manager = ThemeManager.getInstance();
-        List<ThemeManager.ThemePreset> customThemes = new ArrayList<>(manager.getCustomThemes());
+        List<ThemeManager.ThemePreset> customThemes = manager.getCustomThemes();
         String name = themeName.isBlank() ? "Custom " + (customThemes.size() + 1) : themeName.strip();
+        if (ThemeManager.isDefaultTheme(name)) {
+            setStatus("Theme '" + name + "' is a default theme");
+            return;
+        }
         for (ThemeManager.ThemePreset p : customThemes) {
             if (p.name().equalsIgnoreCase(name)) {
-                setStatus("Theme " + name + " already exists");
-                return;
-            }
-        }
-        for (ThemeManager.ThemePreset p : ThemeManager.DEFAULT_THEMES) {
-            if (p.name().equalsIgnoreCase(name)) {
-                setStatus("Theme " + name + " already exists");
+                setStatus("Theme '" + name + "' already exists");
                 return;
             }
         }
@@ -1519,65 +1539,52 @@ public final class CelestialScreen extends Screen {
         manager.saveThemes(customThemes, name);
         manager.getCurrentTheme().setColors(c1, c2);
         selectedTheme = name;
+        editingCustomTheme = name;
+        themeColorTab = 1;
         themeName = "";
         editingThemeName = false;
-        setStatus("Created theme " + name);
+        setStatus("Created theme: " + name);
     }
 
     private void deleteTheme() {
         ThemeManager manager = ThemeManager.getInstance();
-        if (selectedTheme.isBlank()) {
-            setStatus("Select a custom theme first");
+        if (selectedTheme.isBlank() || !isCustomTheme(selectedTheme)) {
+            setStatus("Default themes cannot be deleted");
             return;
         }
-        List<ThemeManager.ThemePreset> customThemes = new ArrayList<>(manager.getCustomThemes());
+        List<ThemeManager.ThemePreset> customThemes = manager.getCustomThemes();
         boolean removed = customThemes.removeIf(p -> p.name().equalsIgnoreCase(selectedTheme));
         if (removed) {
-            String fallback = ThemeManager.DEFAULT_THEMES.get(0).name();
-            manager.saveThemes(customThemes, fallback);
             ThemeManager.ThemePreset fb = ThemeManager.DEFAULT_THEMES.get(0);
+            manager.saveThemes(customThemes, fb.name());
             manager.getCurrentTheme().setColors(fb.color1(), fb.color2());
-            selectedTheme = fallback;
-            themeName = fallback;
+            selectedTheme = fb.name();
+            themeName = "";
+            editingCustomTheme = null;
             themeColor1.setValue(fb.color1());
             themeColor2.setValue(fb.color2());
             setStatus("Deleted theme");
-        } else {
-            setStatus("Cannot delete default theme");
         }
     }
 
-    private void updateActiveThemeColors(int c1, int c2) {
+    private void saveCurrentCustomThemeColors() {
+        if (editingCustomTheme == null || !isCustomTheme(editingCustomTheme)) return;
         ThemeManager manager = ThemeManager.getInstance();
-        List<ThemeManager.ThemePreset> customThemes = new ArrayList<>(manager.getCustomThemes());
-        String activeName = selectedTheme.isBlank() ? "Custom" : selectedTheme;
-        boolean isCustom = false;
+        List<ThemeManager.ThemePreset> customThemes = manager.getCustomThemes();
+        int c1 = themeColor1.getValue();
+        int c2 = themeColor2.getValue();
+        boolean found = false;
         for (int i = 0; i < customThemes.size(); i++) {
-            if (customThemes.get(i).name().equalsIgnoreCase(activeName)) {
-                customThemes.set(i, new ThemeManager.ThemePreset(activeName, c1, c2));
-                isCustom = true;
+            if (customThemes.get(i).name().equalsIgnoreCase(editingCustomTheme)) {
+                customThemes.set(i, new ThemeManager.ThemePreset(customThemes.get(i).name(), c1, c2));
+                found = true;
                 break;
             }
         }
-        if (!isCustom) {
-            String customName = activeName.startsWith("Custom") ? activeName : activeName + " (Custom)";
-            boolean found = false;
-            for (int i = 0; i < customThemes.size(); i++) {
-                if (customThemes.get(i).name().equalsIgnoreCase(customName)) {
-                    customThemes.set(i, new ThemeManager.ThemePreset(customName, c1, c2));
-                    found = true;
-                    break;
-                }
-            }
-            if (!found) {
-                customThemes.add(new ThemeManager.ThemePreset(customName, c1, c2));
-            }
-            activeName = customName;
-            selectedTheme = customName;
-            themeName = customName;
+        if (found) {
+            manager.saveThemes(customThemes, editingCustomTheme);
+            manager.getCurrentTheme().setColors(c1, c2);
         }
-        manager.getCurrentTheme().setColors(c1, c2);
-        manager.saveThemes(customThemes, activeName);
     }
 
     private void updateSlider(SliderSetting setting, Rect bounds, double mouseX) {
