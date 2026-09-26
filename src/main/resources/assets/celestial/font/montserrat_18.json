@@ -1,0 +1,5 @@
+{
+  "providers": [
+    { "type": "ttf", "file": "celestial:montserrat.ttf", "size": 9.0, "oversample": 2.0, "shift": [0.0, 0.5] }
+  ]
+}

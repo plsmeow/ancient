@@ -1,0 +1,5 @@
+{
+  "providers": [
+    { "type": "ttf", "file": "ancient:montserrat.ttf", "size": 10.5, "oversample": 2.0, "shift": [0.0, 0.5] }
+  ]
+}

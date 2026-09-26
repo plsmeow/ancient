@@ -46,6 +46,8 @@ public class NeuroRotation extends RotationMode {
     private float currentAimOffset = 0.0f;
     private boolean attacked;
     private boolean modelWarned;
+    private int stuckTicks;
+    private int ticksSinceLastOffsetUpdate;
 
     // Субтиковая интерполяция (20 Hz step -> кадровая интерполяция)
     private float tickStartYaw;
@@ -123,10 +125,31 @@ public class NeuroRotation extends RotationMode {
                     ? this.tickTargetPitch
                     : ((ka.lastPitch != 0 && RotationComponent.getInstance().isRotating()) ? ka.lastPitch : mc.player.getPitch());
 
-            if (target.getId() != this.lastTargetId || !this.combatTracker.isInitialized()) {
+            // Защита от рассогласования / застревания взгляда в воздухе:
+            // Если прицел задран в воздух (pitch <= -70) при цели внизу, или разница с целью > 50 градусов и не падает:
+            float yawErr = Math.abs(MathHelper.wrapDegrees(targetYaw - currentBaseYaw));
+            float pitchErr = Math.abs(targetPitch - currentBasePitch);
+            boolean lookingInAir = (currentBasePitch <= -70.0f && targetPitch > -50.0f);
+            boolean lookingInGround = (currentBasePitch >= 70.0f && targetPitch < 50.0f);
+
+            if (lookingInAir || lookingInGround || (yawErr > 50.0f && pitchErr > 30.0f)) {
+                this.stuckTicks++;
+            } else {
+                this.stuckTicks = Math.max(0, this.stuckTicks - 1);
+            }
+
+            // Если застревание длится более 5 тиков (0.25 сек) или углы повреждены (NaN/Inf):
+            boolean forceReset = this.stuckTicks > 5
+                    || Float.isNaN(this.tickTargetYaw) || Float.isNaN(this.tickTargetPitch)
+                    || target.getId() != this.lastTargetId || !this.combatTracker.isInitialized();
+
+            if (forceReset) {
+                this.stuckTicks = 0;
+                currentBaseYaw = mc.player.getYaw();
+                currentBasePitch = mc.player.getPitch();
                 this.combatTracker.init(model, currentBaseYaw, currentBasePitch, targetYaw, targetPitch);
                 this.lastTargetId = target.getId();
-                this.currentAimOffset = AIM_OFFSET_SCALE * model.sampleAimError(ThreadLocalRandom.current().nextFloat());
+                this.currentAimOffset = Math.min(AIM_OFFSET_SCALE * model.sampleAimError(ThreadLocalRandom.current().nextFloat()), 0.35f);
                 this.tickStartYaw = currentBaseYaw;
                 this.tickStartPitch = currentBasePitch;
                 this.tickTargetYaw = currentBaseYaw;
@@ -137,6 +160,11 @@ public class NeuroRotation extends RotationMode {
             }
 
             this.returnTicks = 0;
+            // Периодическое обновление aimOffset, чтобы оффсет не зависал навсегда, если цель не атакована
+            if (++this.ticksSinceLastOffsetUpdate > 8) {
+                this.ticksSinceLastOffsetUpdate = 0;
+                this.currentAimOffset = Math.min(AIM_OFFSET_SCALE * model.sampleAimError(ThreadLocalRandom.current().nextFloat()), 0.35f);
+            }
             float aimOffset = this.currentAimOffset;
             float speedMul = getSpeedMultiplier();
 
@@ -155,8 +183,9 @@ public class NeuroRotation extends RotationMode {
 
                 if (this.attacked) {
                     this.attacked = false;
+                    this.ticksSinceLastOffsetUpdate = 0;
                     this.combatTracker.onAttack();
-                    this.currentAimOffset = AIM_OFFSET_SCALE * model.sampleAimError(ThreadLocalRandom.current().nextFloat());
+                    this.currentAimOffset = Math.min(AIM_OFFSET_SCALE * model.sampleAimError(ThreadLocalRandom.current().nextFloat()), 0.35f);
                 } else {
                     this.combatTracker.tick();
                 }
@@ -171,6 +200,9 @@ public class NeuroRotation extends RotationMode {
 
         float interpolatedYaw = MathHelper.lerpAngleDegrees(tickDelta, this.tickStartYaw, this.tickTargetYaw);
         float interpolatedPitch = MathHelper.lerp(tickDelta, this.tickStartPitch, this.tickTargetPitch);
+
+        if (Float.isNaN(interpolatedYaw)) interpolatedYaw = mc.player.getYaw();
+        if (Float.isNaN(interpolatedPitch)) interpolatedPitch = mc.player.getPitch();
 
         float gcd = GCDFixer.getGCDValue();
         if (gcd > 0.001f) {
@@ -235,6 +267,12 @@ public class NeuroRotation extends RotationMode {
         this.attacked = false;
         this.modelWarned = false;
         this.debugAimPoint = null;
+        this.stuckTicks = 0;
+        this.ticksSinceLastOffsetUpdate = 0;
+        this.tickStartYaw = 0.0f;
+        this.tickStartPitch = 0.0f;
+        this.tickTargetYaw = 0.0f;
+        this.tickTargetPitch = 0.0f;
     }
 
     private void warnModelNotLoaded() {

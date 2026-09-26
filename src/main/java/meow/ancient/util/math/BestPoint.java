@@ -3,9 +3,11 @@ package meow.ancient.util.math;
 import lombok.experimental.UtilityClass;
 import net.minecraft.entity.Entity;
 import net.minecraft.util.hit.HitResult;
+import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Box;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.RaycastContext;
+import java.util.function.Predicate;
 import meow.ancient.util.IMinecraft;
 import meow.ancient.util.player.combat.RaytraceUtil;
 import meow.ancient.util.render.math.MathUtil;
@@ -89,12 +91,25 @@ public class BestPoint implements IMinecraft {
         return new Vec3d(baseX + offsetX, baseY + offsetY, baseZ + offsetZ);
     }
 
+    public boolean isPlayerHitboxBlock(BlockPos pos) {
+        if (mc.player == null) return false;
+        BlockPos feet = BlockPos.ofFloored(mc.player.getX(), mc.player.getY(), mc.player.getZ());
+        BlockPos head = BlockPos.ofFloored(mc.player.getEyePos());
+        int minY = Math.min(feet.getY(), head.getY());
+        int maxY = Math.max(feet.getY() + 1, head.getY());
+        return pos.getX() == feet.getX() && pos.getZ() == feet.getZ() && pos.getY() >= minY && pos.getY() <= maxY;
+    }
+
     public Vec3d getNearestVisiblePoint(Entity target, Vec3d preferredPoint, double range) {
+        return getNearestVisiblePoint(target, preferredPoint, range, false);
+    }
+
+    public Vec3d getNearestVisiblePoint(Entity target, Vec3d preferredPoint, double range, boolean semi) {
         if (preferredPoint == null || mc.player == null || mc.world == null) {
             return preferredPoint;
         }
 
-        if (isPointVisible(target, preferredPoint, range)) {
+        if (isPointVisible(target, preferredPoint, range, semi)) {
             return preferredPoint;
         }
 
@@ -107,7 +122,7 @@ public class BestPoint implements IMinecraft {
             for (double y = box.minY; y <= box.maxY; y += step) {
                 for (double z = box.minZ; z <= box.maxZ; z += step) {
                     Vec3d sample = new Vec3d(x, y, z);
-                    if (!isPointVisible(target, sample, range)) {
+                    if (!isPointVisible(target, sample, range, semi)) {
                         continue;
                     }
 
@@ -124,23 +139,31 @@ public class BestPoint implements IMinecraft {
     }
 
     public boolean hasVisiblePoint(Entity target, double range) {
+        return hasVisiblePoint(target, range, false);
+    }
+
+    public boolean hasVisiblePoint(Entity target, double range, boolean semi) {
         if (mc.player == null || mc.world == null) return true;
 
-        if (isPointVisible(target, getNearestPoint(target), range)) return true;
+        if (isPointVisible(target, getNearestPoint(target), range, semi)) return true;
 
         Box box = target.getBoundingBox();
         double step = 0.25;
         for (double x = box.minX; x <= box.maxX; x += step) {
             for (double y = box.minY; y <= box.maxY; y += step) {
                 for (double z = box.minZ; z <= box.maxZ; z += step) {
-                    if (isPointVisible(target, new Vec3d(x, y, z), range)) return true;
+                    if (isPointVisible(target, new Vec3d(x, y, z), range, semi)) return true;
                 }
             }
         }
         return false;
     }
 
-    private boolean isPointVisible(Entity target, Vec3d point, double range) {
+    public boolean isPointVisible(Entity target, Vec3d point, double range) {
+        return isPointVisible(target, point, range, false);
+    }
+
+    public boolean isPointVisible(Entity target, Vec3d point, double range, boolean semi) {
         Vec3d eyePos = mc.player.getEyePos();
         double distance = eyePos.distanceTo(point);
         if (distance > range) {
@@ -152,8 +175,9 @@ public class BestPoint implements IMinecraft {
             return false;
         }
 
-        var blockHit = RaytraceUtil.raycast(eyePos, point, RaycastContext.ShapeType.COLLIDER, mc.player);
-        return blockHit.getType() == HitResult.Type.MISS || eyePos.squaredDistanceTo(blockHit.getPos()) >= eyePos.squaredDistanceTo(point) - 1e-4;
+        Predicate<BlockPos> ignorePredicate = semi ? BestPoint::isPlayerHitboxBlock : null;
+        var blockHit = RaytraceUtil.raycast(eyePos, point, RaycastContext.ShapeType.COLLIDER, mc.player, ignorePredicate);
+        return blockHit == null || blockHit.getType() == HitResult.Type.MISS || eyePos.squaredDistanceTo(blockHit.getPos()) >= eyePos.squaredDistanceTo(point) - 1e-4;
     }
 
     public static Vec3d getMultipoint(Entity target, double distance) {

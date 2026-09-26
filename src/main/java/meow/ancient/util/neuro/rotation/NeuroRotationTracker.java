@@ -110,8 +110,16 @@ public final class NeuroRotationTracker {
         float bestDeltaYaw = 0.0f;
         float bestDeltaPitch = 0.0f;
 
+        // aimOffset применяется только для естественного микро-разброса ВНУТРИ хитбокса,
+        // когда прицел уже находится на цели. Если прицел не на цели, оффсет не должен отталкивать его в воздух!
+        float safeAimOffset = this.onTarget ? Math.min(Math.max(aimOffset, 0.0f), 0.35f) : 0.0f;
+
+        // Заморозка допускается ТОЛЬКО когда мы уже навели прицел на цель.
+        // Если прицел вне цели, сеть не должна "залипать" на 12 тиков (0.6 секунды).
+        boolean allowFreeze = this.onTarget && (ThreadLocalRandom.current().nextFloat() < NeuroModel.sigmoid(modelOutput[0]));
         boolean freezeReached = this.frozenTicks >= (float) Math.min(freezeLimit, model.getFreezeCut());
-        if (freezeReached || ThreadLocalRandom.current().nextFloat() >= NeuroModel.sigmoid(modelOutput[0])) {
+
+        if (freezeReached || !allowFreeze) {
             float minCost = Float.MAX_VALUE;
             for (int i = candidateCount; i > 0; --i) {
                 int compIdx = 1 + 6 * model.sampleMixture(modelOutput, ThreadLocalRandom.current().nextFloat());
@@ -128,9 +136,23 @@ public final class NeuroRotationTracker {
                 float candDeltaYaw = quantize(rawDeltaYaw, gcd);
                 float candDeltaPitch = quantize(rawDeltaPitch, gcd);
 
-                float cost = Math.abs((float) Math.hypot(
-                        MathHelper.wrapDegrees(currentYawError - candDeltaYaw) / this.fovX,
-                        (currentPitchError - candDeltaPitch) / this.fovY) - aimOffset);
+                float remainingYaw = MathHelper.wrapDegrees(currentYawError - candDeltaYaw);
+                float remainingPitch = currentPitchError - candDeltaPitch;
+                float normHypot = (float) Math.hypot(remainingYaw / this.fovX, remainingPitch / this.fovY);
+
+                float cost;
+                if (this.onTarget) {
+                    cost = Math.abs(normHypot - safeAimOffset);
+                } else {
+                    cost = normHypot;
+                    // Штрафуем кандидаты, уводящие прицел дальше от цели
+                    if (Math.abs(remainingPitch) > Math.abs(currentPitchError) + 0.2f) {
+                        cost += 5.0f;
+                    }
+                    if (Math.abs(remainingYaw) > Math.abs(currentYawError) + 0.2f) {
+                        cost += 5.0f;
+                    }
+                }
 
                 if (cost < minCost) {
                     minCost = cost;
@@ -140,13 +162,32 @@ public final class NeuroRotationTracker {
             }
         }
 
-        if (freezeReached && bestDeltaYaw == 0.0f && bestDeltaPitch == 0.0f) {
-            if (Math.abs(currentYawError) >= Math.abs(currentPitchError)) {
-                bestDeltaYaw = Math.copySign(gcd, currentYawError);
-            } else {
-                bestDeltaPitch = Math.copySign(gcd, currentPitchError);
+        // Проверка: застрял ли pitch в воздухе (вверху) или в полу (внизу)
+        boolean pitchInAir = (currentPitch <= -75.0f && targetPitch > -65.0f);
+        boolean pitchInGround = (currentPitch >= 75.0f && targetPitch < 65.0f);
+        boolean pitchStuck = pitchInAir || pitchInGround;
+
+        // Если прицел застрял или дельта нулевая при наличии ошибки
+        if (bestDeltaYaw == 0.0f && bestDeltaPitch == 0.0f) {
+            if (freezeReached || pitchStuck || !this.onTarget) {
+                // Эффективный выход из заморозки / доводка: уверенный шаг к цели
+                float stepLimit = Math.max(gcd * 4.0f, 3.5f);
+                if (Math.abs(currentPitchError) >= Math.abs(currentYawError) || pitchStuck) {
+                    bestDeltaPitch = Math.copySign(Math.min(Math.abs(currentPitchError), stepLimit), currentPitchError);
+                } else {
+                    bestDeltaYaw = Math.copySign(Math.min(Math.abs(currentYawError), stepLimit), currentYawError);
+                }
             }
         }
+
+        // Если pitch застрял в воздухе/полу, а кандидат не выводит его обратно к цели:
+        if (pitchStuck && Math.signum(bestDeltaPitch) != Math.signum(currentPitchError)) {
+            bestDeltaPitch = Math.copySign(Math.min(Math.abs(currentPitchError), 6.0f), currentPitchError);
+        }
+
+        // Защита от NaN / Inf
+        if (Float.isNaN(bestDeltaYaw) || Float.isInfinite(bestDeltaYaw)) bestDeltaYaw = 0.0f;
+        if (Float.isNaN(bestDeltaPitch) || Float.isInfinite(bestDeltaPitch)) bestDeltaPitch = 0.0f;
 
         this.frozenTicks = (bestDeltaYaw == 0.0f && bestDeltaPitch == 0.0f) ? this.frozenTicks + 1.0f : 0.0f;
 
@@ -194,7 +235,12 @@ public final class NeuroRotationTracker {
     }
 
     private static float asinhScale(float f) {
-        return (float) (Math.log(f + Math.sqrt(f * f + 1.0)) / 3.0);
+        if (Float.isNaN(f) || Float.isInfinite(f)) {
+            return 0.0f;
+        }
+        float abs = Math.abs(f);
+        float asinh = (float) Math.log(abs + Math.sqrt((double) abs * abs + 1.0));
+        return Math.copySign(asinh / 3.0f, f);
     }
 
     private static float quantize(float f, float gcd) {

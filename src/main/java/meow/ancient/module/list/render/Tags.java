@@ -4,7 +4,6 @@ import meteordevelopment.orbit.EventHandler;
 import com.mojang.blaze3d.systems.RenderSystem;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.network.PlayerListEntry;
 import net.minecraft.client.network.AbstractClientPlayerEntity;
 import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.client.util.math.Vector2f;
@@ -61,7 +60,6 @@ import meow.ancient.util.replace.ReplaceUtil;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.regex.Pattern;
 
 @ModuleInformation(moduleName = "Tags", moduleDesc = "Теги над игроками", moduleCategory = ModuleCategory.RENDER)
 public class Tags extends Module {
@@ -83,8 +81,6 @@ public class Tags extends Module {
     private static final float MODERN_VALUE_GAP = 8.0f;
 
     private final BooleanSetting totemCounter = new BooleanSetting("Счетчик тотемов", false);
-    private static final Pattern STAFF_PREFIX_PATTERN = Pattern.compile(
-            ".*(ꔷ|ꔳ|ꔩ|ꔥ|ꔡ|ꔗ|ꔓ|\\bmod\\b|\\badm\\b|\\bhelp\\b|\\bwne\\b|модер|мод|хелп|помощ|помо|админ|адм|владел|владе|отриц|отри|\\btaf\\b|\\bcurat\\b|куратор|курато|\\bdev\\b|разраб|раз|\\bsupp\\b|\\bꜱupp\\b|саппорт|сапп|\\bder\\b|\\byt\\b|\\[yt\\]|ютуб|стажер|сотрудник).*");
 
 
     private final Map<UUID, Text> normalizedNames = new ConcurrentHashMap<>();
@@ -244,14 +240,7 @@ public class Tags extends Module {
     }
 
     private boolean isStaffTag(PlayerEntity entity) {
-        if (StaffManager.isStaff(entity.getGameProfile().getName())) return true;
-
-        if (mc.getNetworkHandler() == null) return false;
-        PlayerListEntry entry = mc.getNetworkHandler().getPlayerListEntry(entity.getUuid());
-        if (entry == null || entry.getDisplayName() == null) return false;
-
-        String displayName = entry.getDisplayName().getString().toLowerCase(Locale.ROOT);
-        return STAFF_PREFIX_PATTERN.matcher(displayName).matches();
+        return entity != null && entity.getGameProfile() != null && StaffManager.isStaff(entity.getGameProfile().getName());
     }
 
     private int statusOutlineColor(PlayerEntity entity) {

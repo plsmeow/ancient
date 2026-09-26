@@ -18,6 +18,8 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
+import net.minecraft.util.Identifier;
+import org.spongepowered.asm.mixin.injection.ModifyArg;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import meow.ancient.event.list.EventWorldRender;
 import meow.ancient.module.list.player.FreeCamera;
@@ -42,6 +44,39 @@ public class GameRendererMixin {
     private void freecamRenderHand(Camera camera, float tickDelta, Matrix4f matrix4f, CallbackInfo ci) {
         FreeCamera freeCamera = Instance.get(FreeCamera.class);
         if (freeCamera != null && freeCamera.isEnabled()) ci.cancel();
+    }
+
+    @Unique
+    private static final Identifier CELESTIAL_CLICK_GUI_BLUR =
+            Identifier.of("celestial", "legacy_click_gui_blur");
+
+    @ModifyArg(
+            method = "renderBlur",
+            at = @At(
+                    value = "INVOKE",
+                    target = "Lnet/minecraft/client/gl/ShaderLoader;loadPostEffect(Lnet/minecraft/util/Identifier;Ljava/util/Set;)Lnet/minecraft/client/gl/PostEffectProcessor;",
+                    ordinal = 0
+            ),
+            index = 0
+    )
+    private Identifier ancient$selectClickGuiBlur(Identifier vanillaEffect) {
+        net.minecraft.client.gui.screen.Screen current = net.minecraft.client.MinecraftClient.getInstance().currentScreen;
+        if (current instanceof meow.ancient.ui.celestial.CelestialScreen screen && screen.blurEnabled()) {
+            return CELESTIAL_CLICK_GUI_BLUR;
+        }
+        return vanillaEffect;
+    }
+
+    @WrapOperation(
+            method = "renderBlur",
+            at = @At(value = "INVOKE", target = "Lnet/minecraft/client/option/GameOptions;getMenuBackgroundBlurrinessValue()I")
+    )
+    private int ancient$overrideMenuBlur(net.minecraft.client.option.GameOptions options, Operation<Integer> original) {
+        net.minecraft.client.gui.screen.Screen current = net.minecraft.client.MinecraftClient.getInstance().currentScreen;
+        if (current instanceof meow.ancient.ui.celestial.CelestialScreen screen && screen.blurEnabled()) {
+            return Math.max(original.call(options), 10);
+        }
+        return original.call(options);
     }
 
     @WrapOperation(

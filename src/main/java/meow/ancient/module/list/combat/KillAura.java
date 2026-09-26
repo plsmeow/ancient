@@ -122,7 +122,7 @@ public class KillAura extends Module {
     );
     public final BooleanSetting raycastCheck = new BooleanSetting("Проверка на наведение", true);
     public final BooleanSetting smartAim = new BooleanSetting("Умное наведение", true);
-    public final BooleanSetting noWallHit = new BooleanSetting("Не бить через стены", false);
+    public final ModeSetting noWallHit = new ModeSetting("Не бить через стены", "OFF", "OFF", "Full", "Semi");
     public final BooleanSetting predictate = new BooleanSetting("Предикт на элитрах", true)
             .setVisible(() -> elytraTarget.getValue());
     public final SliderSetting predictValue = new SliderSetting("Предикт значение", 3, 1, 5, 0.1f)
@@ -917,8 +917,8 @@ public class KillAura extends Module {
         if (!isInAttackDistance(player, target)) return false;
 
         isTurnaroundActive = false;
-        if (noWallHit.getValue() && !canReachWithPositionAura(target)
-                && !BestPoint.hasVisiblePoint(target, getAttackReach(player))) return false;
+        if (!noWallHit.is("OFF") && !canReachWithPositionAura(target)
+                && !BestPoint.hasVisiblePoint(target, getAttackReach(player), noWallHit.is("Semi"))) return false;
 
         if (elytraTarget.getValue() && target.isGliding() && mc.player.isGliding()) {
             Vec3d predict = PredictUtils.getPredicted(target, predictValue.getValue());
@@ -1175,13 +1175,13 @@ public class KillAura extends Module {
         Vec3d eyePos = mc.player.getEyePos();
         Vec3d lookVec = mc.player.getRotationVec(1.0F);
         double searchDistance = getTargetSearchDistance(mc.player);
-        boolean wallCheck = noWallHit.getValue();
+        boolean wallCheck = !noWallHit.is("OFF");
 
         for (Entity entity : mc.world.getEntities()) {
             if (entity instanceof LivingEntity living) {
                 if (!isValidEntity(entity)) continue;
                 boolean priority = entity instanceof PlayerEntity p && TargetRepository.isTarget(p.getNameForScoreboard());
-                if (!priority && wallCheck && !BestPoint.hasVisiblePoint(living, searchDistance)) continue;
+                if (!priority && wallCheck && !BestPoint.hasVisiblePoint(living, searchDistance, noWallHit.is("Semi"))) continue;
 
                 double score;
                 switch (sortBy.getValue()) {
@@ -1222,11 +1222,11 @@ public class KillAura extends Module {
     }
 
     public Vec3d resolveMultipoint(LivingEntity target, Vec3d point, double range) {
-        if (target == null || (!smartAim.getValue() && !noWallHit.getValue())) {
+        if (target == null || (!smartAim.getValue() && noWallHit.is("OFF"))) {
             return point;
         }
 
-        return BestPoint.getNearestVisiblePoint(target, point, range);
+        return BestPoint.getNearestVisiblePoint(target, point, range, noWallHit.is("Semi"));
     }
 
     private float applyGCD(float deltaRotation) {
