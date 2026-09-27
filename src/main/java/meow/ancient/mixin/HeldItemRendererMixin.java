@@ -16,6 +16,7 @@ import org.spongepowered.asm.mixin.Overwrite;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.ModifyArg;
 import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import meow.ancient.module.list.render.Chams;
@@ -61,6 +62,23 @@ public abstract class HeldItemRendererMixin {
             var arm = isMainHand ? player.getMainArm() : player.getMainArm().getOpposite();
             viewModel.applyHandPosition(matrices, arm);
         }
+    }
+
+    @ModifyArg(
+            method = "applyEatOrDrinkTransformation",
+            at = @At(
+                    value = "INVOKE",
+                    target = "Lnet/minecraft/client/util/math/MatrixStack;translate(FFF)V",
+                    ordinal = 0
+            ),
+            index = 1
+    )
+    private float modifyEatBobbingY(float y) {
+        var viewModel = Instance.get(ViewModel.class);
+        if (viewModel != null && viewModel.isEnabled()) {
+            return y * viewModel.getEatingBobbing();
+        }
+        return y;
     }
 
     @Redirect(

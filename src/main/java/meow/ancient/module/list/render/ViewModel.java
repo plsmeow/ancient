@@ -15,6 +15,11 @@ public class ViewModel extends Module {
     private final SliderSetting offsetRightX = new SliderSetting("Правая рука по X",0.0F, -2F, 2F, 0.1F);
     private final SliderSetting offsetRightY = new SliderSetting("Правая рука по Y",0.0F, -2F, 2F, 0.1F);
     private final SliderSetting offsetRightZ = new SliderSetting("Правая рука по Z",0.0F, -2F, 2F, 0.1F);
+    private final SliderSetting eatingBobbing = new SliderSetting("Покачивание при еде", 1.0F, 0.0F, 2.0F, 0.1F);
+
+    public float getEatingBobbing() {
+        return this.isEnabled() ? eatingBobbing.getFloatValue() : 1.0F;
+    }
 
     public void applyHandPosition(MatrixStack matrices, Arm arm) {
         if (this.isEnabled()) {
