@@ -48,7 +48,8 @@ public class ModuleStorage implements IMinecraft {
                 new Trails(), new FastExp(), new FastCrossbow(), new NameProtect(), new CrystalSpammer(), new ChinaHat(),
                 new AirStuck(), new AutoSwap(), new NoSlow(), new NoWeb(), new DiscordRPC(), new FakePlayer(), new Interface(), new AutoEat(), new GapFix(), new AutoLeave(), new Hide(), new SpecCordExploit(),
                 new Nuker(), new BlockEsp(), new TPLoot(), new ScoreboardHealth(), new BoatFly(), new AutoCart(),
-                new AutoCaptcha(), new Step(), new Arrows(), new PrefixFixer(), new CustomCape(), new Chams()
+                new AutoCaptcha(), new Step(), new Arrows(), new PrefixFixer(), new CustomCape(), new Chams(),
+                new WindChargeAbuse()
         ));
 
         Ancient.getInstance().getEventBus().subscribe(this);
