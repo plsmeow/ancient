@@ -11,8 +11,8 @@ from common import (MIX, compare, detector_auc, export, quantize, runs_of, squas
                     stream_stats, train_policy, unsquash, verify, windows, wrap)
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-DATA_DIR = os.path.join(ROOT, "run", "ancient", "neuro", "data")
-MODEL_PATH = os.path.join(ROOT, "run", "ancient", "neuro", "aim.json")
+DATA_DIR = os.path.join(ROOT, "run", ".options", "neuro", "data")
+MODEL_PATH = os.path.join(ROOT, "run", ".options", "neuro", "aim.json")
 
 FEATURES = 17
 LIMITS = (179.0, 90.0)

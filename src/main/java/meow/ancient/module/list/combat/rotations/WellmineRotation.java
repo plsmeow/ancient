@@ -27,8 +27,13 @@ public class WellmineRotation extends RotationMode {
     public void update(KillAura ka, LivingEntity target) {
         var mc = ka.mc;
 
-        Box box = target.getBoundingBox();
-        Vec3d vector = ka.resolveMultipoint(target, BestPoint.getMultipoint(target, 6), 6);
+        Box box = (ka.extrapolation.getValue() || ka.backtrack.getValue())
+                ? ka.getTargetBox(target)
+                : target.getBoundingBox();
+        Vec3d basePoint = (ka.extrapolation.getValue() || ka.backtrack.getValue())
+                ? ka.getTargetCenter(target)
+                : BestPoint.getMultipoint(target, 6);
+        Vec3d vector = ka.resolveMultipoint(target, basePoint, 6);
 
         if (target.isGliding() && ka.isElytraPredictActive() && !ka.isTurnaroundActive) {
             vector = PredictUtils.getPredicted(target, ka.predictValue.getValue());
@@ -39,22 +44,21 @@ public class WellmineRotation extends RotationMode {
         float targetYaw = angle.x;
         float targetPitch = angle.y;
 
+        Vec3d offset = Vec3d.ZERO;
+        if (mc.player.isGliding() && target instanceof PlayerEntity && target.isGliding()) {
+            offset = PredictUtils.getPredicted(target, ka.predictValue.getValue());
+        }
+
         if (!ka.back) {
             if (ka.speedAcceleration >= 1f) {
-                ka.speedAcceleration = 0 ;
+                ka.speedAcceleration = 0;
             } else {
-                if(mc.player.isGliding()){
+                if (mc.player.isGliding()) {
                     float diff = Math.abs(MathHelper.wrapDegrees(angle.x - mc.player.getYaw()));
                     ka.speedAcceleration += (diff > 40 ? 0.0025f : 0.005f);
+                } else {
+                    ka.speedAcceleration += 0.005f;
                 }
-                else{
-                    ka.speedAcceleration += 0.005f ;
-                }
-            }
-
-            Vec3d offset = Vec3d.ZERO;
-            if (mc.player.isGliding() && target instanceof PlayerEntity && target.isGliding()) {
-                offset = PredictUtils.getPredicted(target, ka.predictValue.getValue());
             }
 
             if (ka.speedAcceleration >= 0.18 || RaytraceUtil.rayTrace(mc.player.getRotationVector(), 6, box.offset(offset).expand(-0.5, -1, -0.5))) {

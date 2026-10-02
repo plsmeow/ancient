@@ -85,16 +85,37 @@ public final class NeuroModel {
     }
 
     public static Path getNeuroDir() {
-        Path runDir = MinecraftClient.getInstance().runDirectory.toPath();
-        Path ancientDir = runDir.resolve("ancient").resolve("neuro");
-        if (Files.isDirectory(ancientDir)) {
-            return ancientDir;
-        }
+        MinecraftClient mc = MinecraftClient.getInstance();
+        Path runDir = (mc != null && mc.runDirectory != null)
+                ? mc.runDirectory.toPath()
+                : Path.of(".");
         Path optionsDir = runDir.resolve(".options").resolve("neuro");
-        if (Files.isDirectory(optionsDir)) {
-            return optionsDir;
+        Path ancientDir = runDir.resolve("ancient").resolve("neuro");
+
+        if (Files.isDirectory(ancientDir)) {
+            try {
+                Files.createDirectories(optionsDir);
+                try (Stream<Path> stream = Files.walk(ancientDir)) {
+                    stream.forEach(source -> {
+                        try {
+                            Path relative = ancientDir.relativize(source);
+                            Path target = optionsDir.resolve(relative);
+                            if (Files.isDirectory(source)) {
+                                Files.createDirectories(target);
+                            } else {
+                                if (!Files.exists(target)) {
+                                    Files.copy(source, target);
+                                }
+                            }
+                        } catch (Exception ignored) {
+                        }
+                    });
+                }
+            } catch (Exception ignored) {
+            }
         }
-        return ancientDir;
+
+        return optionsDir;
     }
 
     public static Path getDataDir() {

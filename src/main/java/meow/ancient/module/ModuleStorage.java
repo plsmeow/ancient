@@ -32,7 +32,7 @@ public class ModuleStorage implements IMinecraft {
         modules.addAll(List.of(
                 new FullBright(), new ClickGui(), new Optimization(), new Sprint(), new Troll(), new AiRecord(),
                   new TriggerBot(), new AimAssist(), new Criticals(), new MaceKill(), new AutoMace(), new BreachSwap(), new DamageSwap(), new FunskyMace(), new BoatAura(), new TpAura(),
-                new NoRender(), new KillAura(), new KBDisplacement(), new Backtrack(), new AutoFlyMace(),
+                new NoRender(), new KillAura(), new KBDisplacement(), new AutoFlyMace(),
                 new Tags(), new TargetESP(), new NoPush(), new SoulESP(), new DragonFly(),
                 new NoJumpDelay(), new TeleportBack(), new ElytraHelper(), new HotbarRefill(), new Flight(),
                 new AutoTotem(), new ClickPearl(), new ClickTP(), new UseTracker(), new PlayerTP(), new CrystalAura(), new AnchorAura(), new Scaffold(),
@@ -49,7 +49,7 @@ public class ModuleStorage implements IMinecraft {
                 new AirStuck(), new AutoSwap(), new NoSlow(), new NoWeb(), new DiscordRPC(), new FakePlayer(), new Interface(), new AutoEat(), new GapFix(), new AutoLeave(), new Hide(), new SpecCordExploit(),
                 new Nuker(), new BlockEsp(), new TPLoot(), new ScoreboardHealth(), new BoatFly(), new AutoCart(),
                 new AutoCaptcha(), new Step(), new Arrows(), new PrefixFixer(), new CustomCape(), new Chams(),
-                new WindChargeAbuse()
+                new WindChargeAbuse(), new Debug()
         ));
 
         Ancient.getInstance().getEventBus().subscribe(this);

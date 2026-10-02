@@ -244,15 +244,15 @@ def main():
     parser.add_argument(
         "--out",
         default=None,
-        help="Путь к результирующему файлу (по умолчанию: run/Rockstar/neuro/data/<name>.csv)"
+        help="Путь к результирующему файлу (по умолчанию: run/.options/neuro/data/<name>.csv)"
     )
 
     args = parser.parse_args()
 
-    project_root = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
     output_file = args.out
     if output_file is None:
-        output_file = os.path.join(project_root, "run", "Rockstar", "neuro", "data", f"{args.name}.csv")
+        output_file = os.path.join(project_root, "run", ".options", "neuro", "data", f"{args.name}.csv")
 
     generate_synthetic_dataset(output_file, args.ticks)
 

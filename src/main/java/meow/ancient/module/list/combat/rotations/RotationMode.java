@@ -27,6 +27,7 @@ public abstract class RotationMode implements IMinecraft {
 
     public abstract void update(KillAura killAura, LivingEntity target);
 
+
     /**
      * Сброс внутреннего состояния ротации (вызывается при потере цели,
      * выключении модуля и т.п.).
@@ -41,7 +42,9 @@ public abstract class RotationMode implements IMinecraft {
     }
 
     protected AimDelta aimAt(Rotation current, Vec3d point, float maxYawSpeed, float maxPitchSpeed) {
-        Vec3d delta = point.subtract(mc.player.getEyePos());
+        KillAura ka = meow.ancient.Ancient.getInstance().getModuleStorage().get(KillAura.class);
+        Vec3d eye = (ka != null && ka.isEnabled()) ? ka.getSelfEyePos() : (mc.player != null ? mc.player.getEyePos() : Vec3d.ZERO);
+        Vec3d delta = point.subtract(eye);
         float targetYaw = (float) MathHelper.wrapDegrees(Math.toDegrees(Math.atan2(delta.z, delta.x)) - 90.0D);
         float targetPitch = (float) -Math.toDegrees(Math.atan2(delta.y, Math.sqrt(delta.x * delta.x + delta.z * delta.z)));
         float yawDelta = MathHelper.wrapDegrees(targetYaw - current.getYaw());
@@ -81,6 +84,31 @@ public abstract class RotationMode implements IMinecraft {
                                  double jitterX, double jitterY, double jitterZ,
                                  float maxYawSpeed, float maxPitchSpeed) {
         Vec3d point = withJitter(hitboxPoint(target, heightFactor), jitterKey, jitterPeriodMs, jitterX, jitterY, jitterZ);
+        return aimAt(current, point, maxYawSpeed, maxPitchSpeed);
+    }
+
+    /**
+     * Точка наведения с учётом экстраполяции / бэктрека:
+     * если включена экстраполяция или бэктрек — возвращает целевой центр хитбокса,
+     * иначе — обычную точку по heightFactor.
+     */
+    protected Vec3d getAimPoint(KillAura ka, LivingEntity target, double heightFactor) {
+        if (ka.extrapolation.getValue() || ka.backtrack.getValue()) {
+            return ka.getTargetCenter(target);
+        }
+        return hitboxPoint(target, heightFactor);
+    }
+
+    /**
+     * Просчёт aimDelta с учётом экстраполяции + джиттер.
+     */
+    protected AimDelta aimEntityExtrapolated(KillAura ka, Rotation current, LivingEntity target,
+                                             double heightFactor,
+                                             String jitterKey, long jitterPeriodMs,
+                                             double jitterX, double jitterY, double jitterZ,
+                                             float maxYawSpeed, float maxPitchSpeed) {
+        Vec3d base = getAimPoint(ka, target, heightFactor);
+        Vec3d point = withJitter(base, jitterKey, jitterPeriodMs, jitterX, jitterY, jitterZ);
         return aimAt(current, point, maxYawSpeed, maxPitchSpeed);
     }
 

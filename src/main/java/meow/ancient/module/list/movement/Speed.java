@@ -35,6 +35,7 @@ import meow.ancient.module.settings.BooleanSetting;
 import meow.ancient.module.settings.ModeSetting;
 import meow.ancient.module.settings.SliderSetting;
 import meow.ancient.util.packet.NetworkUtils;
+import meow.ancient.util.player.combat.EntityExtrapolation;
 import meow.ancient.util.player.combat.HvhTargetPredict;
 import meow.ancient.util.player.move.MoveUtil;
 import meow.ancient.util.player.other.InventoryUtil;
@@ -70,8 +71,10 @@ public class Speed extends Module {
     private final SliderSetting vanillaSpeed = new SliderSetting("Скорость", 1.18f, 1.05f, 20.0f, 0.5f).setVisible(() -> mode.is("Vanilla"));
     private final BooleanSetting waterFix = new BooleanSetting("Water Fix", false).setVisible(() -> mode.is("Vanilla"));
     // HvH Target — Vanilla: автоматически идём к цели KillAura с предиктом по X/Z
-    private final BooleanSetting hvhTarget = new BooleanSetting("HvH Target", false).setVisible(() -> mode.is("Vanilla"));
-    // Сила предикта = количество тиков вперёд для HvhTargetPredict
+    public final BooleanSetting hvhTarget = new BooleanSetting("HvH Target", false).setVisible(() -> mode.is("Vanilla"));
+    public final ModeSetting hvhPredictMode = new ModeSetting("Режим предикта", "Simple", "Simple", "Extrapolation")
+            .setVisible(() -> mode.is("Vanilla") && hvhTarget.getValue());
+    // Сила предикта = количество тиков вперёд для Simple или тиков экстраполяции для Extrapolation
     private final SliderSetting hvhPredictStrength = new SliderSetting("Сила предикта", 4.0f, 0.5f, 20.0f, 0.1f)
             .setVisible(() -> mode.is("Vanilla") && hvhTarget.getValue());
     private final BooleanSetting hvhRender = new BooleanSetting("Рендер предикта", true)
@@ -101,6 +104,8 @@ public class Speed extends Module {
     private boolean renderIsLeaving = false; // true = отход, false = сближение, null бездействие
     private LivingEntity renderTarget = null;
 
+    private final EntityExtrapolation extrapolator = new EntityExtrapolation();
+
     public boolean isHvhTargetEnabled() {
         return mode.is("Vanilla") && hvhTarget.getValue();
     }
@@ -112,6 +117,7 @@ public class Speed extends Module {
         renderTarget = null;
         renderPredicted = null;
         renderLeaveTarget = null;
+        extrapolator.clear();
         if (polarLastSlot != -1 && mc.player != null) mc.player.getInventory().selectedSlot = polarLastSlot;
         polarLastSlot = -1;
         RotationComponent.getInstance().stopRotation();
@@ -166,11 +172,19 @@ public class Speed extends Module {
                 LivingEntity target = aura.getTarget();
                 if (lastHvhTarget != null && lastHvhTarget != target) {
                     HvhTargetPredict.reset(lastHvhTarget);
+                    extrapolator.clear();
                 }
                 lastHvhTarget = target;
                 Vec3d toTarget = target.getPos().subtract(mc.player.getPos());
                 double horizontalDistSq = toTarget.x * toTarget.x + toTarget.z * toTarget.z;
-                Vec3d targetPos = HvhTargetPredict.predict(target, hvhPredictStrength.getValue());
+
+                Vec3d targetPos;
+                if (hvhPredictMode.is("Extrapolation")) {
+                    extrapolator.update(target);
+                    targetPos = extrapolator.getExtrapolatedPos(target, hvhPredictStrength.getFloatValue(), false);
+                } else {
+                    targetPos = HvhTargetPredict.predict(target, hvhPredictStrength.getValue());
+                }
 
                 // Leave: пока идёт задержка удара (ticksToAttack > 0) — отходим,
                 // иначе сближаемся к радиусу атаки

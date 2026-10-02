@@ -49,7 +49,10 @@ public class SpookyTimeRotation extends RotationMode {
         }
 
         // Получение целевой точки
-        Vec3d point = ka.resolveMultipoint(target, BestPoint.getPoint2(target), 6);
+        Vec3d basePoint = (ka.extrapolation.getValue() || ka.backtrack.getValue())
+                ? ka.getTargetCenter(target)
+                : BestPoint.getPoint2(target);
+        Vec3d point = ka.resolveMultipoint(target, basePoint, 6);
         if (target.isGliding() && ka.isElytraPredictActive() && !ka.isTurnaroundActive) {
             point = PredictUtils.getPredicted(target, ka.predictValue.getValue());
         }

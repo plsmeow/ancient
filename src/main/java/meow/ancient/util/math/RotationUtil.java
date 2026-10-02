@@ -6,6 +6,8 @@ import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.Vec2f;
 import net.minecraft.util.math.Vec3d;
 import org.joml.Vector3f;
+import meow.ancient.Ancient;
+import meow.ancient.module.list.combat.KillAura;
 import meow.ancient.util.IMinecraft;
 import meow.ancient.util.rotation.Rotation;
 
@@ -30,7 +32,9 @@ public class RotationUtil implements IMinecraft {
     }
 
     public Vec2f calculate(final Vec3d toVec) {
-        return calculate(mc.player.getPos().add(0, mc.player.getEyeHeight(mc.player.getPose()), 0), toVec);
+        KillAura ka = Ancient.getInstance().getModuleStorage().get(KillAura.class);
+        Vec3d from = (ka != null && ka.isEnabled()) ? ka.getSelfEyePos() : (mc.player != null ? mc.player.getPos().add(0, mc.player.getEyeHeight(mc.player.getPose()), 0) : Vec3d.ZERO);
+        return calculate(from, toVec);
     }
 
     public static float getAngleDifference(float dir, float yaw) {

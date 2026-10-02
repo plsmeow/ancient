@@ -2,16 +2,20 @@
 	"schemaVersion": 1,
 	"id": "ancient",
 	"accessWidener": "ancient.accesswidener",
-	"version": "1.0.0",
-	"name": "Ancient",
-	"description": "Ancient client",
+	"version": "0.15.3+mc1.21.4",
+	"name": "Lithium",
+	"description": "Lithium is a free and open-source optimization mod for Minecraft which makes a wide range of performance improvements to the game.",
 	"authors": [
-		"plsmeow"
+		"JellySquid",
+		"2No2Name"
 	],
 	"contact": {
+		"homepage": "https://modrinth.com/mod/lithium",
+		"sources": "https://github.com/CaffeineMC/lithium-fabric",
+		"issues": "https://github.com/CaffeineMC/lithium-fabric/issues"
 	},
 	"license": "LGPL-3.0-only",
-	"icon": "assets/ancient/icon.png",
+	"icon": "assets/lithium/lithium-icon.png",
 	"environment": "*",
 	"entrypoints": {
 		"main": [
@@ -25,8 +29,5 @@
 		"fabricloader": ">=0.15.1",
 		"minecraft": "~1.21.4",
 		"fabric-api": "*"
-	},
-	"suggests": {
-		"another-mod": "*"
 	}
 }

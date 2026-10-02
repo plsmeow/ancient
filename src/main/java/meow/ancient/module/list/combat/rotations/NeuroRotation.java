@@ -74,6 +74,9 @@ public class NeuroRotation extends RotationMode {
         if (target.isGliding() && ka != null && ka.isElytraPredictActive() && !ka.isTurnaroundActive) {
             return PredictUtils.getPredicted(target, ka.predictValue.getValue());
         }
+        if (ka != null && (ka.extrapolation.getValue() || ka.backtrack.getValue())) {
+            return ka.getTargetCenter(target);
+        }
         return target.getBoundingBox().getCenter();
     }
 
@@ -104,7 +107,7 @@ public class NeuroRotation extends RotationMode {
             this.lastTickAge = currentAge;
 
             Box box = target.getBoundingBox();
-            Vec3d eyePos = mc.player.getEyePos();
+            Vec3d eyePos = ka.getSelfEyePos();
             Vec3d aimPoint = getAimPoint(ka, target);
             this.debugAimPoint = aimPoint;
 
@@ -247,6 +250,7 @@ public class NeuroRotation extends RotationMode {
                 MathHelper.clamp(current.getPitch() + this.deltaOut[1], -90.0f, 90.0f)
         );
     }
+
 
     private float getSpeedMultiplier() {
         return mc.player != null && mc.player.isSubmergedInWater() ? WATER_SPEED : DEFAULT_SPEED;

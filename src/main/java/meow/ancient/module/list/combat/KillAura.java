@@ -50,8 +50,11 @@ import meow.ancient.util.math.BestPoint;
 import meow.ancient.util.target.TargetRepository;
 import meow.ancient.util.math.RotationUtil;
 import meow.ancient.util.math.StopWatch;
+import meow.ancient.util.player.combat.BacktrackUtil;
+import meow.ancient.util.player.combat.EntityExtrapolation;
 import meow.ancient.util.player.combat.PredictUtils;
 import meow.ancient.util.player.combat.RaytraceUtil;
+import net.minecraft.util.math.Box;
 import meow.ancient.util.player.other.InventoryUtil;
 import meow.ancient.util.player.simulate.SimulatedPlayer;
 import meow.ancient.util.render.math.GCDFixer;
@@ -66,6 +69,7 @@ import meow.ancient.util.text.ValueUnit;
 import meow.ancient.module.list.combat.rotations.*;
 import meow.ancient.module.list.combat.rotations.test2.RotationState;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
 
@@ -144,8 +148,44 @@ public class KillAura extends Module {
     public final BooleanSetting freeze = new BooleanSetting("Freeze", false)
             .setVisible(() -> elytraTarget.getValue());
 
+    // ─── Extrapolation ────────────────────────────────────────────────────────
+    public final BooleanSetting extrapolation = new BooleanSetting("Extrapolation", false);
+    public final ModeSetting extrapolationMode = new ModeSetting("Extrapolation режим", "Авто", "Авто", "Ручной")
+            .setVisible(() -> extrapolation.getValue() || isSmartChoiceActive());
+    public final SliderSetting extrapolationTicks = new SliderSetting("Extrapolation тики",
+            ValueUnit.countable("тик", "тика", "тиков"), 2, 1, 10, 0.5f)
+            .setVisible(() -> (extrapolation.getValue() || isSmartChoiceActive()) && extrapolationMode.is("Ручной"));
+    public final BooleanSetting extrapolationRender = new BooleanSetting("Extrapolation: рендер бокса", true)
+            .setVisible(() -> extrapolation.getValue() && !isSmartChoiceActive());
+
+    // ─── Backtrack ───────────────────────────────────────────────────────────
+    public final BooleanSetting backtrack = new BooleanSetting("BackTrack", false);
+    public final SliderSetting backtrackTicks = new SliderSetting("BackTrack тики",
+            ValueUnit.countable("тик", "тика", "тиков"), 4, 1, 20, 1)
+            .setVisible(() -> backtrack.getValue() || isSmartChoiceActive());
+    public final SliderSetting backtrackAgePenalty = new SliderSetting("BackTrack штраф возраста", 0.15, 0.0, 0.5, 0.01)
+            .setVisible(() -> backtrack.getValue() || isSmartChoiceActive());
+    public final BooleanSetting backtrackRender = new BooleanSetting("BackTrack: рендер бокса", true)
+            .setVisible(() -> backtrack.getValue() && !isSmartChoiceActive());
+
+    // ─── Smart Choice (Умный выбор) ──────────────────────────────────────────
+    public final BooleanSetting smartChoice = new BooleanSetting("Умный выбор", true)
+            .setVisible(() -> backtrack.getValue() || extrapolation.getValue());
+    public final BooleanSetting smartChoiceRender = new BooleanSetting("Умный выбор: рендер бокса", true)
+            .setVisible(this::isSmartChoiceActive);
+
+    // ─── Self Extrapolation (TEST) ───────────────────────────────────────────
+    public final BooleanSetting selfExtrapolation = new BooleanSetting("SelfExtrapolation(TEST)", false);
+    public final SliderSetting selfExtrapolationTicks = new SliderSetting("SelfExtrapolation тики",
+            ValueUnit.countable("тик", "тика", "тиков"), 1, 0.5f, 5, 0.5f)
+            .setVisible(selfExtrapolation::getValue);
+    public final BooleanSetting selfExtrapolationRender = new BooleanSetting("SelfExtrapolation: рендер бокса", true)
+            .setVisible(selfExtrapolation::getValue);
+    // ─────────────────────────────────────────────────────────────────────────
+
     public final BooleanSetting universalCustom = new BooleanSetting("Universal: свои значения", false)
             .setVisible(() -> rotation.is("Universal"));
+
 
     public final SliderSetting universalSpeedYaw = new SliderSetting("Скорость Yaw", 0.52, 0.15, 0.95, 0.01)
             .setVisible(() -> rotation.is("Universal") && universalCustom.getValue());
@@ -326,6 +366,10 @@ public class KillAura extends Module {
     public static LivingEntity lastTarget;
     public int ticksToAttack;
 
+    public static KillAura get() {
+        return Ancient.getInstance().getModuleStorage().get(KillAura.class);
+    }
+
     private BreachSwap breachSwap() {
         return Ancient.getInstance().getModuleStorage().get(BreachSwap.class);
     }
@@ -403,6 +447,11 @@ public class KillAura extends Module {
     public float lastPitch;
     private float velocityYaw = 0.0F;
 
+    /** Утилита экстраполяции позиций энтити по пингу/тикам. */
+    public final EntityExtrapolation extrapolator = new EntityExtrapolation();
+    /** Утилита отслеживания истории тиков энтити назад (BackTrack). */
+    public final BacktrackUtil backtrackUtil = new BacktrackUtil();
+
     private boolean renderListenerRegistered = false;
     private final WorldRenderEvents.Last renderListener = context -> {
         if (isEnabled() && elytraTarget.getValue() && showPredictPoint.getValue()) {
@@ -420,7 +469,17 @@ public class KillAura extends Module {
         if (isEnabled() && rotation.is("Neuro") && neuroDebug.getValue()) {
             renderNeuroDebug(context.matrixStack(), context.camera());
         }
+        boolean showBox = (isSmartChoiceActive() && smartChoiceRender.getValue())
+                || (!isSmartChoiceActive() && extrapolation.getValue() && extrapolationRender.getValue())
+                || (!isSmartChoiceActive() && backtrack.getValue() && backtrackRender.getValue());
+        if (isEnabled() && showBox && target != null) {
+            renderExtrapolationBox(context.matrixStack(), context.camera(), context.tickCounter().getTickDelta(true));
+        }
+        if (isEnabled() && selfExtrapolation.getValue() && selfExtrapolationRender.getValue() && mc.player != null) {
+            renderSelfExtrapolationBox(context.matrixStack(), context.camera(), context.tickCounter().getTickDelta(true));
+        }
     };
+
 
     /**
      * Отладка Neuro: визуализация точки наведения и вектора взгляда.
@@ -588,8 +647,7 @@ public class KillAura extends Module {
                 neuroRotation.getDebugAimOffset(), neuroRotation.getDebugFrozenTicks()), "gray"});
 
         if (target != null) {
-            lines.add(new String[]{String.format("Цель: %s (дист. %.2f м)",
-                    target.getName().getString(), mc.player.distanceTo(target)), "white"});
+            lines.add(new String[]{"Цель: " + target.getName().getString(), "white"});
         } else {
             lines.add(new String[]{"Цель: нет", "gray"});
         }
@@ -647,9 +705,13 @@ public class KillAura extends Module {
             if (smoothElytraRotation.getValue()) {
                 spookyTimeRotation.update(this, target);
             } else {
-                Vec3d point = (target.isGliding() && isElytraPredictActive() && !isTurnaroundActive)
-                        ? PredictUtils.getPredicted(target, predictValue.getValue())
-                        : target.getBoundingBox().getCenter();
+                Vec3d point;
+                if (target.isGliding() && isElytraPredictActive() && !isTurnaroundActive) {
+                    point = PredictUtils.getPredicted(target, predictValue.getValue());
+                } else {
+                    // Если включена экстраполяция — используем предсказанный центр хитбокса
+                    point = getExtrapolatedCenter(target);
+                }
                 var rot = new Rotation(RotationUtil.calculate(point));
                 RotationComponent.update(rot, 360, 360, 360, 360, 0, 1, clientLook.getValue(), getMoveFixMode(), otvodkaActive());
                 lastYaw = rot.getYaw();
@@ -692,11 +754,33 @@ public class KillAura extends Module {
         if (ticksToAttack > 0) ticksToAttack--;
         if (razvorotikTicks > 0) razvorotikTicks--;
 
+        // Обновляем историю экстраполяции и бэктрека для всех живых энтити в мире
+        if (extrapolation.getValue() || backtrack.getValue()) {
+            int btTicks = backtrackTicks.getIntValue();
+            boolean updateExtra = extrapolation.getValue() || isSmartChoiceActive();
+            boolean updateBt = backtrack.getValue() || isSmartChoiceActive();
+            for (net.minecraft.entity.Entity e : mc.world.getEntities()) {
+                if (e instanceof LivingEntity living && !(e instanceof net.minecraft.client.network.ClientPlayerEntity)) {
+                    if (updateExtra) {
+                        extrapolator.update(living);
+                    }
+                    if (updateBt) {
+                        backtrackUtil.update(living, btTicks);
+                    }
+                }
+            }
+        }
+
+        if (selfExtrapolation.getValue()) {
+            extrapolator.update(mc.player);
+        }
+
         updateTarget();
 
         if (target != null) {
             lastTarget = target;
             isSlowdownActive = false;
+
 
             MaceKill maceKill = Ancient.getInstance().getModuleStorage().get(MaceKill.class);
             maceKill.updateFunskyState(target);
@@ -814,7 +898,6 @@ public class KillAura extends Module {
             }
         } else {
             Ancient.getInstance().getModuleStorage().get(MaceKill.class).updateFunskyState(null);
-            speedAcceleration = 0;
             razvorotikTicks = 0;
             snapActive = false;
             snapTimer = 0;
@@ -837,9 +920,11 @@ public class KillAura extends Module {
     private boolean isAtOvertakePoint() {
         if (mc.player == null || target == null) return false;
         if (!elytraTarget.getValue() || !target.isGliding() || !mc.player.isGliding()) return false;
+        Vec3d eye = getSelfEyePos();
         Vec3d predict = PredictUtils.getPredicted(target, predictValue.getValue());
-        double distToPredict = mc.player.getEyePos().distanceTo(predict);
-        double distToHitbox = mc.player.getEyePos().distanceTo(BestPoint.getNearestPoint(target));
+        double distToPredict = eye.distanceTo(predict);
+        Vec3d np = getTargetNearestPoint(target, eye);
+        double distToHitbox = np != null ? eye.distanceTo(np) : mc.player.distanceTo(target);
         double distToTarget = Math.min(distToPredict, distToHitbox);
         float threshold = hitAfterOvertake.getValue() ? 2.7f : 4f;
         return distToTarget <= threshold;
@@ -896,7 +981,10 @@ public class KillAura extends Module {
         } else {
             return false;
         }
-        if (player.getEyePos().distanceTo(BestPoint.getNearestPoint(entity)) > getTargetSearchDistance(player))
+        Vec3d eyePos = getSelfEyePos();
+        Vec3d nearestPoint = getTargetNearestPoint(entity, eyePos);
+        double dist = nearestPoint != null ? eyePos.distanceTo(nearestPoint) : Double.MAX_VALUE;
+        if (nearestPoint != null && dist > getTargetSearchDistance(player) && player.getEyePos().distanceTo(nearestPoint) > getTargetSearchDistance(player))
             return false;
         return true;
     }
@@ -917,13 +1005,16 @@ public class KillAura extends Module {
         if (!isInAttackDistance(player, target)) return false;
 
         isTurnaroundActive = false;
+        Box effectiveBox = isEffectiveTargetActive() ? getTargetBox(target) : target.getBoundingBox();
         if (!noWallHit.is("OFF") && !canReachWithPositionAura(target)
-                && !BestPoint.hasVisiblePoint(target, getAttackReach(player), noWallHit.is("Semi"))) return false;
+                && !BestPoint.hasVisiblePoint(target, effectiveBox, getAttackReach(player), noWallHit.is("Semi"))) return false;
 
         if (elytraTarget.getValue() && target.isGliding() && mc.player.isGliding()) {
+            Vec3d selfEye = getSelfEyePos();
             Vec3d predict = PredictUtils.getPredicted(target, predictValue.getValue());
-            double distToPredict = player.getEyePos().distanceTo(predict);
-            double distToHitbox = player.getEyePos().distanceTo(BestPoint.getNearestPoint(target));
+            double distToPredict = selfEye.distanceTo(predict);
+            Vec3d np = getTargetNearestPoint(target, selfEye);
+            double distToHitbox = np != null ? selfEye.distanceTo(np) : mc.player.distanceTo(target);
             double distToTarget = Math.min(distToPredict, distToHitbox);
 
             preddict = hitAfterOvertake.getValue() ? 2.7f : 4f;
@@ -942,10 +1033,19 @@ public class KillAura extends Module {
                 }
             }
         } else if (!canReachWithPositionAura(target)) {
-            if (!RaytraceUtil.rayTrace(player.getRotationVector(), distance.getValue(), target.getBoundingBox()) && raycastCheck.getValue())
+            if (!RaytraceUtil.rayTrace(player.getRotationVector(), distance.getValue(), effectiveBox) && raycastCheck.getValue())
                 return false;
 
-            if (player.getEyePos().distanceTo(BestPoint.getNearestPoint(target)) > (distance.getValue() - 0.2f))
+            Vec3d nearest = getTargetNearestPoint(target, player.getEyePos());
+            double dist = nearest != null ? player.getEyePos().distanceTo(nearest) : Double.MAX_VALUE;
+            if (selfExtrapolation.getValue()) {
+                Vec3d selfEye = getSelfEyePos();
+                Vec3d nearestSelf = getTargetNearestPoint(target, selfEye);
+                if (nearestSelf != null) {
+                    dist = Math.min(dist, selfEye.distanceTo(nearestSelf));
+                }
+            }
+            if (dist > (distance.getValue() - 0.2f))
                 return false;
         }
 
@@ -1001,11 +1101,20 @@ public class KillAura extends Module {
     private boolean isInAttackDistance(PlayerEntity player, LivingEntity entity) {
         if (canReachWithPositionAura(entity)) return true;
 
-        Vec3d nearestPoint = BestPoint.getNearestPoint(entity);
-        if (nearestPoint == null) return false;
+        double attackReach = getAttackReach(player);
+        Vec3d eyePos = player.getEyePos();
+        Vec3d nearest = getTargetNearestPoint(entity, eyePos);
+        if (nearest != null && eyePos.distanceTo(nearest) <= attackReach) return true;
 
-        double attackDistance = getAttackReach(player);
-        return player.getEyePos().distanceTo(nearestPoint) <= attackDistance;
+        if (selfExtrapolation.getValue()) {
+            Vec3d selfEye = getSelfEyePos();
+            Vec3d nearestSelf = getTargetNearestPoint(entity, selfEye);
+            if (nearestSelf != null && selfEye.distanceTo(nearestSelf) <= attackReach) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private double getAttackReach(PlayerEntity player) {
@@ -1172,7 +1281,7 @@ public class KillAura extends Module {
         LivingEntity bestTargetList = null;
         double bestTargetListScore = Double.NEGATIVE_INFINITY;
 
-        Vec3d eyePos = mc.player.getEyePos();
+        Vec3d eyePos = getSelfEyePos();
         Vec3d lookVec = mc.player.getRotationVec(1.0F);
         double searchDistance = getTargetSearchDistance(mc.player);
         boolean wallCheck = !noWallHit.is("OFF");
@@ -1181,18 +1290,20 @@ public class KillAura extends Module {
             if (entity instanceof LivingEntity living) {
                 if (!isValidEntity(entity)) continue;
                 boolean priority = entity instanceof PlayerEntity p && TargetRepository.isTarget(p.getNameForScoreboard());
-                if (!priority && wallCheck && !BestPoint.hasVisiblePoint(living, searchDistance, noWallHit.is("Semi"))) continue;
+                Box box = isEffectiveTargetActive() ? getTargetBox(living) : living.getBoundingBox();
+                if (!priority && wallCheck && !BestPoint.hasVisiblePoint(living, box, searchDistance, noWallHit.is("Semi"))) continue;
 
                 double score;
+                Vec3d targetNearest = getTargetNearestPoint(living, eyePos);
                 switch (sortBy.getValue()) {
                     case "Дистанция" -> {
-                        score = -eyePos.distanceTo(BestPoint.getNearestPoint(entity));
+                        score = -eyePos.distanceTo(targetNearest);
                     }
                     case "Здоровье" -> {
                         score = -living.getHealth();
                     }
                     default -> {
-                        Vec3d targetVec = BestPoint.getNearestPoint(entity).subtract(eyePos).normalize();
+                        Vec3d targetVec = targetNearest.subtract(eyePos).normalize();
                         score = lookVec.dotProduct(targetVec);
                     }
                 }
@@ -1226,6 +1337,13 @@ public class KillAura extends Module {
             return point;
         }
 
+        if (isEffectiveTargetActive()) {
+            Box box = getTargetBox(target);
+            if (box != null) {
+                return BestPoint.getNearestVisiblePoint(target, box, point, range, noWallHit.is("Semi"));
+            }
+        }
+
         return BestPoint.getNearestVisiblePoint(target, point, range, noWallHit.is("Semi"));
     }
 
@@ -1233,6 +1351,346 @@ public class KillAura extends Module {
         float sensitivity = (float) (mc.options.getMouseSensitivity().getValue() * 0.6f + 0.2f);
         float multiplier = sensitivity * sensitivity * sensitivity * 8.0f * 0.15f;
         return (Math.round(deltaRotation / multiplier) * multiplier);
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+    // Extrapolation & Backtrack API — используется всеми RotationMode, canAttack() и т.д.
+    // ─────────────────────────────────────────────────────────────────────────
+
+    public boolean isSmartChoiceActive() {
+        return smartChoice.getValue() && (backtrack.getValue() || extrapolation.getValue());
+    }
+
+    public boolean isEffectiveTargetActive() {
+        return extrapolation.getValue() || backtrack.getValue();
+    }
+
+    public Vec3d getSelfEyePos() {
+        if (mc.player == null) return Vec3d.ZERO;
+        if (selfExtrapolation.getValue()) {
+            float ticks = (float) selfExtrapolationTicks.getValue();
+            Vec3d predPos = extrapolator.getExtrapolatedPos(mc.player, ticks, false);
+            return predPos.add(0, mc.player.getEyeHeight(mc.player.getPose()), 0);
+        }
+        return mc.player.getEyePos();
+    }
+
+    public Box getSelfBox() {
+        if (mc.player == null) return null;
+        if (selfExtrapolation.getValue()) {
+            float ticks = (float) selfExtrapolationTicks.getValue();
+            return extrapolator.getExtrapolatedBox(mc.player, ticks, false);
+        }
+        return mc.player.getBoundingBox();
+    }
+
+    public enum CandidateType {
+        CURRENT("Текущий"),
+        BACKTRACK("BackTrack"),
+        EXTRAPOLATION("Extrapolation");
+
+        private final String displayName;
+
+        CandidateType(String displayName) {
+            this.displayName = displayName;
+        }
+
+        public String getDisplayName() {
+            return displayName;
+        }
+    }
+
+    public record TargetCandidate(
+            Box box,
+            Vec3d nearestPoint,
+            double distance,
+            double score,
+            CandidateType type,
+            float tickOffset
+    ) {}
+
+    public TargetCandidate getSmartCandidate(Entity entity, Vec3d fromPos) {
+        if (entity == null || mc.player == null) return null;
+        if (fromPos == null) fromPos = mc.player.getEyePos();
+
+        PlayerEntity player = mc.player;
+        Vec3d eyePos = fromPos;
+        Vec3d lookVec = player.getRotationVector();
+        double attackReach = getAttackReach(player);
+        boolean wallCheck = !noWallHit.is("OFF");
+        boolean semi = noWallHit.is("Semi");
+
+        List<TargetCandidate> candidates = new ArrayList<>();
+
+        // 1. Текущий хитбокс цели
+        Box currentBox = entity.getBoundingBox();
+        candidates.add(evaluateCandidate(entity, currentBox, CandidateType.CURRENT, 0f, eyePos, lookVec, attackReach, wallCheck, semi));
+
+        // 2. BackTrack кандидаты (исторические тики)
+        if (backtrack.getValue() || isSmartChoiceActive()) {
+            int maxBtTicks = backtrackTicks.getIntValue();
+            List<BacktrackUtil.TrackRecord> records = backtrackUtil.getRecords(entity);
+            if (records != null && !records.isEmpty()) {
+                for (BacktrackUtil.TrackRecord record : records) {
+                    if (record.tickAge() <= 0 || record.tickAge() > maxBtTicks) continue;
+                    candidates.add(evaluateCandidate(entity, record.box(), CandidateType.BACKTRACK, (float) record.tickAge(), eyePos, lookVec, attackReach, wallCheck, semi));
+                }
+            }
+        }
+
+        // 3. Extrapolation кандидаты (предсказание вперед)
+        if (extrapolation.getValue() || isSmartChoiceActive()) {
+            boolean auto = extrapolationMode.is("Авто");
+            float exTicks = auto ? extrapolator.getPingTicks(entity) : (float) extrapolationTicks.getValue();
+            if (exTicks > 0.01f) {
+                Box exBox = extrapolator.getExtrapolatedBox(entity, exTicks, false);
+                if (exBox != null) {
+                    candidates.add(evaluateCandidate(entity, exBox, CandidateType.EXTRAPOLATION, exTicks, eyePos, lookVec, attackReach, wallCheck, semi));
+                }
+                if (exTicks >= 1.5f) {
+                    Box intermediateBox = extrapolator.getExtrapolatedBox(entity, 1.0f, false);
+                    if (intermediateBox != null) {
+                        candidates.add(evaluateCandidate(entity, intermediateBox, CandidateType.EXTRAPOLATION, 1.0f, eyePos, lookVec, attackReach, wallCheck, semi));
+                    }
+                }
+            }
+        }
+
+        // Находим кандидата с наименьшим score
+        TargetCandidate best = null;
+        double minScore = Double.MAX_VALUE;
+        for (TargetCandidate c : candidates) {
+            if (c != null && c.score() < minScore) {
+                minScore = c.score();
+                best = c;
+            }
+        }
+
+        return best != null ? best : new TargetCandidate(currentBox, BestPoint.getNearestPoint(entity), eyePos.distanceTo(currentBox.getCenter()), 0.0, CandidateType.CURRENT, 0f);
+    }
+
+    public TargetCandidate getSmartCandidate(Entity entity) {
+        return getSmartCandidate(entity, mc.player != null ? mc.player.getEyePos() : Vec3d.ZERO);
+    }
+
+    private TargetCandidate evaluateCandidate(
+            Entity entity, Box box, CandidateType type, float tickOffset,
+            Vec3d eyePos, Vec3d lookVec, double attackReach, boolean wallCheck, boolean semi) {
+        if (box == null) return null;
+
+        Vec3d nearest = new Vec3d(
+                MathHelper.clamp(eyePos.x, box.minX, box.maxX),
+                MathHelper.clamp(eyePos.y, box.minY, box.maxY),
+                MathHelper.clamp(eyePos.z, box.minZ, box.maxZ)
+        );
+        double dist = eyePos.distanceTo(nearest);
+        boolean inAttackReach = dist <= attackReach;
+
+        // Проверка видимости через блоки
+        boolean visible = true;
+        if (wallCheck) {
+            visible = BestPoint.isPointVisible(entity, box, nearest, attackReach + 1.0, semi);
+        }
+
+        // Штраф за время (старость или неопределенность)
+        double timePenalty = 0.0;
+        if (type == CandidateType.BACKTRACK) {
+            timePenalty = tickOffset * backtrackAgePenalty.getValue();
+        } else if (type == CandidateType.EXTRAPOLATION) {
+            timePenalty = tickOffset * (backtrackAgePenalty.getValue() * 0.5);
+        }
+
+        // Бонус за направление взгляда (если точка уже ближе к прицелу)
+        double fovBonus = 0.0;
+        if (dist > 0.001) {
+            Vec3d toPoint = nearest.subtract(eyePos).normalize();
+            double dot = lookVec.dotProduct(toPoint);
+            fovBonus = Math.max(0.0, dot) * 0.2;
+        }
+
+        // Итоговый скор: меньше = лучше
+        double score = dist + timePenalty - fovBonus;
+
+        // Если точка вне досягаемости удара — добавляем штраф
+        if (!inAttackReach) {
+            score += 100.0;
+        }
+
+        // Если точка за стеной при включенном NoWallHit — большой штраф
+        if (wallCheck && !visible) {
+            score += 500.0;
+        }
+
+        return new TargetCandidate(box, nearest, dist, score, type, tickOffset);
+    }
+
+    /**
+     * Возвращает эффективный хитбокс цели:
+     * 1) Если включён Умный выбор — выбирает лучший хитбокс среди Current, BackTrack и Extrapolation.
+     * 2) Если включён BackTrack — возвращает лучший исторический хитбокс.
+     * 3) Иначе если включена Extrapolation — возвращает экстраполированный вперёд хитбокс.
+     * 4) Иначе возвращает обычный хитбокс цели.
+     */
+    public Box getTargetBox(Entity entity) {
+        if (entity == null) return null;
+        if (isSmartChoiceActive()) {
+            TargetCandidate best = getSmartCandidate(entity);
+            if (best != null && best.box() != null) return best.box();
+        }
+        if (backtrack.getValue()) {
+            return backtrackUtil.getBestBox(entity, backtrackTicks.getIntValue(), distance.getValue() + 2.0, backtrackAgePenalty.getValue());
+        }
+        if (extrapolation.getValue()) {
+            boolean auto = extrapolationMode.is("Авто");
+            float ticks = auto ? 0f : (float) extrapolationTicks.getValue();
+            return extrapolator.getExtrapolatedBox(entity, ticks, auto);
+        }
+        return entity.getBoundingBox();
+    }
+
+    /**
+     * Возвращает эффективный центр цели (Smart Choice -> BackTrack -> Extrapolation -> обычный центр).
+     */
+    public Vec3d getTargetCenter(Entity entity) {
+        if (entity == null) return Vec3d.ZERO;
+        Box box = getTargetBox(entity);
+        return box != null ? box.getCenter() : entity.getBoundingBox().getCenter();
+    }
+
+    /**
+     * Обратная совместимость для методов с именем getExtrapolatedCenter / getExtrapolatedBox.
+     */
+    public Vec3d getExtrapolatedCenter(Entity entity) {
+        return getTargetCenter(entity);
+    }
+
+    public Box getExtrapolatedBox(Entity entity) {
+        return getTargetBox(entity);
+    }
+
+    /**
+     * Возвращает ближайшую точку на эффективном хитбоксе (Smart Choice -> BackTrack -> Extrapolation -> обычный)
+     * к заданной позиции глаз/источника.
+     */
+    public Vec3d getTargetNearestPoint(Entity entity, Vec3d fromPos) {
+        if (entity == null) return null;
+        if (isSmartChoiceActive()) {
+            TargetCandidate best = getSmartCandidate(entity, fromPos);
+            if (best != null && best.nearestPoint() != null) return best.nearestPoint();
+        }
+        if (backtrack.getValue() || extrapolation.getValue()) {
+            Box box = getTargetBox(entity);
+            if (box != null) {
+                return new Vec3d(
+                        MathHelper.clamp(fromPos.x, box.minX, box.maxX),
+                        MathHelper.clamp(fromPos.y, box.minY, box.maxY),
+                        MathHelper.clamp(fromPos.z, box.minZ, box.maxZ)
+                );
+            }
+        }
+        return BestPoint.getNearestPoint(entity);
+    }
+
+    public Vec3d getTargetNearestPoint(Entity entity) {
+        return getTargetNearestPoint(entity, mc.player != null ? mc.player.getEyePos() : Vec3d.ZERO);
+    }
+
+    /**
+     * Рендер wireframe-бокса вокруг целевого (экстраполированного / бэктрекнутого) хитбокса цели.
+     */
+    private void renderExtrapolationBox(MatrixStack matrices, Camera camera, float tickDelta) {
+        if (target == null || mc.player == null) return;
+
+        TargetCandidate candidate = isSmartChoiceActive() ? getSmartCandidate(target, mc.player.getEyePos()) : null;
+        Box box = candidate != null ? candidate.box() : getTargetBox(target);
+        if (box == null) return;
+        Vec3d camPos = camera.getPos();
+
+        double minX = box.minX - camPos.x;
+        double minY = box.minY - camPos.y;
+        double minZ = box.minZ - camPos.z;
+        double maxX = box.maxX - camPos.x;
+        double maxY = box.maxY - camPos.y;
+        double maxZ = box.maxZ - camPos.z;
+
+        int color;
+        if (candidate != null) {
+            switch (candidate.type()) {
+                case BACKTRACK -> color = 0xFF55FF55;
+                case EXTRAPOLATION -> color = ColorProvider.getThemeColor();
+                default -> color = 0xFFFFFFFF;
+            }
+        } else {
+            color = backtrack.getValue() ? 0xFF55FF55 : ColorProvider.getThemeColor();
+        }
+        float r = ((color >> 16) & 0xFF) / 255f;
+        float g = ((color >> 8) & 0xFF) / 255f;
+        float b = (color & 0xFF) / 255f;
+        float a = 0.85f;
+
+        RenderSystem.enableBlend();
+        RenderSystem.defaultBlendFunc();
+        RenderSystem.disableDepthTest();
+        RenderSystem.disableCull();
+        RenderSystem.setShader(ShaderProgramKeys.POSITION_COLOR);
+        RenderSystem.lineWidth(1.5f);
+
+        Matrix4f matrix = matrices.peek().getPositionMatrix();
+        Tessellator tessellator = Tessellator.getInstance();
+        BufferBuilder buffer = tessellator.begin(VertexFormat.DrawMode.DEBUG_LINES, VertexFormats.POSITION_COLOR);
+
+        drawLineBox(buffer, matrix, minX, minY, minZ, maxX, maxY, maxZ, r, g, b, a);
+
+        BufferRenderer.drawWithGlobalProgram(buffer.end());
+
+        RenderSystem.enableDepthTest();
+        RenderSystem.enableCull();
+        RenderSystem.disableBlend();
+        RenderSystem.lineWidth(1.0f);
+    }
+
+    /**
+     * Рендер wireframe-бокса вокруг экстраполированного положения локального игрока (SelfExtrapolation).
+     */
+    private void renderSelfExtrapolationBox(MatrixStack matrices, Camera camera, float tickDelta) {
+        if (mc.player == null) return;
+
+        Box box = getSelfBox();
+        if (box == null) return;
+        Vec3d camPos = camera.getPos();
+
+        double minX = box.minX - camPos.x;
+        double minY = box.minY - camPos.y;
+        double minZ = box.minZ - camPos.z;
+        double maxX = box.maxX - camPos.x;
+        double maxY = box.maxY - camPos.y;
+        double maxZ = box.maxZ - camPos.z;
+
+        // Золотисто-жёлтый цвет для бокса игрока
+        int color = 0xFFFFD700;
+        float r = ((color >> 16) & 0xFF) / 255f;
+        float g = ((color >> 8) & 0xFF) / 255f;
+        float b = (color & 0xFF) / 255f;
+        float a = 0.85f;
+
+        RenderSystem.enableBlend();
+        RenderSystem.defaultBlendFunc();
+        RenderSystem.disableDepthTest();
+        RenderSystem.disableCull();
+        RenderSystem.setShader(ShaderProgramKeys.POSITION_COLOR);
+        RenderSystem.lineWidth(1.5f);
+
+        Matrix4f matrix = matrices.peek().getPositionMatrix();
+        Tessellator tessellator = Tessellator.getInstance();
+        BufferBuilder buffer = tessellator.begin(VertexFormat.DrawMode.DEBUG_LINES, VertexFormats.POSITION_COLOR);
+
+        drawLineBox(buffer, matrix, minX, minY, minZ, maxX, maxY, maxZ, r, g, b, a);
+
+        BufferRenderer.drawWithGlobalProgram(buffer.end());
+
+        RenderSystem.enableDepthTest();
+        RenderSystem.enableCull();
+        RenderSystem.disableBlend();
+        RenderSystem.lineWidth(1.0f);
     }
 
     private void renderPredictPoint(MatrixStack matrices, Camera camera, float tickDelta) {
@@ -1420,6 +1878,8 @@ public class KillAura extends Module {
         Ancient.getInstance().getModuleStorage().setSpeedAcceleration(0);
         Ancient.getInstance().getModuleStorage().setRandomness(1);
         RotationComponent.getInstance().stopRotation();
+        extrapolator.clear();
+        backtrackUtil.clear();
         stopFreeze();
         super.onDisable();
     }

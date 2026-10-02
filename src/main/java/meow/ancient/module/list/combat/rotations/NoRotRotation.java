@@ -22,7 +22,10 @@ public class NoRotRotation extends RotationMode {
         var mc = ka.mc;
 
         double time = System.nanoTime() * 1e-9;
-        var angle = new Rotation(RotationUtil.calculate(target.getBoundingBox().getCenter().add(0, (float) Math.abs(Math.sin(time * 19)) / 2, 0)));
+        Vec3d baseCenter = (ka.extrapolation.getValue() || ka.backtrack.getValue())
+                ? ka.getTargetCenter(target)
+                : target.getBoundingBox().getCenter();
+        var angle = new Rotation(RotationUtil.calculate(baseCenter.add(0, (float) Math.abs(Math.sin(time * 19)) / 2, 0)));
         var predict = PredictUtils.getPredicted(target, ka.predictValue.getValue() + 2.5f);
 
         if (target.isGliding() && ka.isElytraPredictActive() && !ka.isTurnaroundActive) angle = new Rotation(predict);

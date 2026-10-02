@@ -10,7 +10,10 @@ import sys
 
 # Добавляем модуль trainer из ресурсов мода
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-TRAINER_DIR = os.path.join(SCRIPT_DIR, "src", "main", "resources", "assets", "rockstar", "neuro", "trainer")
+PROJECT_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, "..", ".."))
+TRAINER_DIR = os.path.join(PROJECT_ROOT, "src", "main", "resources", "assets", "ancient", "neuro", "trainer")
+if not os.path.isdir(TRAINER_DIR):
+    TRAINER_DIR = os.path.join(PROJECT_ROOT, "src", "main", "resources", "assets", "rockstar", "neuro", "trainer")
 sys.path.insert(0, TRAINER_DIR)
 
 try:
@@ -27,8 +30,8 @@ def main():
     parser = argparse.ArgumentParser(description="Обучение нейро-модели наводки Rockstar")
     parser.add_argument(
         "--data",
-        default=os.path.join(SCRIPT_DIR, "run", "Rockstar", "neuro", "data"),
-        help="Путь к папке с датасетами .csv (по умолчанию: run/Rockstar/neuro/data)"
+        default=os.path.join(PROJECT_ROOT, "run", ".options", "neuro", "data"),
+        help="Путь к папке с датасетами .csv (по умолчанию: run/.options/neuro/data)"
     )
     parser.add_argument(
         "--name",
@@ -38,7 +41,7 @@ def main():
     parser.add_argument(
         "--out",
         default=None,
-        help="Путь к выходящему файлу модели .json (по умолчанию: run/Rockstar/neuro/<name>.json)"
+        help="Путь к выходящему файлу модели .json (по умолчанию: run/.options/neuro/<name>.json)"
     )
     parser.add_argument(
         "--epochs",
@@ -68,7 +71,7 @@ def main():
 
     out_file = args.out
     if out_file is None:
-        out_file = os.path.join(SCRIPT_DIR, "run", "Rockstar", "neuro", f"{args.name}.json")
+        out_file = os.path.join(PROJECT_ROOT, "run", ".options", "neuro", f"{args.name}.json")
 
     os.makedirs(os.path.dirname(out_file), exist_ok=True)
 
@@ -94,7 +97,7 @@ def main():
     ret = train_aura.main()
     if ret == 0:
         if args.activate:
-            active_file = os.path.join(SCRIPT_DIR, "run", "Rockstar", "neuro", "active.txt")
+            active_file = os.path.join(PROJECT_ROOT, "run", ".options", "neuro", "active.txt")
             with open(active_file, "w", encoding="utf-8") as f:
                 f.write(args.name)
             print(f"[+] Модель {args.name} назначена активной в active.txt")

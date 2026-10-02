@@ -23,7 +23,10 @@ public class FuntimeRotation extends RotationMode {
         var mc = ka.mc;
         if (target == null) return;
 
-        Vec3d point = ka.resolveMultipoint(target, BestPoint.getPoint2(target), 6);
+        Vec3d basePoint = (ka.extrapolation.getValue() || ka.backtrack.getValue())
+                ? ka.getTargetCenter(target)
+                : BestPoint.getPoint2(target);
+        Vec3d point = ka.resolveMultipoint(target, basePoint, 6);
         if (target.isGliding() && ka.isElytraPredictActive() && !ka.isTurnaroundActive) {
             point = PredictUtils.getPredicted(target, ka.predictValue.getValue());
         }
@@ -92,6 +95,7 @@ public class FuntimeRotation extends RotationMode {
         ka.lastYaw = funRot.getYaw();
         ka.lastPitch = funRot.getPitch();
     }
+
 
     @Override
     public void reset(KillAura ka) {

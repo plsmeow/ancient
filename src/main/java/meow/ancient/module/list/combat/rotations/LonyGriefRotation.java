@@ -19,14 +19,19 @@ public class LonyGriefRotation extends RotationMode {
     public void update(KillAura ka, LivingEntity target) {
         var mc = ka.mc;
 
-        Vec3d point = target.isGliding() && ka.isElytraPredictActive() && !ka.isTurnaroundActive ? PredictUtils.getPredicted(target, ka.predictValue.getValue()) : ka.resolveMultipoint(target, BestPoint.getPoint(target), 6);
+        Vec3d basePoint = (ka.extrapolation.getValue() || ka.backtrack.getValue())
+                ? ka.getTargetCenter(target)
+                : BestPoint.getPoint(target);
+        Vec3d point = target.isGliding() && ka.isElytraPredictActive() && !ka.isTurnaroundActive
+                ? PredictUtils.getPredicted(target, ka.predictValue.getValue())
+                : ka.resolveMultipoint(target, basePoint, 6);
 
         var angle = new Rotation(RotationUtil.calculate(point));
         float targetYaw = angle.getYaw();
         float targetPitch = angle.getPitch();
 
         if (!ka.back) {
-            float pon = mc.player.isGliding() ? 1.35f : 1f;
+            float pon = mc.player != null && mc.player.isGliding() ? 1.35f : 1f;
             ka.speedAcceleration += (Math.abs(MathHelper.wrapDegrees(targetYaw - ka.lastYaw)) > 40 ? 0.005f / pon : 0.0038f / pon);
 
             boolean isLooking = RaytraceUtil.rayTrace(mc.player.getRotationVector(), 6, target.getBoundingBox().expand(-0.2, -0.3, -0.2));

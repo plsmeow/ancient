@@ -345,7 +345,7 @@ public class UniversalRotation extends RotationMode {
         boolean preHit = ka.universalFinishHit.getValue()
                 && ka.ticksToAttack <= 0
                 && mc.player.getAttackCooldownProgress(0.5f) >= 0.9f
-                && mc.player.getEyePos().distanceTo(BestPoint.getNearestPoint(target)) <= ka.distance.getValue() + 1.5;
+                && ka.getSelfEyePos().distanceTo(ka.getTargetNearestPoint(target)) <= ka.distance.getValue() + 1.5;
         if (preHit) {
             Vec3d hitPoint = ka.resolveMultipoint(target, BestPoint.getPoint2(target), 6);
             Rotation hitRot = RotationHelper.calculateRotation(hitPoint);
@@ -574,7 +574,7 @@ public class UniversalRotation extends RotationMode {
     private float clampPitchSpan(KillAura ka, LivingEntity target, Vec3d point, float pitch) {
         if (!ka.universalYawTrack.getValue()) return pitch;
         var mc = ka.mc;
-        Vec3d eye = mc.player.getEyePos();
+        Vec3d eye = ka.getSelfEyePos();
         double dist = eye.distanceTo(point);
         float threshold = ka.universalYawTrackDistance.getFloatValue();
         if (dist <= threshold) return pitch;
@@ -636,14 +636,19 @@ public class UniversalRotation extends RotationMode {
     }
 
     private Vec3d getAimPoint(KillAura ka, LivingEntity target) {
-        Box box = target.getBoundingBox();
-        double h = target.getHeight();
+        Box box = (ka.extrapolation.getValue() || ka.backtrack.getValue())
+                ? ka.getTargetBox(target)
+                : target.getBoundingBox();
+        if (box == null) box = target.getBoundingBox();
+        double h = box.maxY - box.minY;
         double baseY = box.minY + h * (0.55 + aimOffsetY);
+        double centerX = (box.minX + box.maxX) / 2.0;
+        double centerZ = (box.minZ + box.maxZ) / 2.0;
 
         return ka.resolveMultipoint(target, new Vec3d(
-            target.getX() + aimOffsetX,
+            centerX + aimOffsetX,
             baseY,
-            target.getZ() + aimOffsetZ
+            centerZ + aimOffsetZ
         ), 6);
     }
 

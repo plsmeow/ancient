@@ -46,9 +46,12 @@ public class Grim1204Rotation extends RotationMode {
         }
 
         // Используем оптимальную точку на хитбоксе
+        Vec3d basePoint = (ka.extrapolation.getValue() || ka.backtrack.getValue())
+                ? ka.getTargetCenter(target)
+                : BestPoint.getNearestPoint(target);
         Vec3d targetVec = target.isGliding()
                 ? target.getEyePos()
-                : ka.resolveMultipoint(target, BestPoint.getNearestPoint(target), ka.distance.getValue());
+                : ka.resolveMultipoint(target, basePoint, ka.distance.getValue());
 
         // Плавная ротация с ускорением как в ThunderHack
         calcRotations(ka, target, targetVec);

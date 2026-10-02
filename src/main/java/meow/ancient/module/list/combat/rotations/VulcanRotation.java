@@ -23,8 +23,10 @@ public class VulcanRotation extends RotationMode {
             return;
         }
 
-        Vec3d targetPos = target.getEyePos();
-        Vec3d eyePos = mc.player.getEyePos();
+        Vec3d targetPos = (ka.extrapolation.getValue() || ka.backtrack.getValue())
+                ? ka.getTargetCenter(target)
+                : target.getEyePos();
+        Vec3d eyePos = ka.getSelfEyePos();
 
         double deltaX = targetPos.x - eyePos.x;
         double deltaY = targetPos.y - eyePos.y;

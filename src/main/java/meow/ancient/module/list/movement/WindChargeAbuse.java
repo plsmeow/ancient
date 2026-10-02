@@ -12,7 +12,6 @@ import net.minecraft.sound.SoundEvents;
 import net.minecraft.util.math.Vec3d;
 import meow.ancient.event.list.EventKeyInput;
 import meow.ancient.event.list.EventPacket;
-import meow.ancient.event.list.EventTick;
 import meow.ancient.module.Module;
 import meow.ancient.module.ModuleCategory;
 import meow.ancient.module.ModuleInformation;
@@ -37,13 +36,11 @@ public class WindChargeAbuse extends Module {
     private final BooleanSetting chatFeedback = new BooleanSetting("Вывод в чат", true);
 
     private final CopyOnWriteArrayList<StoredKnockback> storedKnockbacks = new CopyOnWriteArrayList<>();
-    private long lastCaptureTime = 0;
 
     @Override
     public void onEnable() {
         super.onEnable();
         storedKnockbacks.clear();
-        lastCaptureTime = System.currentTimeMillis();
     }
 
     @Override
@@ -63,7 +60,7 @@ public class WindChargeAbuse extends Module {
                 return;
             }
 
-            // Перехват пакета взрыва от порыва ветра
+            // Перехват пакета взрыва только от порыва ветра
             if (e.getPacket() instanceof ExplosionS2CPacket packet) {
                 if (packet.playerKnockback().isPresent() && isWindChargeExplosion(packet)) {
                     e.cancelEvent();
@@ -71,13 +68,12 @@ public class WindChargeAbuse extends Module {
                     Vec3d kb = packet.playerKnockback().get();
                     StoredKnockback sk = new StoredKnockback(kb);
                     storedKnockbacks.add(sk);
-                    lastCaptureTime = System.currentTimeMillis();
 
                     if (chatFeedback.getValue()) {
                         logDirect("Задержан порыв ветра! Накоплено: " + storedKnockbacks.size());
                     }
 
-                    // Воспроизводим звук и эффекты взрыва локально
+                    // Локальные визуальные и звуковые эффекты
                     mc.execute(() -> {
                         if (mc.world == null) return;
                         try {
@@ -105,10 +101,9 @@ public class WindChargeAbuse extends Module {
                 }
             }
 
-            // Обход флагов Grim AC AntiExplosion:
-            // Grim отправляет пинг-транзакцию (CommonPingS2CPacket) для подтверждения взрыва.
-            // Если клиент сразу ответит понг-пакетом, но останется стоять на месте — Grim флагнет AntiExplosion (o: 0.00E+00).
-            // Поэтому, пока заряды задержаны, мы перехватываем пинги и сохраняем их параметры.
+            // Буферизация транзакций Grim AC:
+            // Пока есть накопленные заряды ветра, пинги буферизируются строго по порядку (FIFO).
+            // Никаких самопроизвольных спусков — заряды выпускаются ТОЛЬКО по нажатию бинда!
             if (e.getPacket() instanceof CommonPingS2CPacket ping) {
                 if (!storedKnockbacks.isEmpty()) {
                     e.cancelEvent();
@@ -132,16 +127,6 @@ public class WindChargeAbuse extends Module {
         }
     }
 
-    @EventHandler
-    public void onTick(EventTick e) {
-        if (mc.player == null || mc.world == null) return;
-
-        // Авто-спуск при задержке более 25 секунд, чтобы избежать таймаута транзакций
-        if (!storedKnockbacks.isEmpty() && System.currentTimeMillis() - lastCaptureTime > 25000L) {
-            releaseAll();
-        }
-    }
-
     public void releaseAll() {
         if (mc.player == null || storedKnockbacks.isEmpty()) return;
 
@@ -155,10 +140,10 @@ public class WindChargeAbuse extends Module {
         }
         storedKnockbacks.clear();
 
-        // 1. Применяем суммарный импульс
+        // 1. Применяем суммарный импульс к игроку
         applyKnockback(total);
 
-        // 2. Отправляем транзакции Grim одновременно с рывком — смещение совпадает с симуляцией (offset = 0)
+        // 2. Отправляем ВСЕ задержанные понг-пакеты строго в порядке их поступления
         for (int param : allPongs) {
             NetworkUtils.sendSilentPacket(new CommonPongC2SPacket(param));
         }
@@ -173,7 +158,7 @@ public class WindChargeAbuse extends Module {
 
         StoredKnockback sk = storedKnockbacks.remove(0);
 
-        // 1. Применяем импульс одного заряда
+        // 1. Применяем импульс одного порыва ветра
         applyKnockback(sk.getVector());
 
         // 2. Отправляем транзакции только для этого взрыва
@@ -187,9 +172,20 @@ public class WindChargeAbuse extends Module {
     }
 
     public void clearCharges() {
+        if (storedKnockbacks.isEmpty()) return;
+
         int count = storedKnockbacks.size();
+        List<Integer> allPongs = new ArrayList<>();
+        for (StoredKnockback sk : storedKnockbacks) {
+            allPongs.addAll(sk.getPongs());
+        }
         storedKnockbacks.clear();
-        // Понги не отправляются, чтобы не спровоцировать флаг AntiExplosion
+
+        // Отправляем транзакции, чтобы Grim не выдал TransactionOrder (skipped)
+        for (int param : allPongs) {
+            NetworkUtils.sendSilentPacket(new CommonPongC2SPacket(param));
+        }
+
         if (chatFeedback.getValue() && count > 0) {
             logDirect("Очищено зарядов: " + count);
         }
@@ -198,7 +194,7 @@ public class WindChargeAbuse extends Module {
     private void applyKnockback(Vec3d kb) {
         if (mc.player == null) return;
 
-        // Используем точный вектор от сервера, чтобы симуляция Grim совпала без расхождений
+        // Применяем вектор от сервера, чтобы симуляция Grim совпала без смещения (offset = 0)
         mc.player.setVelocity(mc.player.getVelocity().add(kb));
         mc.player.velocityModified = true;
         mc.player.fallDistance = 0f;

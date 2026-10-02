@@ -5,6 +5,7 @@ import net.minecraft.entity.Entity;
 import net.minecraft.util.hit.HitResult;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Box;
+import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.RaycastContext;
 import java.util.function.Predicate;
@@ -100,20 +101,35 @@ public class BestPoint implements IMinecraft {
         return pos.getX() == feet.getX() && pos.getZ() == feet.getZ() && pos.getY() >= minY && pos.getY() <= maxY;
     }
 
+    public Vec3d getNearestPoint(Box box) {
+        if (box == null || mc.player == null) return Vec3d.ZERO;
+        Vec3d eye = mc.player.getEyePos();
+        return new Vec3d(
+                MathHelper.clamp(eye.x, box.minX, box.maxX),
+                MathHelper.clamp(eye.y, box.minY, box.maxY),
+                MathHelper.clamp(eye.z, box.minZ, box.maxZ)
+        );
+    }
+
     public Vec3d getNearestVisiblePoint(Entity target, Vec3d preferredPoint, double range) {
         return getNearestVisiblePoint(target, preferredPoint, range, false);
     }
 
     public Vec3d getNearestVisiblePoint(Entity target, Vec3d preferredPoint, double range, boolean semi) {
+        return getNearestVisiblePoint(target, target != null ? target.getBoundingBox() : null, preferredPoint, range, semi);
+    }
+
+    public Vec3d getNearestVisiblePoint(Entity target, Box box, Vec3d preferredPoint, double range, boolean semi) {
         if (preferredPoint == null || mc.player == null || mc.world == null) {
             return preferredPoint;
         }
 
-        if (isPointVisible(target, preferredPoint, range, semi)) {
+        if (isPointVisible(target, box, preferredPoint, range, semi)) {
             return preferredPoint;
         }
 
-        Box box = target.getBoundingBox();
+        if (box == null && target != null) box = target.getBoundingBox();
+        if (box == null) return preferredPoint;
         double step = 0.12;
         Vec3d bestPoint = null;
         double bestDistance = Double.MAX_VALUE;
@@ -122,7 +138,7 @@ public class BestPoint implements IMinecraft {
             for (double y = box.minY; y <= box.maxY; y += step) {
                 for (double z = box.minZ; z <= box.maxZ; z += step) {
                     Vec3d sample = new Vec3d(x, y, z);
-                    if (!isPointVisible(target, sample, range, semi)) {
+                    if (!isPointVisible(target, box, sample, range, semi)) {
                         continue;
                     }
 
@@ -143,16 +159,22 @@ public class BestPoint implements IMinecraft {
     }
 
     public boolean hasVisiblePoint(Entity target, double range, boolean semi) {
+        return hasVisiblePoint(target, target != null ? target.getBoundingBox() : null, range, semi);
+    }
+
+    public boolean hasVisiblePoint(Entity target, Box box, double range, boolean semi) {
         if (mc.player == null || mc.world == null) return true;
+        if (box == null && target != null) box = target.getBoundingBox();
+        if (box == null) return false;
 
-        if (isPointVisible(target, getNearestPoint(target), range, semi)) return true;
+        Vec3d nearest = getNearestPoint(box);
+        if (isPointVisible(target, box, nearest, range, semi)) return true;
 
-        Box box = target.getBoundingBox();
         double step = 0.25;
         for (double x = box.minX; x <= box.maxX; x += step) {
             for (double y = box.minY; y <= box.maxY; y += step) {
                 for (double z = box.minZ; z <= box.maxZ; z += step) {
-                    if (isPointVisible(target, new Vec3d(x, y, z), range, semi)) return true;
+                    if (isPointVisible(target, box, new Vec3d(x, y, z), range, semi)) return true;
                 }
             }
         }
@@ -164,14 +186,20 @@ public class BestPoint implements IMinecraft {
     }
 
     public boolean isPointVisible(Entity target, Vec3d point, double range, boolean semi) {
+        return isPointVisible(target, target != null ? target.getBoundingBox() : null, point, range, semi);
+    }
+
+    public boolean isPointVisible(Entity target, Box box, Vec3d point, double range, boolean semi) {
         Vec3d eyePos = mc.player.getEyePos();
         double distance = eyePos.distanceTo(point);
         if (distance > range) {
             return false;
         }
 
+        if (box == null && target != null) box = target.getBoundingBox();
+        if (box == null) return false;
         Vec3d direction = point.subtract(eyePos).normalize();
-        if (!RaytraceUtil.rayTrace(direction, distance + 0.2, target.getBoundingBox())) {
+        if (!RaytraceUtil.rayTrace(direction, distance + 0.2, box)) {
             return false;
         }
 

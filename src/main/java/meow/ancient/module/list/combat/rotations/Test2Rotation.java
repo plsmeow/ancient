@@ -132,7 +132,7 @@ public class Test2Rotation extends RotationMode {
         lastHitPoint = hitPoint;
         float approachPitch = approachController.approachPitch(actualPitch);
 
-        double distBlocks = mc.player.getEyePos().distanceTo(BestPoint.getNearestPoint(target));
+        double distBlocks = ka.getSelfEyePos().distanceTo(ka.getTargetNearestPoint(target));
         boolean attackImminent = ka.ticksToAttack <= 0
                 && mc.player.getAttackCooldownProgress(0.5f) >= 0.9f
                 && distBlocks <= ka.distance.getValue() + 1.5;
@@ -290,6 +290,7 @@ public class Test2Rotation extends RotationMode {
                 controller.getProgress(),
                 phase == RotationState.Phase.ATTACK);
     }
+
     /**
      * Точка попадания, стабильная в течение цикла: центр хитбокса
      * (сглаженный от тиковых шагов) + опережение по скорости цели +
@@ -305,8 +306,10 @@ public class Test2Rotation extends RotationMode {
             return ka.resolveMultipoint(target, PredictUtils.getPredicted(target, ka.predictValue.getValue()), 6);
         }
 
-        Box box = target.getBoundingBox();
-        Vec3d center = box.getCenter();
+        Box box = (ka.extrapolation.getValue() || ka.backtrack.getValue())
+                ? ka.getTargetBox(target)
+                : target.getBoundingBox();
+        Vec3d center = box != null ? box.getCenter() : target.getBoundingBox().getCenter();
         if (smoothCenter == null) {
             smoothCenter = center;
             targetVelSmooth = target.getVelocity();
@@ -320,7 +323,7 @@ public class Test2Rotation extends RotationMode {
         }
 
         // Опережение компенсирует лаг сглаживания и следователя
-        Vec3d eyes = mc.player.getEyePos();
+        Vec3d eyes = ka.getSelfEyePos();
         double dist = eyes.distanceTo(center);
         double lead = MathHelper.clamp(dist * 0.025D, 0.03D, 0.12D);
         Vec3d predicted = smoothCenter.add(targetVelSmooth.multiply(lead));
@@ -361,7 +364,8 @@ public class Test2Rotation extends RotationMode {
         Vec3d hitPoint = resolveHitPoint(ka, target, 0.0F);
         var actual = new Rotation(RotationUtil.calculate(hitPoint));
 
-        double distBlocks = mc.player.getEyePos().distanceTo(BestPoint.getNearestPoint(target));
+        Vec3d np = ka.getTargetNearestPoint(target);
+        double distBlocks = np != null ? ka.getSelfEyePos().distanceTo(np) : mc.player.distanceTo(target);
         approachController.newCycle(r,
                 ka.test2OffsetMin.getFloatValue(), ka.test2OffsetMax.getFloatValue(),
                 45.0F, distBlocks, target.getHeight(), controller.getCurrentPitch());
@@ -411,7 +415,7 @@ public class Test2Rotation extends RotationMode {
     /** Мировая точка подхода (для отладочного рендера): инверсия pitch в высоту. */
     private Vec3d approachPointWorld(Vec3d hitPoint, float approachPitch) {
         if (mc.player == null || hitPoint == null) return hitPoint;
-        Vec3d eyes = mc.player.getEyePos();
+        Vec3d eyes = KillAura.get().getSelfEyePos();
         double dxz = Math.hypot(hitPoint.x - eyes.x, hitPoint.z - eyes.z);
         if (dxz < 0.05D) return hitPoint;
         float clamped = MathHelper.clamp(approachPitch, -89.0F, 89.0F);

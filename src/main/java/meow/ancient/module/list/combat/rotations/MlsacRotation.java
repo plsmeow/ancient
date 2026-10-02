@@ -55,9 +55,12 @@ public class MlsacRotation extends RotationMode implements IMinecraft {
     public void update(KillAura ka, LivingEntity target) {
         if (mc.player == null || target == null) return;
 
+        Vec3d basePoint = (ka.extrapolation.getValue() || ka.backtrack.getValue())
+                ? ka.getTargetCenter(target)
+                : BestPoint.getPoint(target);
         Vec3d point = target.isGliding() && ka.isElytraPredictActive() && !ka.isTurnaroundActive
                 ? PredictUtils.getPredicted(target, ka.predictValue.getValue())
-                : ka.resolveMultipoint(target, BestPoint.getPoint(target), 6);
+                : ka.resolveMultipoint(target, basePoint, 6);
 
         Rotation aim = new Rotation(RotationUtil.calculate(point));
         float aimYaw = aim.getYaw();
@@ -78,7 +81,7 @@ public class MlsacRotation extends RotationMode implements IMinecraft {
         float curYaw = ka.lastYaw;
         float curPitch = ka.lastPitch;
 
-        boolean inRange = mc.player.getEyePos().distanceTo(BestPoint.getNearestPoint(target)) <= ka.distance.getValue();
+        boolean inRange = ka.getSelfEyePos().distanceTo(ka.getTargetNearestPoint(target)) <= ka.distance.getValue();
         float cd = MathHelper.clamp(mc.player.getAttackCooldownProgress(0.5f), 0f, 1f);
         float converge = inRange ? MathHelper.clamp((cd - CONVERGE_START) / CONVERGE_SPAN, 0f, 1f) : 0f;
 
