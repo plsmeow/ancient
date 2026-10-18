@@ -46,8 +46,6 @@ public class NeuroRotation extends RotationMode {
     private float currentAimOffset = 0.0f;
     private boolean attacked;
     private boolean modelWarned;
-    private int stuckTicks;
-    private int ticksSinceLastOffsetUpdate;
 
     // Субтиковая интерполяция (20 Hz step -> кадровая интерполяция)
     private float tickStartYaw;
@@ -87,9 +85,28 @@ public class NeuroRotation extends RotationMode {
     @Override
     public void update(KillAura ka, LivingEntity target) {
         if (mc.player == null || target == null) {
+            if (ka != null && ka.neuroSnap.getValue()) {
+                ka.snapActive = false;
+                ka.snapTimer = 0;
+            }
             return;
         }
 
+        if (ka != null && ka.neuroSnap.getValue()) {
+            boolean cooldownReady = mc.player.getAttackCooldownProgress(0.5f) >= 0.98f && ka.ticksToAttack <= 0;
+            if (!cooldownReady) {
+                ka.snapActive = false;
+                ka.snapTimer = 0;
+                this.combatTracker.reset();
+                this.lastTargetId = -1;
+                return;
+            }
+
+            if (!ka.snapActive) {
+                ka.snapActive = true;
+                ka.snapTimer = 0;
+            }
+        }
         NeuroModel model = NeuroModel.getActive();
         if (model == null) {
             warnModelNotLoaded();
@@ -128,28 +145,12 @@ public class NeuroRotation extends RotationMode {
                     ? this.tickTargetPitch
                     : ((ka.lastPitch != 0 && RotationComponent.getInstance().isRotating()) ? ka.lastPitch : mc.player.getPitch());
 
-            // Защита от рассогласования / застревания взгляда в воздухе:
-            // Если прицел задран в воздух (pitch <= -70) при цели внизу, или разница с целью > 50 градусов и не падает:
-            float yawErr = Math.abs(MathHelper.wrapDegrees(targetYaw - currentBaseYaw));
-            float pitchErr = Math.abs(targetPitch - currentBasePitch);
-            boolean lookingInAir = (currentBasePitch <= -70.0f && targetPitch > -50.0f);
-            boolean lookingInGround = (currentBasePitch >= 70.0f && targetPitch < 50.0f);
+            boolean needsInit = target.getId() != this.lastTargetId
+                    || !this.combatTracker.isInitialized()
+                    || Float.isNaN(this.tickTargetYaw)
+                    || Float.isNaN(this.tickTargetPitch);
 
-            if (lookingInAir || lookingInGround || (yawErr > 50.0f && pitchErr > 30.0f)) {
-                this.stuckTicks++;
-            } else {
-                this.stuckTicks = Math.max(0, this.stuckTicks - 1);
-            }
-
-            // Если застревание длится более 5 тиков (0.25 сек) или углы повреждены (NaN/Inf):
-            boolean forceReset = this.stuckTicks > 5
-                    || Float.isNaN(this.tickTargetYaw) || Float.isNaN(this.tickTargetPitch)
-                    || target.getId() != this.lastTargetId || !this.combatTracker.isInitialized();
-
-            if (forceReset) {
-                this.stuckTicks = 0;
-                currentBaseYaw = mc.player.getYaw();
-                currentBasePitch = mc.player.getPitch();
+            if (needsInit) {
                 this.combatTracker.init(model, currentBaseYaw, currentBasePitch, targetYaw, targetPitch);
                 this.lastTargetId = target.getId();
                 this.currentAimOffset = Math.min(AIM_OFFSET_SCALE * model.sampleAimError(ThreadLocalRandom.current().nextFloat()), 0.35f);
@@ -163,11 +164,6 @@ public class NeuroRotation extends RotationMode {
             }
 
             this.returnTicks = 0;
-            // Периодическое обновление aimOffset, чтобы оффсет не зависал навсегда, если цель не атакована
-            if (++this.ticksSinceLastOffsetUpdate > 8) {
-                this.ticksSinceLastOffsetUpdate = 0;
-                this.currentAimOffset = Math.min(AIM_OFFSET_SCALE * model.sampleAimError(ThreadLocalRandom.current().nextFloat()), 0.35f);
-            }
             float aimOffset = this.currentAimOffset;
             float speedMul = getSpeedMultiplier();
 
@@ -186,7 +182,6 @@ public class NeuroRotation extends RotationMode {
 
                 if (this.attacked) {
                     this.attacked = false;
-                    this.ticksSinceLastOffsetUpdate = 0;
                     this.combatTracker.onAttack();
                     this.currentAimOffset = Math.min(AIM_OFFSET_SCALE * model.sampleAimError(ThreadLocalRandom.current().nextFloat()), 0.35f);
                 } else {
@@ -195,7 +190,6 @@ public class NeuroRotation extends RotationMode {
             }
         }
 
-        // Субтиковая интерполяция: между тиками плавно ведём прицел к tickTarget
         float tickDelta = 1.0f;
         if (mc.getRenderTickCounter() != null) {
             tickDelta = MathHelper.clamp(mc.getRenderTickCounter().getTickDelta(true), 0.0f, 1.0f);
@@ -218,6 +212,10 @@ public class NeuroRotation extends RotationMode {
         RotationComponent.update(nextRotation, 360, 360, 360, 360, 0, 1, ka.clientLook.getValue(), ka.getMoveFixMode(), ka.otvodkaActive());
         ka.lastYaw = this.tickTargetYaw;
         ka.lastPitch = this.tickTargetPitch;
+
+        if (ka != null && ka.neuroSnap.getValue()) {
+            ka.snapTimer++;
+        }
     }
 
     public Rotation stepReturn(Rotation current, Rotation target) {
@@ -267,12 +265,13 @@ public class NeuroRotation extends RotationMode {
         this.returnTracker.reset();
         this.lastTickAge = -1;
         this.lastTargetId = -1;
+        if (ka != null && ka.neuroSnap.getValue()) {
+            ka.snapActive = false;
+            ka.snapTimer = 0;
+        }
         this.currentAimOffset = 0.0f;
         this.attacked = false;
         this.modelWarned = false;
-        this.debugAimPoint = null;
-        this.stuckTicks = 0;
-        this.ticksSinceLastOffsetUpdate = 0;
         this.tickStartYaw = 0.0f;
         this.tickStartPitch = 0.0f;
         this.tickTargetYaw = 0.0f;

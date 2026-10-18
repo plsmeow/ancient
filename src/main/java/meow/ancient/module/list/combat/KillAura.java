@@ -93,7 +93,8 @@ public class KillAura extends Module {
             "Universal",
             "GrimFun",
             "Grim 1.20.4",
-            "Neuro"
+            "Neuro",
+            "MlsAC"
     );
     public final ModeSetting sortBy = new ModeSetting("Сортировка", "FOV", "FOV", "Дистанция", "Здоровье");
     private final ModeListSetting targets = new ModeListSetting("Таргеты",
@@ -103,8 +104,10 @@ public class KillAura extends Module {
             new BooleanSetting("Животные", true)
     );
     public final ModeSetting moveFix = new ModeSetting("MoveFix", "Сфокусированная", "Свободный", "Сфокусированная", "None", "Target");
+    public final BooleanSetting neuroSnap = new BooleanSetting("Snap", false)
+            .setVisible(() -> rotation.is("Neuro"));
     public final SliderSetting snapHoldTicks = new SliderSetting("Snap tick", ValueUnit.countable("тик", "тика", "тиков"), 2, 1, 10, 1)
-            .setVisible(() -> rotation.is("Snap"));
+            .setVisible(() -> rotation.is("Snap") || (rotation.is("Neuro") && neuroSnap.getValue()));
     public final SliderSetting distance = new SliderSetting("Дистанция", ValueUnit.countable("блок", "блока", "блоков"), 3, 2, 6, 0.1f);
     public final BooleanSetting elytraTarget = new BooleanSetting("ElytraTarget", true);
     public final BooleanSetting smoothElytraRotation = new BooleanSetting("Плавная ротация (Elytra)", false)
@@ -346,6 +349,7 @@ public class KillAura extends Module {
     private final GrimFunRotation grimFunRotation = new GrimFunRotation();
     private final Grim1204Rotation grim1204Rotation = new Grim1204Rotation();
     private final NeuroRotation neuroRotation = new NeuroRotation();
+    private final MlsacRotation mlsacRotation = new MlsacRotation();
 
     private boolean interpolationRotationInitialized;
     private LivingEntity interpolationRotationTarget;
@@ -434,7 +438,7 @@ public class KillAura extends Module {
     /** Плавная отводка работает только с этими ротациями. */
     public boolean isOtvodkaRotation() {
         return rotation.is("Universal") || rotation.is("SpookyTime") || rotation.is("Test") || rotation.is("Test2") || rotation.is("Sloth 07.09.26")
-                || rotation.is("Wellmine old") || rotation.is("LonyGrief") || rotation.is("Neuro");
+                || rotation.is("Wellmine old") || rotation.is("LonyGrief") || rotation.is("Neuro") || rotation.is("MlsAC");
     }
 
     public boolean otvodkaActive() {
@@ -738,6 +742,7 @@ public class KillAura extends Module {
                 }
                 case "GrimFun" -> grimFunRotation.update(this, target);
                 case "Neuro" -> neuroRotation.update(this, target);
+                case "MlsAC" -> mlsacRotation.update(this, target);
             }
         }
     }
@@ -891,7 +896,7 @@ public class KillAura extends Module {
                     ticksToAttack = 10;
                 }
 
-                if (rotation.is("Snap")) {
+                if (rotation.is("Snap") || (rotation.is("Neuro") && neuroSnap.getValue())) {
                     snapActive = false;
                     snapTimer = 0;
                 }
@@ -912,6 +917,7 @@ public class KillAura extends Module {
             grimFunRotation.reset(this);
             grim1204Rotation.reset(this);
             neuroRotation.reset(this);
+            mlsacRotation.reset(this);
         }
 
         updateFreeze();
@@ -1053,10 +1059,13 @@ public class KillAura extends Module {
             return Ancient.getInstance().getIdealHitUtils().canCritical();
         }
 
-        if (rotation.is("Snap")) {
+        if (rotation.is("Snap") || (rotation.is("Neuro") && neuroSnap.getValue())) {
             if (!snapActive || snapTimer < snapHoldTicks.getValue()) return false;
         }
 
+        if (rotation.is("MlsAC") && !mlsacRotation.isReadyForAttack(this, target)) {
+            return false;
+        }
         // Test: бьём только с завершённой доводкой (прицел на цели) —
         // каждый удар должен проходить, лучше подождать тик-другой, чем мимо
         if (rotation.is("Test") && !(elytraTarget.getValue() && target.isGliding() && mc.player.isGliding())
@@ -1849,6 +1858,7 @@ public class KillAura extends Module {
         shieldPhase = 0;
         grim1204Rotation.reset(this);
         neuroRotation.reset(this);
+        mlsacRotation.reset(this);
         Ancient.getInstance().getModuleStorage().setSpeedAcceleration(0);
 
         if (!renderListenerRegistered) {
@@ -1874,6 +1884,7 @@ public class KillAura extends Module {
         snapTimer = 0;
         shieldPhase = 0;
         neuroRotation.reset(this);
+        mlsacRotation.reset(this);
         grim1204Rotation.reset(this);
         Ancient.getInstance().getModuleStorage().setSpeedAcceleration(0);
         Ancient.getInstance().getModuleStorage().setRandomness(1);

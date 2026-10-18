@@ -116,6 +116,13 @@ esac
 
 CLASSPATH="\\\"\\\""
 
+if command -v mise >/dev/null 2>&1; then
+    MISE_JAVA=$(mise which java 2>/dev/null)
+    if [ -n "$MISE_JAVA" ] && [ -x "$MISE_JAVA" ]; then
+        JAVA_HOME=$(dirname "$(dirname "$MISE_JAVA")")
+        export JAVA_HOME
+    fi
+fi
 # Determine the Java command to use to start the JVM.
 if [ -n "$JAVA_HOME" ] ; then
     if [ -x "$JAVA_HOME/jre/sh/java" ] ; then
