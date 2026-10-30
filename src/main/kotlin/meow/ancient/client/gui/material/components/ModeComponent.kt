@@ -1,0 +1,155 @@
+package meow.ancient.client.gui.material.components
+
+import meow.ancient.client.gui.material.M3Theme
+import meow.ancient.client.util.other.color.Color4b
+import meow.ancient.client.util.render.RenderUtils
+import meow.ancient.client.util.render.engine.controls.ClientRenderPipeline
+import meow.ancient.client.util.render.font.Fonts
+import meow.ancient.module.setting.EnumSetting
+import meow.ancient.module.setting.ModeSetting
+import meow.ancient.module.setting.MultiModeSetting
+import meow.ancient.module.setting.Setting
+import org.joml.Matrix4f
+
+class ModeComponent(
+    setting: Setting<*>,
+    private val modes: List<String>,
+    private val isSelected: (String) -> Boolean,
+    private val onSelect: (String) -> Unit
+) : SettingComponent(setting) {
+
+    constructor(modeSetting: ModeSetting) : this(
+        setting = modeSetting,
+        modes = modeSetting.modes,
+        isSelected = modeSetting::isMode,
+        onSelect = modeSetting::set
+    )
+
+    constructor(multiModeSetting: MultiModeSetting) : this(
+        setting = multiModeSetting,
+        modes = multiModeSetting.modes,
+        isSelected = multiModeSetting::isSelected,
+        onSelect = multiModeSetting::toggle
+    )
+
+    constructor(enumSetting: EnumSetting<*>) : this(
+        setting = enumSetting,
+        modes = enumSetting.modes,
+        isSelected = { enumSetting.isMode(it) },
+        onSelect = { enumSetting.selectByName(it) }
+    )
+
+    private data class ChipRect(
+        val mode: String,
+        val x: Float,
+        val y: Float,
+        val w: Float,
+        val h: Float
+    )
+
+    private val chipRects = mutableListOf<ChipRect>()
+
+    override fun render(
+        matrix: Matrix4f,
+        x: Float,
+        y: Float,
+        width: Float,
+        mouseX: Int,
+        mouseY: Int,
+        dt: Float
+    ): Float {
+        this.x = x
+        this.y = y
+        this.width = width
+        chipRects.clear()
+
+        val palette = M3Theme.current
+
+        Fonts.google_sans_medium.drawString(
+            matrix = matrix,
+            text = setting.name,
+            x = x + 2f,
+            y = y + 2f,
+            size = 10.5f,
+            color = palette.onSurface,
+            shadow = false,
+            pipeline = ClientRenderPipeline.WINDOW_TEXT
+        )
+
+        val chipH = 14f
+        val chipRadius = 4f
+        val gapX = 3.5f
+        val gapY = 3.5f
+        val startX = x + 2f
+        val maxRight = x + width - 2f
+
+        var curX = startX
+        var curY = y + 14f
+
+        for (mode in modes) {
+            val textW = Fonts.google_sans_medium.width(mode, 8.5f)
+            val chipW = (textW + 8f).coerceAtLeast(24f)
+
+            if (curX + chipW > maxRight && curX > startX) {
+                curX = startX
+                curY += chipH + gapY
+            }
+
+            chipRects.add(ChipRect(mode, curX, curY, chipW, chipH))
+
+            val selected = isSelected(mode)
+            val hovered = isHovered(mouseX.toDouble(), mouseY.toDouble(), curX, curY, chipW, chipH)
+
+            val chipBg = when {
+                selected -> palette.primary
+                hovered -> Color4b(82, 74, 98, 255)
+                else -> Color4b(67, 60, 79, 255)
+            }
+
+            val textCol = if (selected) {
+                Color4b(33, 0, 93, 255)
+            } else {
+                palette.onSurface
+            }
+
+            RenderUtils.roundedRect(
+                matrix = matrix,
+                x = curX,
+                y = curY,
+                width = chipW,
+                height = chipH,
+                color = chipBg,
+                radius = chipRadius,
+                pipeline = ClientRenderPipeline.WINDOW_RECT
+            )
+
+            Fonts.google_sans_medium.drawCenteredString(
+                matrix = matrix,
+                text = mode,
+                centerX = curX + chipW * 0.5f,
+                y = curY + 2.8f,
+                size = 8.5f,
+                color = textCol,
+                shadow = false,
+                pipeline = ClientRenderPipeline.WINDOW_TEXT
+            )
+
+            curX += chipW + gapX
+        }
+
+        this.height = (curY + chipH) - y
+        return height
+    }
+
+    override fun mouseClicked(mouseX: Double, mouseY: Double, button: Int): Boolean {
+        if (button == 0) {
+            for (rect in chipRects) {
+                if (isHovered(mouseX, mouseY, rect.x, rect.y, rect.w, rect.h)) {
+                    onSelect(rect.mode)
+                    return true
+                }
+            }
+        }
+        return false
+    }
+}

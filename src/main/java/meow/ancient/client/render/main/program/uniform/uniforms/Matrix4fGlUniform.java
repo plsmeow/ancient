@@ -1,0 +1,29 @@
+package meow.ancient.client.render.main.program.uniform.uniforms;
+
+import meow.ancient.client.render.main.program.GlProgram;
+import meow.ancient.client.render.main.program.uniform.GlUniform;
+import org.joml.Matrix4f;
+import org.lwjgl.opengl.GL20;
+import org.lwjgl.system.MemoryUtil;
+
+import java.nio.FloatBuffer;
+
+public class Matrix4fGlUniform extends GlUniform {
+    private final FloatBuffer buffer = MemoryUtil.memAllocFloat(16);
+
+    public Matrix4fGlUniform(String name, int location, GlProgram glProgram) {
+        super(name, location, glProgram);
+    }
+
+    public void set(Matrix4f matrix4f) {
+        this.buffer.clear();
+        matrix4f.get(this.buffer);
+        this.buffer.position(0);
+        this.program.addUpdatedUniform(this);
+    }
+
+    @Override
+    public void upload() {
+        GL20.glUniformMatrix4fv(getLocation(), false, this.buffer);
+    }
+}
