@@ -102,13 +102,34 @@ object LightEspModule : Module(
                     GizmoStyle.stroke(strokeColor.argb, lineWidth.value.toFloat())
                 }
 
+                val player = mc.player ?: return@register
+                val px = player.x
+                val py = player.y
+                val pz = player.z
+                val maxDistSq = 32.0 * 32.0
+                var count = 0
+                val maxBoxes = 512
+
                 for (chunk in snapshot) {
+                    val chunkDistX = (chunk.x shl 4) + 8 - px
+                    val chunkDistZ = (chunk.z shl 4) + 8 - pz
+                    if (chunkDistX * chunkDistX + chunkDistZ * chunkDistZ > (48.0 * 48.0)) continue
+
                     val positions = chunk.surfaces
                     if (positions.isEmpty()) continue
                     if (world.getChunk(chunk.x, chunk.z, ChunkStatus.FULL, false) !== chunk.chunk) continue
                     for (packed in positions) {
-                        Gizmos.cuboid(BlockPos.of(packed), style)
+                        val bx = BlockPos.getX(packed)
+                        val by = BlockPos.getY(packed)
+                        val bz = BlockPos.getZ(packed)
+                        val dx = bx + 0.5 - px
+                        val dy = by + 0.5 - py
+                        val dz = bz + 0.5 - pz
+                        if (dx * dx + dy * dy + dz * dz > maxDistSq) continue
+                        Gizmos.cuboid(BlockPos(bx, by, bz), style)
+                        if (++count >= maxBoxes) break
                     }
+                    if (count >= maxBoxes) break
                 }
             }
             registered = true

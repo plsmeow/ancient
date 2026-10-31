@@ -31,7 +31,8 @@
         "MixinFirstPersonHandsAndItemsRenderer",
         "MixinScreenEffectRenderer",
         "MixinWeatherEffectRenderer",
-        "MixinWorldBorderRenderer"
+        "MixinWorldBorderRenderer",
+        "MixinEntityHitboxDebugRenderer"
     ],
     "mixins": [
     ],

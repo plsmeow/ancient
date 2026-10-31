@@ -34,8 +34,8 @@ object AnticheatManager {
             ?: scoreboard.getDisplayObjective(DisplaySlot.SIDEBAR)
         if (objective != null) {
             val score = scoreboard.getPlayerScoreInfo(entity, objective)
-            if (score != null && score.value > 0) {
-                return score.value.toFloat()
+            if (score != null && score.value() > 0) {
+                return score.value().toFloat()
             }
         }
         return entity.health + entity.absorptionAmount

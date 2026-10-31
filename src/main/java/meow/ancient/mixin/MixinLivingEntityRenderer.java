@@ -11,10 +11,14 @@ import net.minecraft.world.entity.LivingEntity;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 @Mixin(LivingEntityRenderer.class)
-public class MixinLivingEntityRenderer<T extends LivingEntity, S extends LivingEntityRenderState> {
+public abstract class MixinLivingEntityRenderer<T extends LivingEntity, S extends LivingEntityRenderState> {
+    @Shadow
+    public abstract net.minecraft.resources.Identifier getTextureLocation(S state);
     @Inject(
         method = "extractRenderState(Lnet/minecraft/world/entity/LivingEntity;Lnet/minecraft/client/renderer/entity/state/LivingEntityRenderState;F)V",
         at = @At("TAIL")
@@ -26,8 +30,20 @@ public class MixinLivingEntityRenderer<T extends LivingEntity, S extends LivingE
             float pitch = Mth.lerp(partialTick, prev.getPitch(), curr.getPitch());
             state.xRot = state.isUpsideDown ? -pitch : pitch;
         }
-        if (ChamsModule.INSTANCE.shouldRenderChams(entity)) {
-            state.outlineColor = ChamsModule.INSTANCE.getChamsColor();
+    }
+
+    @Inject(method = "getRenderType", at = @At("HEAD"), cancellable = true)
+    private void onGetRenderType(S state, boolean bodyVisible, boolean translucent, boolean appearsGlowing, CallbackInfoReturnable<net.minecraft.client.renderer.rendertype.RenderType> cir) {
+        if (ChamsModule.INSTANCE.shouldRenderChamsState(state)) {
+            net.minecraft.resources.Identifier texture = this.getTextureLocation(state);
+            cir.setReturnValue(net.minecraft.client.renderer.rendertype.RenderTypes.entityTranslucentEmissive(texture));
+        }
+    }
+
+    @Inject(method = "getModelTint", at = @At("HEAD"), cancellable = true)
+    private void onGetModelTint(S state, CallbackInfoReturnable<Integer> cir) {
+        if (ChamsModule.INSTANCE.shouldRenderChamsState(state)) {
+            cir.setReturnValue(ChamsModule.INSTANCE.getChamsColor());
         }
     }
 }

@@ -14,6 +14,9 @@ import meow.ancient.module.modules.combat.TriggerBotModule
 import meow.ancient.module.modules.combat.VelocityModule
 import meow.ancient.module.modules.combat.SpearKillModule
 import meow.ancient.module.modules.combat.HitBoxesModule
+import meow.ancient.module.modules.combat.CrystalAuraModule
+import meow.ancient.module.modules.combat.AnchorAuraModule
+import meow.ancient.module.modules.combat.TpAuraModule
 import meow.ancient.module.modules.movement.StepModule
 import meow.ancient.module.modules.player.FastExpModule
 import meow.ancient.module.modules.movement.AirStuckModule
@@ -71,6 +74,9 @@ object ModuleManager : ILoadable {
             VelocityModule,
             SpearKillModule,
             HitBoxesModule,
+            CrystalAuraModule,
+            AnchorAuraModule,
+            TpAuraModule,
             AutoSprintModule,
             GroundSpoofModule,
             AirStuckModule,

@@ -17,7 +17,7 @@ import java.util.Locale
 class NumberComponent(private val numSetting: NumberSetting) : SettingComponent(numSetting) {
     private var isDragging = false
     private val thumbAnim = AnimFloat(0f, 0f, 16f)
-    private val labelMarquee = MarqueeText()
+
 
     var isEditing = false
         private set
@@ -87,19 +87,17 @@ class NumberComponent(private val numSetting: NumberSetting) : SettingComponent(
             numSetting.getFormattedValue()
         }
 
-        val valW = Fonts.google_sans_medium.width(if (isEditing && currentInput.isEmpty()) "_" else valText, 10f)
-        val maxTextW = (width - valW - 10f).coerceAtLeast(10f)
-        labelMarquee.render(
+        val valW = Fonts.google_sans_medium.width(if (isEditing && currentInput.isEmpty()) "_" else valText, 9.5f)
+        val maxTextW = (width - valW - 8f).coerceAtLeast(10f)
+        val fittedTitle = fitText(numSetting.name, maxTextW, 9.5f, 7.5f)
+        Fonts.google_sans_regular.drawString(
             matrix = matrix,
-            text = numSetting.name,
+            text = fittedTitle.text,
             x = x + 2f,
-            y = y + 2f,
-            maxWidth = maxTextW,
-            size = 10f,
+            y = y + 2.5f,
+            size = fittedTitle.size,
             color = palette.onSurface,
-            bgColor = palette.surfaceContainerLowest,
-            isHovered = hovered,
-            dt = dt,
+            shadow = false,
             pipeline = ClientRenderPipeline.WINDOW_TEXT
         )
         val rightX = x + width - 2f
@@ -134,8 +132,8 @@ class NumberComponent(private val numSetting: NumberSetting) : SettingComponent(
                 matrix = matrix,
                 text = valText,
                 rightX = rightX,
-                y = y + 2f,
-                size = 10f,
+                y = y + 2.5f,
+                size = 9.5f,
                 color = palette.primary,
                 shadow = false,
                 pipeline = ClientRenderPipeline.WINDOW_TEXT

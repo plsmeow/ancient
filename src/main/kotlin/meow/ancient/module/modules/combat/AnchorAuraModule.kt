@@ -11,6 +11,7 @@ import meow.ancient.client.util.inventory.SwapUtil
 import meow.ancient.client.util.rotation.MoveFixMode
 import meow.ancient.client.util.rotation.RotationManager
 import meow.ancient.client.util.rotation.RotationUtil
+import net.minecraft.client.player.LocalPlayer
 import meow.ancient.event.events.PlayerUpdateEvent
 import meow.ancient.module.Module
 import net.minecraft.core.BlockPos
@@ -36,7 +37,7 @@ object AnchorAuraModule : Module(
     val maxSelfDamage by number("Max Self Damage", 8.0, 0.0, 20.0, 0.5, 1)
     val delay by number("Delay", 1.0, 0.0, 10.0, 1.0, 0)
 
-    val moveFixSetting = mode("MoveFix", "Focused", listOf("Free", "Focused", "Target", "None", "Off"))
+    val moveFixSetting = mode("MoveFix", "Silent", listOf("Silent", "Strict", "Free", "Off"))
     val moveFix by moveFixSetting
 
     val rotations by boolean("Rotations", true)
@@ -45,13 +46,7 @@ object AnchorAuraModule : Module(
 
     private var tickTimer = 0
 
-    private fun getMoveFixMode(): MoveFixMode = when (moveFix) {
-        "Free" -> MoveFixMode.FREE
-        "Focused" -> MoveFixMode.CORRECT
-        "Target" -> MoveFixMode.TARGET
-        "None" -> MoveFixMode.NONE
-        else -> MoveFixMode.OFF
-    }
+    private fun getMoveFixMode(): MoveFixMode = MoveFixMode.fromName(moveFix)
 
     @Commando
     fun onUpdate(event: PlayerUpdateEvent) {
@@ -89,7 +84,7 @@ object AnchorAuraModule : Module(
         return best
     }
 
-    private fun detonateOrChargeAnchor(player: Player, target: Player, targetHp: Float): Boolean {
+    private fun detonateOrChargeAnchor(player: LocalPlayer, target: Player, targetHp: Float): Boolean {
         val level = mc.level ?: return false
         val pPos = player.blockPosition()
         val r = range.toInt() + 1
@@ -156,14 +151,14 @@ object AnchorAuraModule : Module(
                     val prev = player.inventory.selectedSlot
                     player.inventory.selectedSlot = nonGlowSlot
                     mc.gameMode?.useItemOn(player, InteractionHand.MAIN_HAND, hitResult)
-                    player.swing(InteractionHand.MAIN_HAND, true)
+                    player.swing(InteractionHand.MAIN_HAND, player.getItemInHand(InteractionHand.MAIN_HAND).attackAnimation, false)
                     if (silentSlots) player.inventory.selectedSlot = prev
                     return true
                 }
             }
 
             mc.gameMode?.useItemOn(player, hand, hitResult)
-            player.swing(hand, true)
+            player.swing(hand, player.getItemInHand(hand).attackAnimation, false)
             return true
         }
 
@@ -172,7 +167,7 @@ object AnchorAuraModule : Module(
 
         if (player.offhandItem.`is`(Items.GLOWSTONE)) {
             mc.gameMode?.useItemOn(player, InteractionHand.OFF_HAND, hitResult)
-            player.swing(InteractionHand.OFF_HAND, true)
+            player.swing(InteractionHand.OFF_HAND, player.getItemInHand(InteractionHand.OFF_HAND).attackAnimation, false)
             return true
         }
 
@@ -180,7 +175,7 @@ object AnchorAuraModule : Module(
             val prevSlot = player.inventory.selectedSlot
             player.inventory.selectedSlot = glowSlot
             mc.gameMode?.useItemOn(player, InteractionHand.MAIN_HAND, hitResult)
-            player.swing(InteractionHand.MAIN_HAND, true)
+            player.swing(InteractionHand.MAIN_HAND, player.getItemInHand(InteractionHand.MAIN_HAND).attackAnimation, false)
             if (silentSlots) player.inventory.selectedSlot = prevSlot
             return true
         }
@@ -188,13 +183,13 @@ object AnchorAuraModule : Module(
         SwapUtil.clickWithBypass {
             InventoryUtil.swapSlots(glowSlot, player.inventory.selectedSlot, false)
             mc.gameMode?.useItemOn(player, InteractionHand.MAIN_HAND, hitResult)
-            player.swing(InteractionHand.MAIN_HAND, true)
+            player.swing(InteractionHand.MAIN_HAND, player.getItemInHand(InteractionHand.MAIN_HAND).attackAnimation, false)
             InventoryUtil.swapSlots(player.inventory.selectedSlot, glowSlot, true)
         }
         return true
     }
 
-    private fun placeNewAnchor(player: Player, target: Player, targetHp: Float): Boolean {
+    private fun placeNewAnchor(player: LocalPlayer, target: Player, targetHp: Float): Boolean {
         val level = mc.level ?: return false
         val pPos = player.blockPosition()
         val r = range.toInt() + 1
@@ -259,7 +254,7 @@ object AnchorAuraModule : Module(
 
         if (hand == InteractionHand.OFF_HAND) {
             mc.gameMode?.useItemOn(player, hand, hitResult)
-            player.swing(hand, true)
+            player.swing(hand, player.getItemInHand(hand).attackAnimation, false)
             return true
         }
 
@@ -267,7 +262,7 @@ object AnchorAuraModule : Module(
             val prevSlot = player.inventory.selectedSlot
             player.inventory.selectedSlot = anchorSlot
             mc.gameMode?.useItemOn(player, InteractionHand.MAIN_HAND, hitResult)
-            player.swing(InteractionHand.MAIN_HAND, true)
+            player.swing(InteractionHand.MAIN_HAND, player.getItemInHand(InteractionHand.MAIN_HAND).attackAnimation, false)
             if (silentSlots) player.inventory.selectedSlot = prevSlot
             return true
         }
@@ -275,7 +270,7 @@ object AnchorAuraModule : Module(
         SwapUtil.clickWithBypass {
             InventoryUtil.swapSlots(anchorSlot, player.inventory.selectedSlot, false)
             mc.gameMode?.useItemOn(player, InteractionHand.MAIN_HAND, hitResult)
-            player.swing(InteractionHand.MAIN_HAND, true)
+            player.swing(InteractionHand.MAIN_HAND, player.getItemInHand(InteractionHand.MAIN_HAND).attackAnimation, false)
             InventoryUtil.swapSlots(player.inventory.selectedSlot, anchorSlot, true)
         }
         return true

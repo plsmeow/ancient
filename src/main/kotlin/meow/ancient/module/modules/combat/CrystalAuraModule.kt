@@ -11,6 +11,7 @@ import meow.ancient.client.util.inventory.SwapUtil
 import meow.ancient.client.util.rotation.MoveFixMode
 import meow.ancient.client.util.rotation.Rotation
 import meow.ancient.client.util.rotation.RotationManager
+import net.minecraft.client.player.LocalPlayer
 import meow.ancient.client.util.rotation.RotationUtil
 import meow.ancient.event.events.PlayerUpdateEvent
 import meow.ancient.module.Module
@@ -39,7 +40,7 @@ object CrystalAuraModule : Module(
     val placeDelay by number("Place Delay", 1.0, 0.0, 10.0, 1.0, 0)
     val breakDelay by number("Break Delay", 0.0, 0.0, 10.0, 1.0, 0)
 
-    val moveFixSetting = mode("MoveFix", "Focused", listOf("Free", "Focused", "Target", "None", "Off"))
+    val moveFixSetting = mode("MoveFix", "Silent", listOf("Silent", "Strict", "Free", "Off"))
     val moveFix by moveFixSetting
 
     val rotations by boolean("Rotations", true)
@@ -49,13 +50,7 @@ object CrystalAuraModule : Module(
     private var placeTimer = 0
     private var breakTimer = 0
 
-    private fun getMoveFixMode(): MoveFixMode = when (moveFix) {
-        "Free" -> MoveFixMode.FREE
-        "Focused" -> MoveFixMode.CORRECT
-        "Target" -> MoveFixMode.TARGET
-        "None" -> MoveFixMode.NONE
-        else -> MoveFixMode.OFF
-    }
+    private fun getMoveFixMode(): MoveFixMode = MoveFixMode.fromName(moveFix)
 
     @Commando
     fun onUpdate(event: PlayerUpdateEvent) {
@@ -100,7 +95,7 @@ object CrystalAuraModule : Module(
         return best
     }
 
-    private fun breakCrystals(player: Player, target: Player, targetHp: Float): Boolean {
+    private fun breakCrystals(player: LocalPlayer, target: Player, targetHp: Float): Boolean {
         val level = mc.level ?: return false
         var bestCrystal: EndCrystal? = null
         var bestDamage = 0.0f
@@ -138,7 +133,7 @@ object CrystalAuraModule : Module(
         return true
     }
 
-    private fun placeCrystal(player: Player, target: Player, targetHp: Float): Boolean {
+    private fun placeCrystal(player: LocalPlayer, target: Player, targetHp: Float): Boolean {
         val level = mc.level ?: return false
         val pPos = player.blockPosition()
         val r = placeRange.toInt() + 1
@@ -209,7 +204,7 @@ object CrystalAuraModule : Module(
 
         if (hand == InteractionHand.OFF_HAND) {
             mc.gameMode?.useItemOn(player, hand, hitResult)
-            player.swing(hand, true)
+            player.swing(hand, player.getItemInHand(hand).attackAnimation, false)
             return true
         }
 
@@ -217,7 +212,7 @@ object CrystalAuraModule : Module(
             val prevSlot = player.inventory.selectedSlot
             player.inventory.selectedSlot = crystalSlot
             mc.gameMode?.useItemOn(player, InteractionHand.MAIN_HAND, hitResult)
-            player.swing(InteractionHand.MAIN_HAND, true)
+            player.swing(InteractionHand.MAIN_HAND, player.getItemInHand(InteractionHand.MAIN_HAND).attackAnimation, false)
             if (silentSlots) {
                 player.inventory.selectedSlot = prevSlot
             }
@@ -227,12 +222,11 @@ object CrystalAuraModule : Module(
         SwapUtil.clickWithBypass {
             InventoryUtil.swapSlots(crystalSlot, player.inventory.selectedSlot, false)
             mc.gameMode?.useItemOn(player, InteractionHand.MAIN_HAND, hitResult)
-            player.swing(InteractionHand.MAIN_HAND, true)
+            player.swing(InteractionHand.MAIN_HAND, player.getItemInHand(InteractionHand.MAIN_HAND).attackAnimation, false)
             InventoryUtil.swapSlots(player.inventory.selectedSlot, crystalSlot, true)
         }
         return true
     }
-
     override fun onDisable() {
         placeTimer = 0
         breakTimer = 0

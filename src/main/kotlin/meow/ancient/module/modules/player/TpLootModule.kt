@@ -149,7 +149,7 @@ object TpLootModule : Module(
         val target = itemsList.minByOrNull { it.position().distanceToSqr(playerPos) } ?: return
         val safeTarget = safePos(target.position()) ?: return
         if (playerPos.distanceToSqr(safeTarget) < 0.04) return
-        if (now - (itemSpawnTime[target.id] ?: now) < TP_DELAY_MS) return
+
         if (tpMode.value == "Vault" && now - lastVaultTime < VAULT_DELAY_MS) return
 
         val previousTarget = targetItemId
