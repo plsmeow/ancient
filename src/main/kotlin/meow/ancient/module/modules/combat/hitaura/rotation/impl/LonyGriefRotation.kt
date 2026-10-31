@@ -9,7 +9,7 @@ import net.minecraft.world.entity.LivingEntity
 import kotlin.math.abs
 
 class LonyGriefRotation : RotationStrategy("LonyGrief") {
-    private var speedAcceleration = 0.0f
+    private var speedAcceleration = 0.35f
     private var back = false
 
     override fun calculate(
@@ -51,7 +51,7 @@ class LonyGriefRotation : RotationStrategy("LonyGrief") {
     }
 
     override fun reset() {
-        speedAcceleration = 0.0f
+        speedAcceleration = 0.35f
         back = false
     }
 }

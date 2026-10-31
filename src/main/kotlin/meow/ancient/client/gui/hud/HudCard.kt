@@ -11,7 +11,7 @@ import net.minecraft.client.gui.components.PlayerFaceExtractor
 import net.minecraft.world.entity.player.PlayerSkin
 import org.joml.Matrix4f
 
-internal enum class HudForm { WATERMARK, CHIP, LIST, ARRAY, TARGET }
+internal enum class HudForm { WATERMARK, CHIP, LIST, SCOREBOARD, ARRAY, TARGET }
 
 internal class HudRow(var key: String = "") {
     var text = ""
@@ -28,6 +28,7 @@ internal class HudRow(var key: String = "") {
     var active = false
     val opacity = AnimFloat(speed = 18f)
     val position = AnimFloat(speed = 18f)
+    val isBlank: Boolean get() = text.trim().isEmpty() || text.all { it == '§' || it.isWhitespace() }
     private var sourceText = ""
     private var sourceDetail = ""
 
@@ -81,11 +82,13 @@ internal fun hudEllipsize(text: String, width: Float, size: Float): String {
 }
 
 internal class HudCard(
-    val title: String,
+    initialTitle: String,
     private val form: HudForm,
     private val emptyPreview: String = "",
     previewDetail: String = ""
 ) {
+    var title = initialTitle
+        private set
     val rows = ArrayList<HudRow>()
     var rowCount = 0
         private set
@@ -107,7 +110,15 @@ internal class HudCard(
     private val animatedHeight = AnimFloat(speed = 16f)
     private val health = AnimFloat(speed = 12f)
     private val absorption = AnimFloat(speed = 12f)
-    private val titleWidth = Fonts.google_sans_medium.width(title, 6.7f)
+    var titleWidth = Fonts.google_sans_medium.width(title, 6.7f)
+        private set
+
+    fun setTitle(newTitle: String) {
+        if (title != newTitle) {
+            title = newTitle
+            titleWidth = Fonts.google_sans_medium.width(newTitle, 6.7f)
+        }
+    }
     private val previewRow = HudRow("preview").apply { set(emptyPreview, previewDetail, false) }
     private val previewOpacity = AnimFloat(speed = 18f)
     private var preview = false
@@ -168,18 +179,21 @@ internal class HudCard(
         previewOpacity.update(if (preview && enabled) 1f else 0f, deltaSeconds)
         var naturalWidth = 0f
         var listHeight = 0f
+        var rowYOffset = 0f
         var i = 0
         while (i < rows.size) {
             val row = rows[i]
             val active = i < rowCount && row.active
             val opacity = row.opacity.update(if (active && enabled) 1f else 0f, deltaSeconds)
-            if (active) row.position.update(i * 12f, deltaSeconds)
+            val stepH = if (form == HudForm.SCOREBOARD) (if (row.isBlank) 4f else 9.5f) else 12f
+            if (active) row.position.update(rowYOffset, deltaSeconds)
             if (active || opacity > 0.002f) {
                 if (form == HudForm.WATERMARK) {
                     if (active) naturalWidth += row.width + (if (i > 0) 9f else 0f)
                 } else naturalWidth = maxOf(naturalWidth, row.width)
             }
-            listHeight += if (active) 12f else 12f * opacity
+            listHeight += if (active) stepH else stepH * opacity
+            if (active) rowYOffset += stepH
             i++
         }
         if (previewOpacity.value > 0.002f) {
@@ -200,6 +214,10 @@ internal class HudCard(
             HudForm.LIST -> {
                 desiredWidth = maxOf(titleWidth + 22f, naturalWidth + 16f)
                 desiredHeight = 26f + listHeight
+            }
+            HudForm.SCOREBOARD -> {
+                desiredWidth = maxOf(titleWidth + 14f, naturalWidth + 12f)
+                desiredHeight = 20f + listHeight
             }
             HudForm.ARRAY -> {
                 desiredWidth = naturalWidth + 14f
@@ -261,6 +279,7 @@ internal class HudCard(
             HudForm.WATERMARK -> drawWatermark(matrix, x, contentY, scale, alpha)
             HudForm.CHIP -> drawChip(matrix, x, contentY, scale, alpha)
             HudForm.LIST -> drawList(matrix, x, contentY, scale, alpha)
+            HudForm.SCOREBOARD -> drawScoreboard(matrix, x, contentY, scale, alpha)
             HudForm.ARRAY -> drawArray(matrix, x, contentY, scale, alpha)
             HudForm.TARGET -> drawTarget(matrix, x, contentY, scale, alpha)
         }
@@ -313,6 +332,25 @@ internal class HudCard(
         }
         if (previewOpacity.value > 0.002f) previewRow.draw(matrix, x + 8f * scale,
             y + 22f * scale, (width - 16f) * scale, scale, alpha * previewOpacity.value)
+    }
+
+    private fun drawScoreboard(matrix: Matrix4f, x: Float, y: Float, scale: Float, alpha: Float) {
+        val palette = M3Theme.current
+        val titleX = x + (width * scale - titleWidth * scale) * 0.5f
+        Fonts.google_sans_medium.drawString(matrix, title, titleX, y + 4.5f * scale,
+            6.7f * scale, palette.primary.fade(alpha), pipeline = ClientRenderPipeline.HUD_TEXT)
+        RenderUtils.rect(matrix, x + 5f * scale, y + 13.5f * scale, (width - 10f) * scale,
+            0.5f * scale, palette.outlineVariant.alpha(75).fade(alpha), ClientRenderPipeline.HUD_RECT)
+        var i = 0
+        while (i < rows.size) {
+            val row = rows[i++]
+            val opacity = row.opacity.value
+            if (opacity <= 0.002f || row.isBlank) continue
+            row.draw(matrix, x + 6f * scale,
+                y + (16f + row.position.value) * scale, (width - 12f) * scale, scale, alpha * opacity)
+        }
+        if (previewOpacity.value > 0.002f) previewRow.draw(matrix, x + 6f * scale,
+            y + 16f * scale, (width - 12f) * scale, scale, alpha * previewOpacity.value)
     }
 
     private fun drawArray(matrix: Matrix4f, x: Float, y: Float, scale: Float, alpha: Float) {

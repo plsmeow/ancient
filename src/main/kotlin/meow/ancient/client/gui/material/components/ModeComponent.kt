@@ -102,12 +102,12 @@ class ModeComponent(
 
             val chipBg = when {
                 selected -> palette.primary
-                hovered -> Color4b(82, 74, 98, 255)
-                else -> Color4b(67, 60, 79, 255)
+                hovered -> palette.surfaceContainerHighest
+                else -> palette.surfaceContainerHigh
             }
 
             val textCol = if (selected) {
-                Color4b(33, 0, 93, 255)
+                palette.onPrimary
             } else {
                 palette.onSurface
             }

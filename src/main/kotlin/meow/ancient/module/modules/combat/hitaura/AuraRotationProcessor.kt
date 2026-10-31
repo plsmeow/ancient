@@ -26,7 +26,6 @@ class AuraRotationProcessor {
         RotationMode.WELLMINE to WellmineRotation(),
         RotationMode.NO_ROT to NoRotRotation(),
         RotationMode.LONY_GRIEF to LonyGriefRotation(),
-        RotationMode.VULCAN to VulcanRotation(),
         RotationMode.FUNTIME to FuntimeRotation(),
         RotationMode.UNIVERSAL to UniversalRotation(),
         RotationMode.GRIM_1204 to Grim1204Rotation(),
@@ -57,11 +56,27 @@ class AuraRotationProcessor {
 
         val strategy = getStrategy(rotationMode)
         val currentRot = RotationManager.getServerRotation()
+        if (rotationMode == RotationMode.GRIM_1204) {
+            val aimPoint = overrideAimPoint ?: calculateAimPoint(target, aimPointMode)
+            val idealRotation = RotationUtil.getRotationToVec(aimPoint).normalizeTo(currentRot)
+            val dYaw = Mth.wrapDegrees(idealRotation.yaw - currentRot.yaw)
+            val dPitch = idealRotation.pitch - currentRot.pitch
+            strategy.calculate(
+                current = currentRot,
+                ideal = idealRotation,
+                deltaYaw = dYaw,
+                deltaPitch = dPitch,
+                totalAngle = hypot(dYaw, dPitch),
+                target = target,
+                speed = rotationSpeed,
+                tickCounter = tickCounter
+            )
+            return currentRot
+        }
 
         if (!strategy.shouldUpdateRotation(shouldSnapNow)) {
             return currentRot
         }
-
         val aimPoint = overrideAimPoint ?: calculateAimPoint(target, aimPointMode)
         val idealRotation = RotationUtil.getRotationToVec(aimPoint).normalizeTo(currentRot)
 

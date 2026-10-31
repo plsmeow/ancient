@@ -96,7 +96,7 @@ class CustomTextField(
         metricsFont = font
     }
 
-    fun render(matrix: Matrix4f, dt: Float, popup: Boolean = false) {
+    fun render(matrix: Matrix4f, dt: Float, popup: Boolean = false, drawBackground: Boolean = true) {
         ensureMetrics()
         if (isFocused) {
             mc.textInputManager().setTextInputArea(x.toInt(), y.toInt(), width.toInt(), height.toInt())
@@ -106,10 +106,12 @@ class CustomTextField(
         val textPipeline = if (popup) ClientRenderPipeline.POPUP_TEXT else ClientRenderPipeline.WINDOW_TEXT
         val focus = focusAnim.update(if (isFocused) 1f else 0f, dt)
         val typing = typingAnim.update(0f, dt)
-        RenderUtils.roundedRect(matrix, x, y, width, height, palette.surfaceContainerHigh, 6f, rectPipeline)
-        if (focus > 0.001f) {
-            RenderUtils.roundedRect(matrix, x, y, width, height, palette.primary.with(a = (focus * (18f + typing * 18f)).toInt()), 6f, rectPipeline)
-            RenderUtils.rect(matrix, x + 6f, y + height - 1.5f, (width - 12f).coerceAtLeast(1f), 1.5f, palette.primary.with(a = (focus * 255f).toInt()), rectPipeline)
+        if (drawBackground) {
+            RenderUtils.roundedRect(matrix, x, y, width, height, palette.surfaceContainerHigh, 6f, rectPipeline)
+            if (focus > 0.001f) {
+                RenderUtils.roundedRect(matrix, x, y, width, height, palette.primary.with(a = (focus * (18f + typing * 18f)).toInt()), 6f, rectPipeline)
+                RenderUtils.rect(matrix, x + 6f, y + height - 1.5f, (width - 12f).coerceAtLeast(1f), 1.5f, palette.primary.with(a = (focus * 255f).toInt()), rectPipeline)
+            }
         }
         val innerWidth = (width - 14f).coerceAtLeast(1f)
         val maxScroll = (advances[text.length] - innerWidth + 2f).coerceAtLeast(0f)

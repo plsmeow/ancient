@@ -3,6 +3,7 @@ package meow.ancient.module.modules.movement
 import meow.ancient.client.extensions.MOVEMENT
 import meow.ancient.client.extensions.currentScreen
 import meow.ancient.client.extensions.mc
+import meow.ancient.client.util.anticheat.AnticheatManager
 import meow.ancient.client.gui.material.components.CustomTextField
 import meow.ancient.client.util.inventory.InventoryActionSource
 import meow.ancient.client.util.movement.MoveUtil
@@ -43,7 +44,6 @@ object InventoryMoveModule : Module(
     description = ""
 ) {
     val sneak by boolean("Sneak", false, "")
-    val slowness by boolean("Slowness", false, "")
 
     private const val PAUSE_NANOS = 100_000_000L
     private val packetQueue = ArrayDeque<Packet<*>>()
@@ -184,7 +184,7 @@ object InventoryMoveModule : Module(
         val screen = currentScreen ?: return
         if (!canMoveInScreen(screen)) return
         MoveUtil.updateMovementKeys(includeSneak = sneak)
-        if (slowness && screen is AbstractContainerScreen<*>) {
+        if (AnticheatManager.isSwapBypassActive && screen is AbstractContainerScreen<*>) {
             mc.options.keySprint.isDown = false
             owner?.isSprinting = false
         }
@@ -242,7 +242,7 @@ object InventoryMoveModule : Module(
 
     fun canMoveInScreen(screen: Screen): Boolean = isEnabled() && mc.isWindowActive && !isTypingScreen(screen)
 
-    private fun slownessActive(): Boolean = isEnabled() && slowness
+    private fun slownessActive(): Boolean = isEnabled() && AnticheatManager.isSwapBypassActive
 
     private fun beginTransaction(): Boolean {
         if (slownessActive()) {

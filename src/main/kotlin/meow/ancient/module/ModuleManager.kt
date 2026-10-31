@@ -13,6 +13,9 @@ import meow.ancient.module.modules.combat.MaceKillModule
 import meow.ancient.module.modules.combat.TriggerBotModule
 import meow.ancient.module.modules.combat.VelocityModule
 import meow.ancient.module.modules.combat.SpearKillModule
+import meow.ancient.module.modules.combat.HitBoxesModule
+import meow.ancient.module.modules.movement.StepModule
+import meow.ancient.module.modules.player.FastExpModule
 import meow.ancient.module.modules.movement.AirStuckModule
 import meow.ancient.module.modules.movement.ElytraBoosterModule
 import meow.ancient.module.modules.movement.ElytraFlyModule
@@ -28,18 +31,26 @@ import meow.ancient.module.modules.movement.InventoryMoveModule
 import meow.ancient.module.modules.movement.NoSlowModule
 import meow.ancient.module.modules.movement.SpeedModule
 import meow.ancient.module.modules.movement.NoWebModule
+import meow.ancient.module.modules.other.AntiCheatModule
 import meow.ancient.module.modules.other.TestModule
 import meow.ancient.module.modules.player.ElytraHelperModule
 import meow.ancient.module.modules.player.NoDelayModule
+import meow.ancient.module.modules.player.AutoTpacceptModule
 import meow.ancient.module.modules.player.ClickPearlModule
 import meow.ancient.module.modules.player.NoPushModule
+import meow.ancient.module.modules.player.TpLootModule
 import meow.ancient.module.modules.render.ArrowsModule
+import meow.ancient.module.modules.render.BlockEspModule
+import meow.ancient.module.modules.render.ChamsModule
+import meow.ancient.module.modules.render.CameraTweaksModule
 import meow.ancient.module.modules.render.ClickGuiModule
 import meow.ancient.module.modules.render.ClientSoundsModule
 import meow.ancient.module.modules.render.FreeCameraModule
 import meow.ancient.module.modules.render.FullBrightModule
 import meow.ancient.module.modules.render.HudModule
+import meow.ancient.module.modules.render.LightEspModule
 import meow.ancient.module.modules.render.TagsModule
+import meow.ancient.module.modules.render.NoRenderModule
 import meow.ancient.module.modules.render.TargetEspModule
 import meow.ancient.module.modules.render.ViewModelModule
 
@@ -59,6 +70,7 @@ object ModuleManager : ILoadable {
             BreachSwapModule,
             VelocityModule,
             SpearKillModule,
+            HitBoxesModule,
             AutoSprintModule,
             GroundSpoofModule,
             AirStuckModule,
@@ -74,10 +86,15 @@ object ModuleManager : ILoadable {
             NoSlowModule,
             SpeedModule,
             NoWebModule,
+            StepModule,
             NoDelayModule,
+            FastExpModule,
             ElytraHelperModule,
             ClickPearlModule,
+            AutoTpacceptModule,
             NoPushModule,
+            TpLootModule,
+            AntiCheatModule,
             TestModule,
             ClickGuiModule,
             HudModule,
@@ -87,7 +104,12 @@ object ModuleManager : ILoadable {
             FullBrightModule,
             ArrowsModule,
             ViewModelModule,
-            ClientSoundsModule
+            ClientSoundsModule,
+            NoRenderModule,
+            CameraTweaksModule,
+            ChamsModule,
+            BlockEspModule,
+            LightEspModule,
         )
     }
 

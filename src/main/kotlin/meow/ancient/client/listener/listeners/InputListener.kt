@@ -3,13 +3,13 @@ package meow.ancient.client.listener.listeners
 import com.mojang.blaze3d.platform.InputConstants
 import meow.ancient.client.extensions.currentScreen
 import meow.ancient.client.extensions.mc
+import meow.ancient.client.gui.material.ClickGuiScreen
 import meow.ancient.client.listener.Listener
 import meow.ancient.event.EventManager
 import meow.ancient.event.events.KeyPressEvent
 import meow.ancient.module.ModuleManager
 import meow.ancient.module.modules.render.ClickGuiModule
 import meow.ancient.module.setting.KeybindSetting
-import net.minecraft.client.gui.screens.TitleScreen
 import sweetie.evaware.flora.api.Commando
 
 object InputListener : Listener() {
@@ -28,7 +28,16 @@ object InputListener : Listener() {
 
         val screen = currentScreen
         val clickGuiKey = if (ClickGuiModule.key != InputConstants.UNKNOWN.value) ClickGuiModule.key else InputConstants.KEY_RSHIFT
-        if (event.key == clickGuiKey && (screen == null || screen is TitleScreen)) {
+
+        if (screen === ClickGuiScreen) {
+            if (event.key == clickGuiKey && !ClickGuiScreen.isBindingKey()) {
+                ClickGuiModule.toggle()
+                event.cancel = true
+            }
+            return
+        }
+
+        if (event.key == clickGuiKey) {
             ClickGuiModule.toggle()
             event.cancel = true
             return

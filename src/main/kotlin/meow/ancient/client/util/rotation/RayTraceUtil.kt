@@ -3,6 +3,7 @@ package meow.ancient.client.util.rotation
 import meow.ancient.client.extensions.box
 import meow.ancient.client.extensions.inGame
 import meow.ancient.client.extensions.mc
+import meow.ancient.module.modules.combat.HitBoxesModule
 import net.minecraft.world.entity.Entity
 import net.minecraft.world.level.ClipContext
 import net.minecraft.world.phys.HitResult
@@ -20,14 +21,16 @@ object RayTraceUtil {
         val currentLevel = mc.level ?: return false
 
         val eyePos = localPlayer.eyePosition
-        val targetBox = target.box
+        val expand = HitBoxesModule.expandAmount(target)
+        val targetBox = target.boundingBox.inflate(target.pickRadius.toDouble().coerceAtLeast(expand))
 
         if (targetBox.contains(eyePos)) {
             return true
         }
 
         val direction = rotation.toDirectionVec()
-        val traceRange = range + 2.0
+        val maxReach = range + expand
+        val traceRange = maxReach + 2.0
         val endPos = eyePos.add(direction.scale(traceRange))
 
         val hitOptional = targetBox.clip(eyePos, endPos)
@@ -37,7 +40,7 @@ object RayTraceUtil {
 
         val hitVec: Vec3 = hitOptional.get()
         val entityDistSq = eyePos.distanceToSqr(hitVec)
-        if (entityDistSq > range * range) {
+        if (entityDistSq > maxReach * maxReach) {
             return false
         }
 

@@ -2,6 +2,7 @@ package meow.ancient.module.modules.combat.hitaura
 import meow.ancient.client.util.friend.FriendRepository
 import meow.ancient.client.util.target.TargetRepository
 import meow.ancient.module.modules.combat.AntiBotModule
+import meow.ancient.module.modules.combat.HitBoxesModule
 
 import meow.ancient.client.extensions.inGame
 import meow.ancient.client.extensions.mc
@@ -120,8 +121,9 @@ class TargetSelector {
 
         if (!allowedTargets.isSelected(entity)) return false
 
+        val expand = HitBoxesModule.expandAmount(entity)
         val dist = RotationUtil.getDistanceToBox(entity)
-        if (dist > maxRange) return false
+        if (dist > maxRange + expand) return false
 
         if (!RotationUtil.isInFov(entity, fov)) return false
 

@@ -10,7 +10,7 @@ import java.util.concurrent.ThreadLocalRandom
 import kotlin.math.abs
 
 class WellmineRotation : RotationStrategy("Wellmine old") {
-    private var speedAcceleration = 0.0f
+    private var speedAcceleration = 0.25f
     private var back = false
 
     override fun calculate(
@@ -70,7 +70,7 @@ class WellmineRotation : RotationStrategy("Wellmine old") {
     }
 
     override fun reset() {
-        speedAcceleration = 0.0f
+        speedAcceleration = 0.25f
         back = false
     }
 }

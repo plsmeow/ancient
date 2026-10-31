@@ -1,5 +1,6 @@
 package meow.ancient.client.gui.hud
 
+import meow.ancient.client.util.anticheat.AnticheatManager
 import com.mojang.blaze3d.platform.InputConstants
 import meow.ancient.client.extensions.mc
 import meow.ancient.client.gui.material.M3Theme
@@ -35,10 +36,11 @@ class HudRenderer(private val serverStats: HudServerStats) {
     private val speed = HudCard("BPS", HudForm.CHIP)
     private val tps = HudCard("TPS", HudForm.CHIP)
     private val ping = HudCard("PING", HudForm.CHIP)
-    private val cards = arrayOf(watermark, keybinds, potions, target, staff, arrayList, coords, speed, tps, ping)
+    private val scoreboard = HudCard("Scoreboard", HudForm.SCOREBOARD, "Preview Line", "")
+    private val cards = arrayOf(watermark, keybinds, potions, target, staff, arrayList, coords, speed, tps, ping, scoreboard)
     private val elements = arrayOf(HudElement.WATERMARK, HudElement.KEYBINDS, HudElement.POTIONS,
         HudElement.TARGET, HudElement.STAFF, HudElement.ARRAY_LIST, HudElement.COORDS,
-        HudElement.SPEED, HudElement.TPS, HudElement.PING)
+        HudElement.SPEED, HudElement.TPS, HudElement.PING, HudElement.SCOREBOARD)
     private val notifications = HudNotifications()
     private val staffDetector = HudStaffDetector()
     private val widthComparator = Comparator<HudRow> { a, b -> b.width.compareTo(a.width) }
@@ -177,6 +179,7 @@ class HudRenderer(private val serverStats: HudServerStats) {
             }
             ping.add(pingText, key = "ping")
         }
+        updateScoreboard(module)
     }
 
     private fun updateModules(module: HudModule) {
@@ -208,11 +211,13 @@ class HudRenderer(private val serverStats: HudServerStats) {
     }
 
     private fun updateTarget(module: HudModule) {
-        val selected: Entity? = if (module.targetRayTrace) {
+        val auraTarget = if (HitAuraModule.isEnabled()) HitAuraModule.currentTarget else null
+        val rayTraceTarget = if (module.targetRayTrace) {
             mc.crosshairPickEntity ?: (mc.hitResult as? EntityHitResult)?.entity
-        } else HitAuraModule.currentTarget
+        } else null
+        val selected: Entity? = auraTarget ?: rayTraceTarget
         val activeTarget = selected?.takeIf {
-            !it.isRemoved && it.level() === level && (module.targetRayTrace || it.isAlive)
+            !it.isRemoved && it.level() === level && it.isAlive
         }
         val entity = activeTarget ?: if (mc.gui.screen() is ChatScreen) mc.player else null
         target.begin(module.isElementEnabled(HudElement.TARGET) && entity != null)
@@ -230,9 +235,17 @@ class HudRenderer(private val serverStats: HudServerStats) {
             target.absorptionFraction = 0f
             return
         }
-        val health = entity.health.coerceAtLeast(0f)
-        val absorption = entity.absorptionAmount.coerceAtLeast(0f)
-        val maxHealth = entity.maxHealth.coerceAtLeast(1f)
+        val totalHp = AnticheatManager.getHealth(entity).coerceAtLeast(0f)
+        val health: Float
+        val absorption: Float
+        if (AnticheatManager.isScoreboardHealth) {
+            health = totalHp
+            absorption = 0f
+        } else {
+            health = entity.health.coerceAtLeast(0f)
+            absorption = entity.absorptionAmount.coerceAtLeast(0f)
+        }
+        val maxHealth = maxOf(entity.maxHealth.coerceAtLeast(1f), health + absorption)
         val barTotal = maxOf(maxHealth, health + absorption)
         val healthTenths = (health * 10f).roundToInt()
         val absorptionTenths = (absorption * 10f).roundToInt()
@@ -262,7 +275,10 @@ class HudRenderer(private val serverStats: HudServerStats) {
         val chat = mc.gui.screen() is ChatScreen
         if (editing != chat) {
             editing = chat
-            if (chat) potions.setPreview("Preview", duration(Random.nextInt(30, 601)))
+            if (chat) {
+                potions.setPreview("Preview", duration(Random.nextInt(30, 601)))
+                scoreboard.setPreview("Preview Line", "")
+            }
             if (!chat) module.dragController.clearInteraction()
         }
         updateTarget(module)
@@ -341,6 +357,54 @@ class HudRenderer(private val serverStats: HudServerStats) {
         }
         target.defaultX = (screenWidth - target.width * scale) * 0.5f
         target.defaultY = screenHeight - 79f - target.height * scale
+        scoreboard.defaultX = screenWidth - 7f - scoreboard.width * scale
+        scoreboard.defaultY = (screenHeight - scoreboard.height * scale) * 0.5f
+    }
+
+    private fun isBlankScore(text: String): Boolean =
+        text.trim().isEmpty() || text.all { it == '§' || it.isWhitespace() }
+
+    private fun updateScoreboard(module: HudModule) {
+        val currentLevel = level ?: return
+        val scoreboardService = currentLevel.scoreboard
+        val scoreboardObj = scoreboardService.getDisplayObjective(net.minecraft.world.scores.DisplaySlot.SIDEBAR)
+        val isChat = mc.gui.screen() is ChatScreen
+        val enabled = module.isElementEnabled(HudElement.SCOREBOARD) && (scoreboardObj != null || isChat)
+        scoreboard.begin(enabled)
+        if (!enabled) return
+
+        if (scoreboardObj != null) {
+            scoreboard.setTitle(scoreboardObj.displayName.string)
+
+            val rawList = scoreboardService.listPlayerScores(scoreboardObj)
+                .filter { !it.isHidden }
+                .sortedWith(Comparator { a, b -> b.value.compareTo(a.value) })
+                .take(15)
+
+            val lines = ArrayList<String>()
+            for (score in rawList) {
+                val team = scoreboardService.getPlayersTeam(score.owner)
+                val lineText = net.minecraft.world.scores.PlayerTeam.formatNameForTeam(team, score.ownerName()).string
+                val detail = score.display()?.string ?: ""
+                val full = if (detail.isNotEmpty()) "$lineText $detail" else lineText
+                lines.add(full)
+            }
+
+            while (lines.isNotEmpty() && isBlankScore(lines.first())) {
+                lines.removeAt(0)
+            }
+            while (lines.isNotEmpty() && isBlankScore(lines.last())) {
+                lines.removeAt(lines.lastIndex)
+            }
+
+            var prevBlank = false
+            for ((index, text) in lines.withIndex()) {
+                val blank = isBlankScore(text)
+                if (blank && prevBlank) continue
+                prevBlank = blank
+                scoreboard.add(if (blank) "" else text, "", key = "score_$index")
+            }
+        }
     }
 
     private fun drawEditBounds(matrix: Matrix4f, drag: HudDrag, scale: Float) {

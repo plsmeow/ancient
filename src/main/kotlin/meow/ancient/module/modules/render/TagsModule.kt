@@ -1,5 +1,6 @@
 package meow.ancient.module.modules.render
 
+import meow.ancient.client.util.anticheat.AnticheatManager
 import meow.ancient.client.extensions.RENDER
 import meow.ancient.client.extensions.mc
 import meow.ancient.client.gui.material.M3Palette
@@ -140,11 +141,12 @@ object TagsModule : Module(
                 val nameText = target.name.string
 
                 val living = target as? LivingEntity
-                val hp = living?.health?.coerceAtLeast(0f) ?: 0f
-                val absorption = living?.absorptionAmount?.coerceAtLeast(0f) ?: 0f
-                val hpInt = ceil(hp + absorption).toInt()
+                val totalHp = living?.let { AnticheatManager.getHealth(it).coerceAtLeast(0f) } ?: 0f
+                val hp = if (living != null && AnticheatManager.isScoreboardHealth) totalHp else (living?.health?.coerceAtLeast(0f) ?: 0f)
+                val absorption = if (living != null && AnticheatManager.isScoreboardHealth) 0f else (living?.absorptionAmount?.coerceAtLeast(0f) ?: 0f)
+                val hpInt = ceil(totalHp).toInt()
                 val hpText = "$hpInt HP"
-                val maxHp = living?.maxHealth?.coerceAtLeast(1f) ?: 1f
+                val maxHp = maxOf(living?.maxHealth?.coerceAtLeast(1f) ?: 1f, totalHp)
                 val hpPct = (hp / maxHp).coerceIn(0f, 1f)
                 val hpColor = getHealthColor(hpPct, absorption > 0f, palette)
 

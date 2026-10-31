@@ -28,11 +28,9 @@ object InventoryUtil {
         val player = mc.player ?: return
         val menu = player.containerMenu
         if (!canModifyInventory(player) || slot !in menu.slots.indices) return
-        val source = InventoryActionSource.fromMenuSlot(player, menu, slot, 40)
-        InventoryMoveModule.runInventoryAction(source, Runnable {
-            if (mc.player !== player || player.containerMenu !== menu) return@Runnable
-            if (clickSlot(slot, 40) && closeInvPacket) closeInventory()
-        })
+        SwapUtil.clickWithBypass(closeAfter = closeInvPacket) {
+            clickSlotDirect(slot, 40)
+        }
     }
 
     fun swapSlots(from: Int, to: Int, closeInvPacket: Boolean = true) {
@@ -46,11 +44,21 @@ object InventoryUtil {
         }
         val inventorySlot = if (swapSlot == to) from else to
         val slot = if (inventorySlot in Hotbar_rad) inventorySlot + 36 else inventorySlot
-        val source = InventoryActionSource.fromInventorySlot(inventorySlot)
-        InventoryMoveModule.runInventoryAction(source, Runnable {
-            if (mc.player !== player || player.containerMenu !== menu) return@Runnable
-            if (clickSlot(slot, swapSlot) && closeInvPacket) closeInventory()
-        })
+        SwapUtil.clickWithBypass(closeAfter = closeInvPacket) {
+            clickSlotDirect(slot, swapSlot)
+        }
+    }
+
+    fun clickSlotDirect(menuSlot: Int, hotbarButton: Int): Boolean {
+        val player = mc.player ?: return false
+        val gameMode = mc.gameMode ?: return false
+        val menu = player.containerMenu
+        if (!canModifyInventory(player) || menuSlot !in menu.slots.indices
+            || hotbarButton !in Hotbar_rad && hotbarButton != 40) return false
+        val slot = menu.getSlot(menuSlot)
+        if (!slot.mayPickup(player) || !slot.mayPlace(player.inventory.getItem(hotbarButton))) return false
+        gameMode.handleContainerInput(menu.containerId, menuSlot, hotbarButton, ContainerInput.SWAP, player)
+        return true
     }
 
     fun clickSlot(menuSlot: Int, hotbarButton: Int): Boolean {

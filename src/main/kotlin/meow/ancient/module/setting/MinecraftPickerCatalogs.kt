@@ -60,4 +60,16 @@ object MinecraftPickerCatalogs {
     val effects: PickerCatalog<MobEffect> = registry("Mob Effects", BuiltInRegistries.MOB_EFFECT, { it.displayName.string }) { _, id ->
         PickerPreview.Sprite(Identifier.fromNamespaceAndPath(id.namespace, "mob_effect/${id.path}"))
     }
+
+    val particles: PickerCatalog<net.minecraft.core.particles.ParticleType<*>> = registry(
+        "Particles",
+        BuiltInRegistries.PARTICLE_TYPE,
+        { type -> (BuiltInRegistries.PARTICLE_TYPE.getKey(type)?.path ?: "particle").replace('_', ' ').replaceFirstChar { it.uppercase() } }
+    ) { _, _ -> null }
+
+    val blockEntities: PickerCatalog<net.minecraft.world.level.block.entity.BlockEntityType<*>> = registry(
+        "Block Entities",
+        BuiltInRegistries.BLOCK_ENTITY_TYPE,
+        { type -> (BuiltInRegistries.BLOCK_ENTITY_TYPE.getKey(type)?.path ?: "block_entity").replace('_', ' ').replaceFirstChar { it.uppercase() } }
+    ) { _, _ -> null }
 }

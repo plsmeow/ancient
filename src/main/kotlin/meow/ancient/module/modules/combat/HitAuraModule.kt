@@ -3,6 +3,7 @@ package meow.ancient.module.modules.combat
 import meow.ancient.client.extensions.COMBAT
 import meow.ancient.client.extensions.currentScreen
 import meow.ancient.client.extensions.mc
+import meow.ancient.client.util.anticheat.AnticheatManager
 import meow.ancient.client.util.rotation.MoveFixMode
 import meow.ancient.client.util.rotation.RotationManager
 import meow.ancient.event.events.PlayerUpdateEvent
@@ -54,7 +55,6 @@ object HitAuraModule : Module(
         WELLMINE("Wellmine old"),
         NO_ROT("NoRot"),
         LONY_GRIEF("LonyGrief"),
-        VULCAN("Vulcan"),
         FUNTIME("Funtime"),
         UNIVERSAL("Universal"),
         GRIM_1204("Grim 1.20.4"),
@@ -154,13 +154,13 @@ object HitAuraModule : Module(
     )
     val aimRange by number(
         name = "Aim Range",
-        value = 4.2,
-        min = 1.0,
-        max = 8.0,
+        value = 1.0,
+        min = 0.0,
+        max = 6.0,
         step = 0.05,
         precision = 2,
         unit = "m",
-        description = ""
+        description = "Additional distance beyond attack range to begin aiming"
     )
     val rayTrace by boolean(
         name = "RayTrace",
@@ -296,12 +296,7 @@ object HitAuraModule : Module(
         description = "",
         isVisible = { onlyCrits }
     )
-    val sprintReset by enum(
-        name = "Sprint Reset",
-        defaultValue = SprintResetMode.PACKET,
-        nameMapper = { it.displayName },
-        description = ""
-    )
+
 
     // Modular processors
     val targetSelector = TargetSelector()
@@ -379,7 +374,7 @@ object HitAuraModule : Module(
             val rotMode = rotationMode
             val maxReach = if (rotMode == RotationMode.GRIM_1204) attackRange.coerceAtMost(3.0) else attackRange
             val effectiveAimRange = if (player.isFallFlying && elytraTarget) elytraDistance.coerceAtLeast(maxReach)
-                else aimRange.coerceAtLeast(maxReach)
+                else (maxReach + aimRange)
             val priorityMode = priority
             val tMode = targetMode
 
@@ -396,7 +391,7 @@ object HitAuraModule : Module(
             val pointMode = aimPoint
             val moveFixMode = moveFix
             val cMode = clickMode
-            val sResetMode = sprintReset
+            val sResetMode = if (AnticheatManager.isPacketSprintReset) SprintResetMode.PACKET else SprintResetMode.OFF
 
             val readyToAttackNow = attackExecutor.shouldPrepareAttack(
                 target = target,
@@ -435,7 +430,7 @@ object HitAuraModule : Module(
                 overrideAimPoint = overrideAimPoint
             )
 
-            val enforceRayTrace = rayTrace || rotMode == RotationMode.GRIM_1204
+            val enforceRayTrace = rayTrace && !player.isFallFlying && rotMode != RotationMode.NO_ROT && rotMode != RotationMode.GRIM_1204
 
             attackExecutor.tryAttack(
                 target = target,
@@ -449,7 +444,7 @@ object HitAuraModule : Module(
                 sprintResetMode = sResetMode,
                 rayTrace = enforceRayTrace,
                 throughWalls = throughWalls,
-                checkAimAngle = rotMode != RotationMode.SNAP
+                checkAimAngle = false
             )
         }
     }

@@ -76,7 +76,7 @@ class CategoryPanel(
         this.height = totalPanelH
 
 
-        val outerCardBg = Color4b(20, 18, 24, 255)
+        val outerCardBg = palette.surfaceContainerLowest
         RenderUtils.roundedRect(
             matrix = matrix,
             x = x,
@@ -88,7 +88,7 @@ class CategoryPanel(
             pipeline = ClientRenderPipeline.WINDOW_RECT
         )
 
-        val innerHeaderBg = Color4b(33, 31, 36, 255)
+        val innerHeaderBg = palette.surfaceContainer
         val innerBtnW = width - innerPadX * 2f
         RenderUtils.roundedRect(
             matrix = matrix,

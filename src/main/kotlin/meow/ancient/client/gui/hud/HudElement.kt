@@ -11,5 +11,6 @@ enum class HudElement {
     SPEED,
     TPS,
     PING,
-    NOTIFICATIONS
+    NOTIFICATIONS,
+    SCOREBOARD
 }

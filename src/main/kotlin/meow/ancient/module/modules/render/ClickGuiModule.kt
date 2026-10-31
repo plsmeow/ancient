@@ -5,7 +5,6 @@ import meow.ancient.client.extensions.RENDER
 import meow.ancient.client.extensions.mc
 import meow.ancient.client.gui.material.ClickGuiScreen
 import meow.ancient.module.Module
-import net.minecraft.client.gui.screens.TitleScreen
 
 object ClickGuiModule : Module(
     name = "ClickGUI",
@@ -21,16 +20,14 @@ object ClickGuiModule : Module(
 
     override fun onEnable() {
         val screen = mc.gui.screen()
-        if (screen == null || screen is TitleScreen) {
+        if (screen !== ClickGuiScreen) {
             ClickGuiScreen.parentScreen = screen
-            mc.gui.setScreen(ClickGuiScreen)
-        } else {
-            setEnabled(false)
         }
+        mc.gui.setScreen(ClickGuiScreen)
     }
 
     override fun onDisable() {
-        if (mc.gui.screen() is ClickGuiScreen) {
+        if (mc.gui.screen() === ClickGuiScreen) {
             val parent = ClickGuiScreen.parentScreen
             ClickGuiScreen.parentScreen = null
             mc.gui.setScreen(parent)

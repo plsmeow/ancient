@@ -28,7 +28,10 @@
         "MixinCamera",
         "MixinVisGraph",
         "MixinGuiRenderer",
-        "MixinFirstPersonHandsAndItemsRenderer"
+        "MixinFirstPersonHandsAndItemsRenderer",
+        "MixinScreenEffectRenderer",
+        "MixinWeatherEffectRenderer",
+        "MixinWorldBorderRenderer"
     ],
     "mixins": [
     ],

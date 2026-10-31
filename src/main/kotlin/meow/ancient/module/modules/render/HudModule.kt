@@ -21,7 +21,7 @@ import sweetie.evaware.flora.api.Commando
 
 object HudModule : Module("HUD", RENDER, "Material HUD with live player and server information") {
     private val elementLabels = listOf("Watermark", "Keybind", "Potions", "TargetHUD", "StaffList",
-        "ArrayList", "Coords", "Speed (BPS)", "TPS", "Ping", "Notifications")
+        "ArrayList", "Coords", "Speed (BPS)", "TPS", "Ping", "Notifications", "Scoreboard")
     val elementsMultiMode = multiMode("Elements", elementLabels.toSet(), elementLabels)
     val elements by elementsMultiMode
     private val watermarkElementsSetting = multiMode("Watermark Parts", setOf("Client", "Nickname", "Fps"),

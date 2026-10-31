@@ -29,7 +29,7 @@ class SprintResetProcessor {
     fun onSprintEvent() {
     }
 
-    fun shouldAllowSprintWhenHungry(): Boolean = inGame && meow.ancient.module.modules.combat.HitAuraModule.sprintReset != SprintResetMode.OFF
+    fun shouldAllowSprintWhenHungry(): Boolean = inGame && meow.ancient.client.util.anticheat.AnticheatManager.isPacketSprintReset
 
-    fun shouldPreserveAttackKnockback(): Boolean = inGame && meow.ancient.module.modules.combat.HitAuraModule.sprintReset != SprintResetMode.OFF
+    fun shouldPreserveAttackKnockback(): Boolean = inGame && meow.ancient.client.util.anticheat.AnticheatManager.isPacketSprintReset
 }

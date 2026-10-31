@@ -17,6 +17,7 @@ import java.util.Locale
 class NumberComponent(private val numSetting: NumberSetting) : SettingComponent(numSetting) {
     private var isDragging = false
     private val thumbAnim = AnimFloat(0f, 0f, 16f)
+    private val labelMarquee = MarqueeText()
 
     var isEditing = false
         private set
@@ -87,20 +88,20 @@ class NumberComponent(private val numSetting: NumberSetting) : SettingComponent(
         }
 
         val valW = Fonts.google_sans_medium.width(if (isEditing && currentInput.isEmpty()) "_" else valText, 10f)
-        val maxTextW = width - valW - 8f
-        val fitted = fitText(numSetting.name, maxTextW, baseSize = 10f, minSize = 8f)
-
-        Fonts.google_sans_regular.drawString(
+        val maxTextW = (width - valW - 10f).coerceAtLeast(10f)
+        labelMarquee.render(
             matrix = matrix,
-            text = fitted.text,
+            text = numSetting.name,
             x = x + 2f,
             y = y + 2f,
-            size = fitted.size,
+            maxWidth = maxTextW,
+            size = 10f,
             color = palette.onSurface,
-            shadow = false,
+            bgColor = palette.surfaceContainerLowest,
+            isHovered = hovered,
+            dt = dt,
             pipeline = ClientRenderPipeline.WINDOW_TEXT
         )
-
         val rightX = x + width - 2f
         if (isEditing) {
             val editPad = 5f
@@ -141,9 +142,10 @@ class NumberComponent(private val numSetting: NumberSetting) : SettingComponent(
             )
         }
 
-        val trackX = x + 2f
+        val trackPad = 5f
+        val trackX = x + trackPad
         val trackY = y + 17f
-        val trackW = width - 4f
+        val trackW = width - trackPad * 2f
         val trackH = 3.5f
         val trackRadius = 1.75f
 
@@ -156,7 +158,7 @@ class NumberComponent(private val numSetting: NumberSetting) : SettingComponent(
             y = trackY,
             width = trackW,
             height = trackH,
-            color = Color4b(54, 50, 64, 255),
+            color = palette.surfaceContainerHighest,
             radius = trackRadius,
             pipeline = ClientRenderPipeline.WINDOW_RECT
         )
@@ -225,7 +227,8 @@ class NumberComponent(private val numSetting: NumberSetting) : SettingComponent(
             }
             if (button == 0) {
                 isDragging = true
-                updateValueFromMouse(mouseX, x + 2f, width - 4f)
+                val trackPad = 5f
+                updateValueFromMouse(mouseX, x + trackPad, width - trackPad * 2f)
                 return true
             }
         } else if (isEditing) {
@@ -242,7 +245,8 @@ class NumberComponent(private val numSetting: NumberSetting) : SettingComponent(
 
     override fun mouseDragged(mouseX: Double, mouseY: Double, button: Int, deltaX: Double, deltaY: Double) {
         if (isDragging && button == 0) {
-            updateValueFromMouse(mouseX, x + 2f, width - 4f)
+            val trackPad = 5f
+            updateValueFromMouse(mouseX, x + trackPad, width - trackPad * 2f)
         }
     }
 

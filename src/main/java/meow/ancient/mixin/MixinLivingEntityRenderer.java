@@ -2,6 +2,7 @@ package meow.ancient.mixin;
 
 import meow.ancient.client.util.rotation.Rotation;
 import meow.ancient.client.util.rotation.RotationManager;
+import meow.ancient.module.modules.render.ChamsModule;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.entity.LivingEntityRenderer;
 import net.minecraft.client.renderer.entity.state.LivingEntityRenderState;
@@ -24,6 +25,9 @@ public class MixinLivingEntityRenderer<T extends LivingEntity, S extends LivingE
             Rotation curr = RotationManager.INSTANCE.getServerRotation();
             float pitch = Mth.lerp(partialTick, prev.getPitch(), curr.getPitch());
             state.xRot = state.isUpsideDown ? -pitch : pitch;
+        }
+        if (ChamsModule.INSTANCE.shouldRenderChams(entity)) {
+            state.outlineColor = ChamsModule.INSTANCE.getChamsColor();
         }
     }
 }

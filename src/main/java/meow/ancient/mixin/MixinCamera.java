@@ -1,6 +1,8 @@
 package meow.ancient.mixin;
 
+import meow.ancient.module.modules.render.CameraTweaksModule;
 import meow.ancient.module.modules.render.FreeCameraModule;
+import org.spongepowered.asm.mixin.injection.ModifyVariable;
 import net.minecraft.client.Camera;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -29,10 +31,23 @@ public abstract class MixinCamera {
         }
     }
 
+    @ModifyVariable(method = "getMaxZoom", at = @At("HEAD"), argsOnly = true, ordinal = 0)
+    private float modifyCameraDist(float cameraDist) {
+        if (FreeCameraModule.INSTANCE.isEnabled()) return 0.0f;
+        if (CameraTweaksModule.INSTANCE.isEnabled()) {
+            return (float) CameraTweaksModule.INSTANCE.getDistance();
+        }
+        return cameraDist;
+    }
+
     @Inject(method = "getMaxZoom", at = @At("HEAD"), cancellable = true)
     private void onGetMaxZoom(float cameraDist, CallbackInfoReturnable<Float> cir) {
         if (FreeCameraModule.INSTANCE.isEnabled()) {
             cir.setReturnValue(0.0f);
+            return;
+        }
+        if (CameraTweaksModule.INSTANCE.isEnabled() && CameraTweaksModule.INSTANCE.getCameraClip()) {
+            cir.setReturnValue((float) CameraTweaksModule.INSTANCE.getDistance());
         }
     }
 }

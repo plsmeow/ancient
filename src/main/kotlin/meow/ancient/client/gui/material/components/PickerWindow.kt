@@ -118,9 +118,20 @@ class PickerWindow(val setting: PickerSetting<*>) {
                 if (over(mouseX.toDouble(), mouseY.toDouble(), cx, rowY, columnWidth - 8f, rowHeight)) {
                     RenderUtils.roundedRect(matrix, cx + 2f, rowY + 1f, columnWidth - 11f, rowHeight - 2f, palette.stateHover, 4f, ClientRenderPipeline.POPUP_RECT)
                 }
-                RenderUtils.currentGraphics?.let { entry.preview?.render(it, (cx + 5f).toInt(), (rowY + 5f).toInt(), 18) }
-                val textX = cx + 28f
-                val textWidth = columnWidth - 39f
+                val cbX = cx + 6f
+                val cbY = rowY + 7.5f
+                val cbSize = 13f
+                if (column == 1) {
+                    RenderUtils.roundedRect(matrix, cbX, cbY, cbSize, cbSize, palette.primary, 3f, ClientRenderPipeline.POPUP_RECT)
+                    Fonts.google_sans_medium.drawCenteredString(matrix, "✓", cbX + cbSize * 0.5f, cbY + 0.5f, 9f, palette.onPrimary, false, ClientRenderPipeline.POPUP_TEXT)
+                } else {
+                    RenderUtils.roundedRectWithBorder(matrix, cbX, cbY, cbSize, cbSize, palette.surfaceContainerLow, 3f, 1f, palette.outlineVariant, ClientRenderPipeline.POPUP_RECT)
+                }
+                if (entry.preview != null) {
+                    RenderUtils.currentGraphics?.let { entry.preview.render(it, (cx + 23f).toInt(), (rowY + 5f).toInt(), 18) }
+                }
+                val textX = if (entry.preview != null) cx + 45f else cx + 24f
+                val textWidth = columnWidth - (if (entry.preview != null) 55f else 34f)
                 drawClippedText(matrix, entry.label, textX, rowY + 4f, textWidth, 8.5f, false)
                 drawClippedText(matrix, entry.id, textX, rowY + 16f, textWidth, 6.5f, true)
             }

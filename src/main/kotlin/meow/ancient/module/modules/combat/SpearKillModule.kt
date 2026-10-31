@@ -52,7 +52,7 @@ object SpearKillModule : Module(
     val onlyInstKill = boolean("Only InstKill", false, isVisible = { mode == "Teleport" })
     val damageNotify = boolean("Damage Notify", true)
 
-    val teleportTypeSetting = mode("Teleport Type", "Step", listOf("Step", "Vault", "Bypass"), isVisible = { mode == "Teleport" })
+    val teleportTypeSetting = mode("Teleport Type", "Simple", listOf("Simple", "Step", "Vault", "Bypass"), isVisible = { mode == "Teleport" })
     val teleportType by teleportTypeSetting
 
     val stepDistance = number("Step Distance", 4.0, 0.1, 10.0, 0.1, 1, isVisible = { mode == "Teleport" && teleportType == "Step" })
@@ -515,12 +515,18 @@ object SpearKillModule : Module(
 
     private fun teleport(position: Vec3): Boolean {
         if (phase != Phase.Return && onlyInstKill.value && !canInstKill(position)) return false
+        val player = mc.player ?: return false
+        if (teleportType == "Simple") {
+            if (startPos == null && phase == Phase.Approach) startPos = player.position()
+            player.setPos(position.x, position.y, position.z)
+            arrived()
+            return true
+        }
         val type = when (teleportType) {
             "Step" -> TeleportPath.Type.Step
             "Vault" -> TeleportPath.Type.Vault
             else -> TeleportPath.Type.Bypass
         }
-        val player = mc.player ?: return false
         val origin = player.position()
         val started = TeleportPath.start(
             this,

@@ -90,6 +90,44 @@ open class Module(
         description: String = "",
         isVisible: () -> Boolean = { true }
     ) = register(PickerSetting(name, value, catalog, description, isVisible))
+
+    fun checkboxPicker(
+        name: String,
+        options: Collection<String>,
+        defaultSelected: Set<String> = emptySet(),
+        description: String = "",
+        isVisible: () -> Boolean = { true }
+    ): PickerSetting<String> = register(
+        PickerSetting(name, defaultSelected, PickerCatalog.of(name, options), description, isVisible)
+    )
+
+    fun checkboxPicker(
+        name: String,
+        options: Map<String, String>,
+        defaultSelected: Set<String> = emptySet(),
+        description: String = "",
+        isVisible: () -> Boolean = { true }
+    ): PickerSetting<String> = register(
+        PickerSetting(name, defaultSelected, PickerCatalog.of(name, options), description, isVisible)
+    )
+
+    fun checkboxPicker(
+        name: String,
+        vararg options: String,
+        defaultSelected: Set<String> = emptySet(),
+        description: String = "",
+        isVisible: () -> Boolean = { true }
+    ): PickerSetting<String> = checkboxPicker(name, options.toList(), defaultSelected, description, isVisible)
+
+    fun <T> checkboxPicker(
+        name: String,
+        catalog: PickerCatalog<T>,
+        defaultSelected: Set<String> = emptySet(),
+        description: String = "",
+        isVisible: () -> Boolean = { true }
+    ): PickerSetting<T> = register(
+        PickerSetting(name, defaultSelected, catalog, description, isVisible)
+    )
     fun targets(
         name: String = "Targets",
         value: Set<String> = setOf("minecraft:player"),

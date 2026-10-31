@@ -58,4 +58,19 @@ class PickerCatalog<T>(val title: String, private val provider: () -> List<Picke
         entries
         return index[id]
     }
+
+    companion object {
+        fun of(title: String, options: Collection<String>): PickerCatalog<String> =
+            PickerCatalog(title) {
+                options.map { PickerEntry(it, it, it, null) }
+            }
+
+        fun of(title: String, options: Map<String, String>): PickerCatalog<String> =
+            PickerCatalog(title) {
+                options.map { (id, label) -> PickerEntry(id, label, id, null) }
+            }
+
+        fun of(title: String, vararg options: String): PickerCatalog<String> =
+            of(title, options.toList())
+    }
 }

@@ -3,6 +3,9 @@ package meow.ancient.mixin;
 import meow.ancient.client.util.rotation.RotationManager;
 import meow.ancient.module.modules.render.FreeCameraModule;
 import meow.ancient.module.modules.movement.NoWebModule;
+import meow.ancient.client.util.friend.FriendRepository;
+import meow.ancient.module.modules.combat.HitBoxesModule;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
 import net.minecraft.client.Minecraft;
@@ -12,6 +15,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 @Mixin(Entity.class)
 public class MixinEntity {
@@ -38,6 +42,16 @@ public class MixinEntity {
     private void onMakeStuckInBlock(BlockState state, Vec3 multiplier, CallbackInfo ci) {
         if ((Object) this == Minecraft.getInstance().player && NoWebModule.INSTANCE.shouldCancelSlowdown()) {
             ci.cancel();
+        }
+    }
+
+    @Inject(method = "getPickRadius", at = @At("RETURN"), cancellable = true)
+    private void onGetPickRadius(CallbackInfoReturnable<Float> cir) {
+        if (!((Object) this instanceof Player player)) return;
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.player == null || mc.level == null || player == mc.player) return;
+        if (!FriendRepository.INSTANCE.isFriend(player) && HitBoxesModule.INSTANCE.isEnabled()) {
+            cir.setReturnValue(cir.getReturnValue() + HitBoxesModule.size.getValue().floatValue());
         }
     }
 }

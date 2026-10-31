@@ -11,6 +11,7 @@ import org.joml.Matrix4f
 
 class BooleanComponent(private val boolSetting: BooleanSetting) : SettingComponent(boolSetting) {
     private val toggleAnim = AnimFloat(if (boolSetting.value) 1f else 0f, if (boolSetting.value) 1f else 0f, 16f)
+    private val labelMarquee = MarqueeText()
 
     override fun render(
         matrix: Matrix4f,
@@ -34,19 +35,22 @@ class BooleanComponent(private val boolSetting: BooleanSetting) : SettingCompone
         val switchY = y + (height - switchH) * 0.5f
         val maxTextW = switchX - (x + 2f) - 6f
 
-        val fitted = fitText(boolSetting.name, maxTextW, baseSize = 10f, minSize = 8f)
-        Fonts.google_sans_regular.drawString(
+        val hovered = isHovered(mouseX.toDouble(), mouseY.toDouble(), x, y, width, height)
+        labelMarquee.render(
             matrix = matrix,
-            text = fitted.text,
+            text = boolSetting.name,
             x = x + 2f,
-            y = switchY + (switchH - fitted.size) * 0.5f - 1.5f,
-            size = fitted.size,
+            y = switchY + (switchH - 10f) * 0.5f - 1.5f,
+            maxWidth = maxTextW,
+            size = 10f,
             color = palette.onSurface,
-            shadow = false,
+            bgColor = palette.surfaceContainerLowest,
+            isHovered = hovered,
+            dt = dt,
             pipeline = ClientRenderPipeline.WINDOW_TEXT
         )
 
-        val offTrackColor = Color4b(54, 50, 64, 255)
+        val offTrackColor = palette.surfaceContainerHighest
         val trackColor = offTrackColor.interpolateTo(palette.primary, toggleProgress.toDouble())
         RenderUtils.roundedRect(
             matrix = matrix,
@@ -71,7 +75,7 @@ class BooleanComponent(private val boolSetting: BooleanSetting) : SettingCompone
         val thumbY = thumbCenterY - thumbDiameter * 0.5f
 
         val offThumbColor = palette.outline
-        val onThumbColor = Color4b(34, 30, 39, 255)
+        val onThumbColor = palette.onPrimary
         val thumbColor = offThumbColor.interpolateTo(onThumbColor, toggleProgress.toDouble())
         RenderUtils.roundedRect(
             matrix = matrix,

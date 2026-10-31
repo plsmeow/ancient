@@ -1,5 +1,5 @@
 package meow.ancient.mixin;
-
+import meow.ancient.client.gui.material.ClickGuiScreen;
 import meow.ancient.event.EventManager;
 import meow.ancient.event.events.ScreenCloseEvent;
 import net.minecraft.client.gui.screens.Screen;
@@ -16,6 +16,13 @@ public class MixinAbstractContainerScreen {
         ScreenCloseEvent event = new ScreenCloseEvent((Screen) (Object) this);
         EventManager.INSTANCE.post(event);
         if (event.getCancel()) {
+            ci.cancel();
+        }
+    }
+
+    @Inject(method = "removed", at = @At("HEAD"), cancellable = true)
+    private void onRemoved(CallbackInfo ci) {
+        if (ClickGuiScreen.parentScreen == (Object) this) {
             ci.cancel();
         }
     }

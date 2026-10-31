@@ -62,7 +62,7 @@ class AttackExecutor(
         val localPlayer = mc.player ?: return false
         val currentGameMode = mc.gameMode ?: return false
 
-        if (rayTrace) {
+        if (rayTrace && !localPlayer.isFallFlying) {
             val currentRot = RotationManager.getServerRotation()
             val hitsCurrentHitbox = RayTraceUtil.isLookingAtEntity(
                 target = target,
@@ -84,8 +84,6 @@ class AttackExecutor(
             if (!hitsServerHitbox) {
                 return false
             }
-        } else if (checkAimAngle && !rotationProcessor.isAimedAtTarget(target, 28.0f)) {
-            return false
         }
 
         val forceMaceReady = AutoMaceModule.isForceReady(target)
@@ -114,6 +112,11 @@ class AttackExecutor(
                 CriticalsModule.doCrit()
             }
 
+            val grim = if (HitAuraModule.rotationMode == HitAuraModule.RotationMode.GRIM_1204) {
+                rotationProcessor.getStrategy(HitAuraModule.RotationMode.GRIM_1204) as? meow.ancient.module.modules.combat.hitaura.rotation.impl.Grim1204Rotation
+            } else null
+            grim?.sendRotationPacket(localPlayer)
+
             val swingAnimation = localPlayer.getItemInHand(InteractionHand.MAIN_HAND).attackAnimation
             if (clickMode == ClickMode.MODE_1_8) {
                 localPlayer.swing(InteractionHand.MAIN_HAND, swingAnimation, false)
@@ -124,6 +127,7 @@ class AttackExecutor(
                 executed = true
                 localPlayer.swing(InteractionHand.MAIN_HAND, swingAnimation, false)
             }
+            grim?.sendResetPacket(localPlayer)
             return true
         } finally {
             CriticalsModule.killAuraTriggered = false

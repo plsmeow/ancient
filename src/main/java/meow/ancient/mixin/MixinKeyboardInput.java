@@ -3,6 +3,7 @@ package meow.ancient.mixin;
 import meow.ancient.client.util.rotation.RotationManager;
 import meow.ancient.event.EventManager;
 import meow.ancient.event.events.MovementInputEvent;
+import meow.ancient.client.util.inventory.SlownessManager;
 import meow.ancient.module.modules.movement.InventoryMoveModule;
 import net.minecraft.client.player.ClientInput;
 import net.minecraft.client.player.KeyboardInput;
@@ -25,5 +26,6 @@ public class MixinKeyboardInput {
         }
         EventManager.INSTANCE.post(ancientInputEvent);
         InventoryMoveModule.INSTANCE.applySlownessInput((ClientInput) (Object) this);
+        SlownessManager.INSTANCE.applyToInput((ClientInput) (Object) this);
     }
 }

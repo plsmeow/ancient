@@ -11,8 +11,8 @@ import kotlin.math.abs
 import kotlin.math.hypot
 
 class SpookyTimeRotation : RotationStrategy("SpookyTime") {
-    private var yawSpeed = 0.0f
-    private var pitchSpeed = 0.0f
+    private var yawSpeed = 0.45f
+    private var pitchSpeed = 0.35f
     private var aimFatigue = 0.0f
     private var idleTicks = 0
     private var reactionDelay = 0
@@ -102,8 +102,8 @@ class SpookyTimeRotation : RotationStrategy("SpookyTime") {
     }
 
     override fun reset() {
-        yawSpeed = 0.0f
-        pitchSpeed = 0.0f
+        yawSpeed = 0.45f
+        pitchSpeed = 0.35f
         aimFatigue = 0.0f
         idleTicks = 0
         reactionDelay = 0

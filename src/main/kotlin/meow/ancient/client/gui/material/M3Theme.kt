@@ -33,31 +33,6 @@ data class M3Palette(
 )
 
 object M3Theme {
-
-    val MATERIAL = M3Palette(
-        name = "Material",
-        surface = Color4b(20, 18, 24, 245),
-        surfaceDim = Color4b(17, 15, 21, 250),
-        surfaceBright = Color4b(59, 56, 62, 255),
-        surfaceContainerLowest = Color4b(15, 13, 19, 250),
-        surfaceContainerLow = Color4b(29, 27, 32, 245),
-        surfaceContainer = Color4b(33, 31, 38, 250),
-        surfaceContainerHigh = Color4b(43, 41, 48, 255),
-        surfaceContainerHighest = Color4b(54, 52, 59, 255),
-        onSurface = Color4b(230, 224, 233, 255),
-        onSurfaceVariant = Color4b(202, 196, 208, 255),
-        outline = Color4b(147, 143, 153, 255),
-        outlineVariant = Color4b(73, 69, 79, 140),
-        primary = Color4b.fromHex("#d0bcff"),
-        onPrimary = Color4b.fromHex("#381e72"),
-        primaryContainer = Color4b.fromHex("#4f378b"),
-        onPrimaryContainer = Color4b.fromHex("#eaddff"),
-        secondary = Color4b.fromHex("#ccc2dc"),
-        secondaryContainer = Color4b.fromHex("#4a4458"),
-        onSecondaryContainer = Color4b.fromHex("#e8def8"),
-        tertiary = Color4b.fromHex("#efb8c8"),
-        tertiaryContainer = Color4b.fromHex("#633b48")
-    )
-
-    val current: M3Palette = MATERIAL
+    val MATERIAL: M3Palette get() = ThemeManager.MATERIAL
+    val current: M3Palette get() = ThemeManager.currentTheme
 }

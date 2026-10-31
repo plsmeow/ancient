@@ -71,23 +71,64 @@ class ModuleComponent(val module: Module) : GuiComponent {
         val pillRadius = 6f
         val curY = y
 
+        val searchQuery = ClickGuiScreen.searchQuery
+        val matchesSearch = searchQuery.isEmpty() || module.name.contains(searchQuery, ignoreCase = true) || module.description.contains(searchQuery, ignoreCase = true)
+        val isTargeted = ClickGuiScreen.highlightedModule === module && ClickGuiScreen.highlightProgress > 0f
+        val alphaMultiplier = if (isTargeted || matchesSearch) 1f else 0.25f
+
         val isEnabled = module.isEnabled()
-        val modBg = if (isEnabled) palette.primary else Color4b(43, 39, 52, 220)
-        val modTextCol = if (isEnabled) Color4b(33, 0, 93, 255) else palette.onSurface
+        val baseModBg = if (isEnabled) palette.primary else palette.surfaceContainerHigh
+        val modBg = baseModBg.fade(alphaMultiplier)
+        val baseModTextCol = if (isEnabled) palette.onPrimary else palette.onSurface
+        val modTextCol = baseModTextCol.fade(alphaMultiplier)
 
-        RenderUtils.roundedRect(
-            matrix = matrix,
-            x = x,
-            y = curY,
-            width = width,
-            height = pillH,
-            color = modBg,
-            radius = pillRadius,
-            pipeline = ClientRenderPipeline.WINDOW_RECT
-        )
+        if (isTargeted) {
+            val hProgress = ClickGuiScreen.highlightProgress
+            val pulse = (0.5 + 0.5 * kotlin.math.sin((System.currentTimeMillis() - ClickGuiScreen.highlightStartTime) * 0.008)).toFloat()
+            val borderAlpha = (hProgress * (0.5f + pulse * 0.5f) * 255f).toInt().coerceIn(0, 255)
+            val glowBg = palette.primary.interpolateTo(modBg, (1f - pulse * hProgress * 0.4f).toDouble())
 
-        val hasBind = module.key != InputConstants.UNKNOWN.value
-        val showBindBadge = isBinding || hasBind
+            RenderUtils.roundedRectWithBorder(
+                matrix = matrix,
+                x = x,
+                y = curY,
+                width = width,
+                height = pillH,
+                color = glowBg,
+                radius = pillRadius,
+                borderWidth = 1.5f,
+                borderColor = palette.primary.alpha(borderAlpha),
+                pipeline = ClientRenderPipeline.WINDOW_RECT
+            )
+        } else if (searchQuery.isNotEmpty() && matchesSearch) {
+            RenderUtils.roundedRectWithBorder(
+                matrix = matrix,
+                x = x,
+                y = curY,
+                width = width,
+                height = pillH,
+                color = modBg,
+                radius = pillRadius,
+                borderWidth = 1f,
+                borderColor = palette.primary,
+                pipeline = ClientRenderPipeline.WINDOW_RECT
+            )
+        } else {
+            RenderUtils.roundedRect(
+                matrix = matrix,
+                x = x,
+                y = curY,
+                width = width,
+                height = pillH,
+                color = modBg,
+                radius = pillRadius,
+                pipeline = ClientRenderPipeline.WINDOW_RECT
+            )
+        }
+
+        val isLockedModule = module is meow.ancient.module.modules.other.AntiCheatModule
+        val hasBind = !isLockedModule && module.key != InputConstants.UNKNOWN.value
+        val showBindBadge = !isLockedModule && (isBinding || hasBind)
         var keyText = ""
         var badgeX = 0f
         var badgeW = 0f
@@ -103,12 +144,12 @@ class ModuleComponent(val module: Module) : GuiComponent {
             val badgeY = curY + (pillH - badgeH) * 0.5f
 
             val badgeBg = if (isEnabled) {
-                if (isBinding) Color4b(33, 0, 93, 75) else Color4b(33, 0, 93, 40)
+                if (isBinding) palette.onPrimary.alpha(75) else palette.onPrimary.alpha(40)
             } else {
                 if (isBinding) palette.primaryContainer else palette.surfaceContainerHigh
             }
             val badgeTextCol = if (isEnabled) {
-                Color4b(33, 0, 93, 255)
+                palette.onPrimary
             } else {
                 if (isBinding) palette.onPrimaryContainer else palette.primary
             }
@@ -243,6 +284,13 @@ class ModuleComponent(val module: Module) : GuiComponent {
         val pillH = 22f
 
         if (isInsideClip(mouseX, mouseY) && isHovered(mouseX, mouseY, x, y, width, pillH)) {
+            if (module is meow.ancient.module.modules.other.AntiCheatModule) {
+                if (button == 1 && hasSettings()) {
+                    ClickGuiScreen.clearAllListening()
+                    isExpanded = !isExpanded
+                }
+                return true
+            }
             when (button) {
                 0 -> {
                     ClickGuiScreen.clearAllListening()
