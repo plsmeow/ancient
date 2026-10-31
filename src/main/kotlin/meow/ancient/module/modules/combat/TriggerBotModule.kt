@@ -8,6 +8,8 @@ import meow.ancient.client.util.rotation.RotationUtil
 import meow.ancient.event.events.PlayerUpdateEvent
 import meow.ancient.module.Module
 import meow.ancient.module.modules.movement.GroundSpoofModule
+import meow.ancient.module.setting.MinecraftPickerCatalogs
+import net.minecraft.world.entity.EntityType
 import net.minecraft.network.protocol.game.ServerboundSetCarriedItemPacket
 import net.minecraft.world.InteractionHand
 import net.minecraft.world.entity.Entity
@@ -30,7 +32,7 @@ object TriggerBotModule : Module(
     description = "Automatically attacks entities in crosshairs"
 ) {
     val distance = number("Distance", 3.0, 2.0, 6.0, 0.1, 1)
-    val targets = multiMode("Targets", setOf("Players", "Naked", "Monsters", "Animals"), listOf("Players", "Naked", "Monsters", "Animals"))
+    val targets = targets("Targets", setOf("minecraft:player"))
     val raycastCheck = boolean("Raycast Check", true)
     val noWallHit = boolean("Through Walls", false)
     val pauseEating = boolean("Pause Eating", true)
@@ -172,17 +174,8 @@ object TriggerBotModule : Module(
         if (!entity.isAlive || entity === mc.player || entity is ArmorStand) return false
         val player = mc.player ?: return false
 
-        if (entity is Player) {
-            val isArmored = entity.armorValue > 0
-            if (isArmored && !targets.isSelected("Players")) return false
-            if (!isArmored && !targets.isSelected("Naked")) return false
-        } else if (entity is Monster || entity is AmbientCreature) {
-            if (!targets.isSelected("Monsters")) return false
-        } else if (entity is Animal) {
-            if (!targets.isSelected("Animals")) return false
-        } else {
-            return false
-        }
+        if (!targets.isSelected(entity)) return false
+        if (entity is Player && (entity.isCreative || entity.isSpectator)) return false
 
         return player.eyePosition.distanceTo(entity.position()) <= reach
     }

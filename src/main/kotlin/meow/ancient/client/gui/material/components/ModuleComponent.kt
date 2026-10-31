@@ -1,27 +1,42 @@
 package meow.ancient.client.gui.material.components
 
 import com.mojang.blaze3d.platform.InputConstants
+import meow.ancient.client.config.ConfigManager
+import meow.ancient.client.gui.material.AnimFloat
 import meow.ancient.client.gui.material.ClickGuiScreen
 import meow.ancient.client.gui.material.M3Theme
+import meow.ancient.client.render.main.ChromaRenderer
 import meow.ancient.client.util.other.color.Color4b
 import meow.ancient.client.util.render.RenderUtils
+import meow.ancient.client.util.render.ScissorUtil
 import meow.ancient.client.util.render.engine.controls.ClientRenderPipeline
 import meow.ancient.client.util.render.font.Fonts
 import meow.ancient.module.Module
 import meow.ancient.module.setting.KeybindSetting
+import net.minecraft.client.input.CharacterEvent
 import org.joml.Matrix4f
 
 class ModuleComponent(val module: Module) : GuiComponent {
     override var x: Float = 0f
     override var y: Float = 0f
     override var width: Float = 0f
-    override var height: Float = 0f
+    override var height: Float = 22f
     var isBinding: Boolean = false
     var isExpanded: Boolean
         get() = module.isExpanded
         set(value) {
+            if (!value) {
+                releaseSettingsInput()
+            }
             module.isExpanded = value
         }
+
+    private val expandAnim = AnimFloat(0f, speed = 14f)
+    private var currentSettingsHeight = 0f
+    private var clipLeft = 0f
+    private var clipTop = 0f
+    private var clipRight = 0f
+    private var clipBottom = 0f
 
     val settingComponents: MutableList<SettingComponent> = ArrayList()
 
@@ -45,11 +60,16 @@ class ModuleComponent(val module: Module) : GuiComponent {
         this.x = x
         this.y = y
         this.width = width
+        val inheritedClip = ChromaRenderer.scissorStack.current
+        clipLeft = inheritedClip?.x() ?: x
+        clipTop = inheritedClip?.y() ?: y
+        clipRight = inheritedClip?.let { it.x() + it.width() } ?: (x + width)
+        clipBottom = inheritedClip?.let { it.y() + it.height() } ?: Float.POSITIVE_INFINITY
 
         val palette = M3Theme.current
         val pillH = 22f
         val pillRadius = 6f
-        var curY = y
+        val curY = y
 
         val isEnabled = module.isEnabled()
         val modBg = if (isEnabled) palette.primary else Color4b(43, 39, 52, 220)
@@ -161,41 +181,68 @@ class ModuleComponent(val module: Module) : GuiComponent {
             )
         }
 
-        curY += pillH
-
-        if (!isExpanded) {
-            for (comp in settingComponents) {
-                if (comp is TextComponent) comp.blur()
+        var totalSettingsHeight = 0f
+        for (comp in settingComponents) {
+            if (comp.setting.isVisible()) {
+                totalSettingsHeight += comp.height + 6f
+            } else {
+                releaseSettingsInput(comp)
             }
         }
-        if (isExpanded && hasSettings()) {
-            curY += 6f
-            for (comp in settingComponents) {
-                if (comp.setting.isVisible()) {
-                    val compH = comp.render(
-                        matrix = matrix,
-                        x = x,
-                        y = curY,
-                        width = width,
-                        mouseX = mouseX,
-                        mouseY = mouseY,
-                        dt = dt
-                    )
-                    curY += compH + 6f
-                } else if (comp is TextComponent) {
-                    comp.blur()
+
+        val targetHeight = if (isExpanded && totalSettingsHeight > 0f) totalSettingsHeight + 6f else 0f
+        currentSettingsHeight = expandAnim.update(targetHeight, dt)
+        this.height = pillH + currentSettingsHeight
+
+        if (!isExpanded && currentSettingsHeight <= 0f) {
+            releaseSettingsInput()
+        }
+
+        if (isExpanded || currentSettingsHeight > 0f) {
+            ScissorUtil.withScissor(x, y + pillH, width, currentSettingsHeight) {
+                var compY = y + pillH + 6f
+                for (comp in settingComponents) {
+                    if (comp.setting.isVisible()) {
+                        comp.x = x
+                        comp.y = compY
+                        comp.width = width
+                        val interactive = isSettingRevealed(comp)
+                        if (!interactive) {
+                            releaseSettingsInput(comp)
+                        }
+                        val compH = comp.render(
+                            matrix = matrix,
+                            x = x,
+                            y = compY,
+                            width = width,
+                            mouseX = if (interactive) mouseX else Int.MIN_VALUE,
+                            mouseY = if (interactive) mouseY else Int.MIN_VALUE,
+                            dt = dt
+                        )
+                        if (interactive && !isSettingRevealed(comp)) {
+                            releaseSettingsInput(comp)
+                        }
+                        compY += compH + 6f
+                    }
                 }
             }
         }
 
-        this.height = curY - y
         return height
     }
 
     override fun mouseClicked(mouseX: Double, mouseY: Double, button: Int): Boolean {
+        releaseUnrevealedSettings()
+        if (isBinding && button >= 4) {
+            module.key = KeybindSetting.fromMouseButton(button)
+            isBinding = false
+            ConfigManager.saveConfig("default")
+            return true
+        }
+
         val pillH = 22f
 
-        if (isHovered(mouseX, mouseY, x, y, width, pillH)) {
+        if (isInsideClip(mouseX, mouseY) && isHovered(mouseX, mouseY, x, y, width, pillH)) {
             when (button) {
                 0 -> {
                     ClickGuiScreen.clearAllListening()
@@ -218,9 +265,10 @@ class ModuleComponent(val module: Module) : GuiComponent {
             }
         }
 
-        if (isExpanded && hasSettings()) {
+        if (isInsideSettingsClip(mouseX, mouseY)) {
             for (comp in settingComponents) {
-                if (comp.setting.isVisible() && comp.mouseClicked(mouseX, mouseY, button)) {
+                if (isSettingRevealed(comp) && isHovered(mouseX, mouseY, comp.x, comp.y, comp.width, comp.height) && comp.mouseClicked(mouseX, mouseY, button)) {
+                    releaseUnrevealedSettings()
                     return true
                 }
             }
@@ -230,26 +278,24 @@ class ModuleComponent(val module: Module) : GuiComponent {
     }
 
     override fun mouseReleased(mouseX: Double, mouseY: Double, button: Int) {
-        if (isExpanded) {
-            for (comp in settingComponents) {
-                if (comp.setting.isVisible()) {
-                    comp.mouseReleased(mouseX, mouseY, button)
-                }
-            }
+        for (comp in settingComponents) {
+            comp.mouseReleased(mouseX, mouseY, button)
         }
     }
 
     override fun mouseDragged(mouseX: Double, mouseY: Double, button: Int, deltaX: Double, deltaY: Double) {
-        if (isExpanded) {
-            for (comp in settingComponents) {
-                if (comp.setting.isVisible()) {
-                    comp.mouseDragged(mouseX, mouseY, button, deltaX, deltaY)
-                }
+        releaseUnrevealedSettings()
+        for (comp in settingComponents) {
+            if (isSettingRevealed(comp) && isInsideSettingsClip(mouseX, mouseY)) {
+                comp.mouseDragged(mouseX, mouseY, button, deltaX, deltaY)
+            } else {
+                comp.mouseReleased(mouseX, mouseY, button)
             }
         }
     }
 
     override fun keyPressed(keyCode: Int, scanCode: Int, modifiers: Int): Boolean {
+        releaseUnrevealedSettings()
         if (isBinding) {
             if (keyCode == InputConstants.KEY_ESCAPE || keyCode == InputConstants.KEY_DELETE || keyCode == InputConstants.KEY_BACKSPACE) {
                 module.key = InputConstants.UNKNOWN.value
@@ -257,17 +303,71 @@ class ModuleComponent(val module: Module) : GuiComponent {
                 module.key = keyCode
             }
             isBinding = false
+            ConfigManager.saveConfig("default")
             return true
         }
 
-        if (isExpanded) {
-            for (comp in settingComponents) {
-                if (comp.setting.isVisible() && comp.keyPressed(keyCode, scanCode, modifiers)) {
-                    return true
-                }
+        for (comp in settingComponents) {
+            if (isSettingRevealed(comp) && comp.keyPressed(keyCode, scanCode, modifiers)) {
+                releaseUnrevealedSettings()
+                return true
             }
         }
         return false
+    }
+    fun charTyped(event: CharacterEvent): Boolean {
+        releaseUnrevealedSettings()
+        for (comp in settingComponents) {
+            if (isSettingRevealed(comp) && comp.charTyped(event)) {
+                return true
+            }
+        }
+        return false
+    }
+
+    fun releaseInput() {
+        isBinding = false
+        releaseSettingsInput()
+    }
+
+    private fun releaseSettingsInput(comp: SettingComponent) {
+        comp.mouseReleased(0.0, 0.0, 0)
+        when (comp) {
+            is KeybindComponent -> comp.stopListening()
+            is NumberComponent -> comp.stopEditing()
+            is TextComponent -> comp.blur()
+        }
+    }
+
+    private fun releaseSettingsInput() {
+        for (comp in settingComponents) {
+            releaseSettingsInput(comp)
+        }
+    }
+
+    private fun releaseUnrevealedSettings() {
+        for (comp in settingComponents) {
+            if (!isSettingRevealed(comp)) {
+                releaseSettingsInput(comp)
+            }
+        }
+    }
+
+    private fun isSettingRevealed(comp: SettingComponent): Boolean {
+        return isExpanded && comp.setting.isVisible() && comp.height > 0f &&
+            comp.x >= maxOf(x, clipLeft) && comp.x + comp.width <= minOf(x + width, clipRight) &&
+            comp.y >= maxOf(y + 28f, clipTop) &&
+            comp.y + comp.height <= minOf(y + 22f + currentSettingsHeight, clipBottom)
+    }
+
+    private fun isInsideClip(mouseX: Double, mouseY: Double): Boolean {
+        return mouseX >= clipLeft && mouseX < clipRight && mouseY >= clipTop && mouseY < clipBottom
+    }
+
+    private fun isInsideSettingsClip(mouseX: Double, mouseY: Double): Boolean {
+        return isExpanded && isInsideClip(mouseX, mouseY) &&
+            mouseX >= x && mouseX < x + width &&
+            mouseY >= y + 28f && mouseY < y + 22f + currentSettingsHeight
     }
 
     private fun isHovered(mouseX: Double, mouseY: Double, x: Float, y: Float, w: Float, h: Float): Boolean {

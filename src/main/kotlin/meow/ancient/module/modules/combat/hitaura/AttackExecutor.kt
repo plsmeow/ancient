@@ -14,7 +14,6 @@ import meow.ancient.module.modules.combat.CriticalsModule
 import meow.ancient.module.modules.combat.TriggerBotModule
 import meow.ancient.module.modules.combat.HitAuraModule.ClickMode
 import meow.ancient.module.modules.combat.HitAuraModule.SprintResetMode
-import net.minecraft.network.protocol.game.ServerboundPunchPacket
 import net.minecraft.world.InteractionHand
 import net.minecraft.world.entity.LivingEntity
 
@@ -93,7 +92,7 @@ class AttackExecutor(
         var previousAxeSlot = -1
         var breachSwapSlot = -1
         var executed = false
-        var sprintPrepared = false
+        var packetSprintReset = false
         try {
             val macePreparation = AutoMaceModule.beforeAttack()
             if (macePreparation == AutoMaceModule.AttackPreparation.WAITING
@@ -107,33 +106,30 @@ class AttackExecutor(
             }
             val isCritAttack = onlyCrits && criticalProcessor.isFallingForCrit()
             sprintResetProcessor.preAttack(sprintResetMode, forceStopSprint = isCritAttack)
-            sprintPrepared = true
             if (MaceKillModule.isEnabled()) {
                 MaceKillModule.doCrit()
             }
             if (CriticalsModule.isEnabled()) {
                 CriticalsModule.killAuraTriggered = true
                 CriticalsModule.doCrit()
-                CriticalsModule.killAuraTriggered = false
             }
 
             val swingAnimation = localPlayer.getItemInHand(InteractionHand.MAIN_HAND).attackAnimation
             if (clickMode == ClickMode.MODE_1_8) {
                 localPlayer.swing(InteractionHand.MAIN_HAND, swingAnimation, false)
-                sendPacket(ServerboundPunchPacket.INSTANCE)
                 currentGameMode.attack(localPlayer, target)
                 executed = true
             } else {
                 currentGameMode.attack(localPlayer, target)
                 executed = true
                 localPlayer.swing(InteractionHand.MAIN_HAND, swingAnimation, false)
-                sendPacket(ServerboundPunchPacket.INSTANCE)
             }
             return true
         } finally {
+            CriticalsModule.killAuraTriggered = false
             try {
                 if (executed) clickerProcessor.onAttackExecuted(clickMode, cps, randomizeCps, cpsSpread)
-                if (sprintPrepared) sprintResetProcessor.postAttack(sprintResetMode)
+                if (executed) sprintResetProcessor.postAttack(sprintResetMode)
             } finally {
                 if (breachSwapSlot != -1) {
                     BreachSwapModule.swapBack(breachSwapSlot)

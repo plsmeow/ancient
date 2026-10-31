@@ -1,22 +1,20 @@
 package meow.ancient.client.util.rotation
 
 import meow.ancient.client.extensions.mc
+import meow.ancient.client.util.movement.DirectionalInput
 import meow.ancient.client.util.movement.MoveUtil
 import net.minecraft.client.player.ClientInput
 import net.minecraft.util.Mth
 import net.minecraft.world.entity.player.Input
 import net.minecraft.world.phys.Vec2
-import kotlin.math.cos
-import kotlin.math.hypot
-import kotlin.math.sin
+
+typealias MoveFixUtil = MoveFixProcessor
 
 object MoveFixProcessor {
-    private const val OCTANT_THRESHOLD = 0.38268343f // sin(22.5 deg)
-
     var hasForwardInput: Boolean = false
         private set
 
-    private fun calculateImpulse(positive: Boolean, negative: Boolean): Float {
+    fun calculateImpulse(positive: Boolean, negative: Boolean): Float {
         return when {
             positive == negative -> 0.0f
             positive -> 1.0f
@@ -25,11 +23,33 @@ object MoveFixProcessor {
     }
 
     fun shouldOverrideForwardImpulse(input: ClientInput): Boolean {
-        return hasForwardInput
+        return false
     }
 
     fun reset() {
         hasForwardInput = false
+    }
+
+    fun transformDirection(input: DirectionalInput, cameraYaw: Float, serverYaw: Float): DirectionalInput {
+        val z = (if (input.forwards) 1.0f else 0.0f) - (if (input.backwards) 1.0f else 0.0f)
+        val x = (if (input.left) 1.0f else 0.0f) - (if (input.right) 1.0f else 0.0f)
+
+        if (z == 0.0f && x == 0.0f) {
+            return DirectionalInput.NONE
+        }
+
+        val deltaYaw = (cameraYaw - serverYaw) * Mth.DEG_TO_RAD
+
+        val cos = Mth.cos(deltaYaw.toDouble())
+        val sin = Mth.sin(deltaYaw.toDouble())
+
+        val newX = x * cos - z * sin
+        val newZ = z * cos + x * sin
+
+        val movementSideways = Math.round(newX).toFloat()
+        val movementForward = Math.round(newZ).toFloat()
+
+        return DirectionalInput(movementForward, movementSideways)
     }
 
     fun applyMoveFix(
@@ -38,31 +58,50 @@ object MoveFixProcessor {
         serverYaw: Float,
         cameraYaw: Float
     ) {
-        val rawForward = calculateImpulse(
-            input.keyPresses.forward(),
-            input.keyPresses.backward()
-        )
-        val rawLeft = calculateImpulse(
-            input.keyPresses.left(),
-            input.keyPresses.right()
-        )
-        hasForwardInput = rawForward > 0.0f
+        val rawDirection = DirectionalInput(input)
+        hasForwardInput = rawDirection.forwards
 
         when (mode) {
-            MoveFixMode.OFF, MoveFixMode.STRICT -> {
-                return
+            MoveFixMode.OFF, MoveFixMode.STRICT -> return
+            MoveFixMode.SILENT -> {
+                if (!rawDirection.isMoving) {
+                    hasForwardInput = false
+                    return
+                }
+
+                val transformed = transformDirection(rawDirection, cameraYaw, serverYaw)
+                hasForwardInput = transformed.forwards
+
+                val currentKeys = input.keyPresses
+                val wantsSprint = (currentKeys.sprint() || MoveUtil.isKeyPressed(mc.options.keySprint)) && transformed.forwards
+
+                input.keyPresses = Input(
+                    transformed.forwards,
+                    transformed.backwards,
+                    transformed.left,
+                    transformed.right,
+                    currentKeys.jump(),
+                    currentKeys.shift(),
+                    wantsSprint
+                )
+
+                val f = calculateImpulse(transformed.forwards, transformed.backwards)
+                val g = calculateImpulse(transformed.left, transformed.right)
+                input.moveVector = Vec2(g, f).normalized()
             }
             MoveFixMode.FREE -> {
-                if (rawForward == 0.0f && rawLeft == 0.0f) return
+                val z = calculateImpulse(rawDirection.forwards, rawDirection.backwards)
+                val x = calculateImpulse(rawDirection.left, rawDirection.right)
+                if (z == 0.0f && x == 0.0f) return
 
-                val deltaRad = Math.toRadians((cameraYaw - serverYaw).toDouble()).toFloat()
-                val cos = cos(deltaRad)
-                val sin = sin(deltaRad)
+                val deltaRad = (cameraYaw - serverYaw) * Mth.DEG_TO_RAD
+                val cos = Mth.cos(deltaRad.toDouble())
+                val sin = Mth.sin(deltaRad.toDouble())
 
-                val newForward = rawForward * cos + rawLeft * sin
-                val newLeft = rawLeft * cos - rawForward * sin
+                val newX = x * cos - z * sin
+                val newZ = z * cos + x * sin
 
-                input.moveVector = Vec2(newLeft, newForward).normalized()
+                input.moveVector = Vec2(newX, newZ).normalized()
 
                 val currentKeys = input.keyPresses
                 val wantsSprint = currentKeys.sprint() || MoveUtil.isKeyPressed(mc.options.keySprint) || (mc.player?.isSprinting == true && hasForwardInput)
@@ -77,42 +116,6 @@ object MoveFixProcessor {
                         wantsSprint
                     )
                 }
-            }
-            MoveFixMode.SILENT -> {
-                val length = hypot(rawForward, rawLeft)
-                if (length <= 1e-4f) return
-
-                val normForward = rawForward / length
-                val normLeft = rawLeft / length
-
-                val deltaRad = Math.toRadians((cameraYaw - serverYaw).toDouble()).toFloat()
-                val cos = cos(deltaRad)
-                val sin = sin(deltaRad)
-
-                val rotForward = normForward * cos + normLeft * sin
-                val rotLeft = normLeft * cos - normForward * sin
-
-                val forwardKey = rotForward > OCTANT_THRESHOLD
-                val backwardKey = rotForward < -OCTANT_THRESHOLD
-                val leftKey = rotLeft > OCTANT_THRESHOLD
-                val rightKey = rotLeft < -OCTANT_THRESHOLD
-
-                val currentKeys = input.keyPresses
-                val wantsSprint = currentKeys.sprint() || MoveUtil.isKeyPressed(mc.options.keySprint) || (mc.player?.isSprinting == true && hasForwardInput)
-
-                input.keyPresses = Input(
-                    forwardKey,
-                    backwardKey,
-                    leftKey,
-                    rightKey,
-                    currentKeys.jump(),
-                    currentKeys.shift(),
-                    wantsSprint
-                )
-
-                val f = calculateImpulse(forwardKey, backwardKey)
-                val g = calculateImpulse(leftKey, rightKey)
-                input.moveVector = Vec2(g, f).normalized()
             }
         }
     }

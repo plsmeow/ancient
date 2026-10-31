@@ -2,6 +2,7 @@ package meow.ancient.mixin;
 
 import com.mojang.blaze3d.platform.InputConstants;
 import meow.ancient.client.gui.hud.HudSettingsPopup;
+import meow.ancient.client.gui.material.ClickGuiScreen;
 import meow.ancient.event.EventManager;
 import meow.ancient.event.events.KeyPressEvent;
 import net.minecraft.client.KeyboardHandler;
@@ -40,11 +41,11 @@ public class MixinKeyboardHandler {
     }
 
     @Inject(method = "charTyped(JLnet/minecraft/client/input/CharacterEvent;)V", at = @At("HEAD"), cancellable = true)
-    private void ancient$popupCharTyped(long window, CharacterEvent event, CallbackInfo ci) {
-        if (window != 0 && window == minecraft.getWindow().handle() &&
-                minecraft.gui.screen() instanceof ChatScreen && HudSettingsPopup.INSTANCE.isOpen() &&
-                HudSettingsPopup.INSTANCE.charTyped(event)) {
-            ci.cancel();
+    private void ancient$forwardTextInput(long window, CharacterEvent event, CallbackInfo ci) {
+        if (window == 0 || window != minecraft.getWindow().handle()) return;
+        if (minecraft.gui.screen() instanceof ChatScreen && HudSettingsPopup.INSTANCE.isOpen()) {
+            if (HudSettingsPopup.INSTANCE.charTyped(event)) ci.cancel();
         }
     }
 }
+

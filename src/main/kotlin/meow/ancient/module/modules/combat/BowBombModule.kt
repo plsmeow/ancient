@@ -5,6 +5,7 @@ import meow.ancient.client.extensions.inGame
 import meow.ancient.client.extensions.mc
 import meow.ancient.event.events.PacketSendEvent
 import meow.ancient.module.Module
+import net.minecraft.network.protocol.game.ServerboundClientTickEndPacket
 import net.minecraft.network.protocol.game.ServerboundMovePlayerPacket
 import net.minecraft.network.protocol.game.ServerboundPlayerActionPacket
 import net.minecraft.network.protocol.game.ServerboundPlayerCommandPacket
@@ -12,10 +13,7 @@ import net.minecraft.network.protocol.game.ServerboundUseItemPacket
 import net.minecraft.world.InteractionHand
 import net.minecraft.world.item.Items
 import sweetie.evaware.flora.api.Commando
-import java.util.Random
-import kotlin.math.cos
 import kotlin.math.floor
-import kotlin.math.sin
 
 object BowBombModule : Module(
     name = "BowBomb",
@@ -26,7 +24,7 @@ object BowBombModule : Module(
     val modeSetting = mode("Mode", "Maximum", listOf("Normal", "Maximum", "Factorised"))
     val mode by modeSetting
     val factor = number("Factor", 1.0, 1.0, 20.0, 1.0, 0)
-    val exploitSetting = mode("Exploit", "Strong", listOf("Strong", "Fast", "Strict", "Phobos", "WB"))
+    val exploitSetting = mode("Exploit", "Strong", listOf("Strong", "Fast", "Phobos"))
     val exploit by exploitSetting
     val minimize = boolean("Minimize", false)
     val delay = number("Delay", 5.0, 0.0, 10.0, 0.5, 1)
@@ -38,7 +36,6 @@ object BowBombModule : Module(
     )
 
     private var lastActionTime = 0L
-    private val rnd = Random()
 
     @Commando
     fun onPacketSend(event: PacketSendEvent) {
@@ -66,44 +63,24 @@ object BowBombModule : Module(
 
         player.connection.send(ServerboundPlayerCommandPacket(player, ServerboundPlayerCommandPacket.Action.START_SPRINTING))
 
-        val yawRad = Math.toRadians(player.yRot.toDouble())
-        val strictDirection = doubleArrayOf(
-            100.0 * -sin(yawRad),
-            100.0 * cos(yawRad)
-        )
-
         val runs = getRuns()
         when (exploit) {
             "Fast" -> {
                 for (i in 0 until runs) {
-                    spoof(player.x, if (minimize.value) player.y else player.y - 1e-10, player.z, true)
-                    spoof(player.x, player.y + 1e-10, player.z, false)
+                    spoof(if (minimize.value) player.y else player.y - 1e-10, true)
+                    spoof(player.y + 1e-10, false)
                 }
             }
             "Strong" -> {
                 for (i in 0 until runs) {
-                    spoof(player.x, player.y + 1e-10, player.z, false)
-                    spoof(player.x, if (minimize.value) player.y else player.y - 1e-10, player.z, true)
+                    spoof(player.y + 1e-10, false)
+                    spoof(if (minimize.value) player.y else player.y - 1e-10, true)
                 }
             }
             "Phobos" -> {
                 for (i in 0 until runs) {
-                    spoof(player.x, player.y + 0.00000000000013, player.z, true)
-                    spoof(player.x, player.y + 0.00000000000027, player.z, false)
-                }
-            }
-            "Strict" -> {
-                for (i in 0 until runs) {
-                    if (rnd.nextBoolean()) {
-                        spoof(player.x - strictDirection[0], player.y, player.z - strictDirection[1], false)
-                    } else {
-                        spoof(player.x + strictDirection[0], player.y, player.z + strictDirection[1], true)
-                    }
-                }
-            }
-            "WB" -> {
-                for (i in 0 until runs) {
-                    spoof(player.x + getWorldBorderRnd(), player.y, player.z + getWorldBorderRnd(), false)
+                    spoof(player.y + 0.00000000000013, true)
+                    spoof(player.y + 0.00000000000027, false)
                 }
             }
         }
@@ -111,24 +88,21 @@ object BowBombModule : Module(
         lastActionTime = now
     }
 
-    private fun spoof(x: Double, y: Double, z: Double, ground: Boolean) {
+    private fun spoof(y: Double, ground: Boolean) {
         val player = mc.player ?: return
+        val collision = player.horizontalCollision
         if (rotation.value) {
-            player.connection.send(ServerboundMovePlayerPacket.PosRot(x, y, z, player.yRot, player.xRot, ground, player.horizontalCollision))
+            player.connection.send(ServerboundMovePlayerPacket.PosRot(player.x, y, player.z, player.yRot, player.xRot, ground, collision))
         } else {
-            player.connection.send(ServerboundMovePlayerPacket.Pos(x, y, z, ground, player.horizontalCollision))
+            player.connection.send(ServerboundMovePlayerPacket.Pos(player.x, y, player.z, ground, collision))
         }
+        player.connection.send(ServerboundClientTickEndPacket.INSTANCE)
     }
 
     private fun getRuns(): Int = when (mode) {
-        "Normal" -> floor(factor.value).toInt().coerceAtLeast(1)
-        "Factorised" -> (10 + (factor.value.toInt() - 1)).coerceAtLeast(1)
-        else -> (30.0f * factor.value.toFloat()).toInt().coerceAtLeast(1)
+        "Normal" -> floor(factor.value).toInt().coerceIn(1, 20)
+        "Factorised" -> (10 + factor.value.toInt() - 1).coerceIn(1, 20)
+        else -> (30.0f * factor.value.toFloat()).toInt().coerceIn(1, 20)
     }
 
-    private fun getWorldBorderRnd(): Double {
-        if (mc.hasSingleplayerServer()) return 1.0
-        val n = rnd.nextInt(29000000).toDouble()
-        return if (rnd.nextBoolean()) n else -n
-    }
 }

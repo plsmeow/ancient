@@ -8,6 +8,7 @@ import meow.ancient.event.EventManager
 import meow.ancient.event.events.KeyPressEvent
 import meow.ancient.module.ModuleManager
 import meow.ancient.module.modules.render.ClickGuiModule
+import meow.ancient.module.setting.KeybindSetting
 import net.minecraft.client.gui.screens.TitleScreen
 import sweetie.evaware.flora.api.Commando
 
@@ -37,6 +38,9 @@ object InputListener : Listener() {
 
         for (module in ModuleManager.modules) {
             if (module !== ClickGuiModule && module.key != InputConstants.UNKNOWN.value && module.key == event.key) {
+                if (KeybindSetting.isMouseButton(event.key)) {
+                    event.cancel = true
+                }
                 module.toggle()
             }
         }

@@ -1,6 +1,7 @@
 package meow.ancient.mixin;
 
 import meow.ancient.event.EventManager;
+import meow.ancient.network.SilentPacketQueue;
 import meow.ancient.event.events.PacketReceiveEvent;
 import meow.ancient.event.events.PacketSendEvent;
 import io.netty.channel.ChannelFutureListener;
@@ -20,6 +21,7 @@ public class MixinConnection {
         cancellable = true
     )
     private void onSendPacket(Packet<?> packet, ChannelFutureListener listener, boolean flush, CallbackInfo ci) {
+        if (SilentPacketQueue.consume(packet)) return;
         PacketSendEvent event = new PacketSendEvent(packet);
         EventManager.INSTANCE.post(event);
         if (event.getCancel()) {

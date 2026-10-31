@@ -9,6 +9,8 @@ import meow.ancient.client.util.movement.MoveUtil
 import meow.ancient.event.events.PacketSendEvent
 import meow.ancient.event.events.PlayerUpdateEvent
 import meow.ancient.module.Module
+import meow.ancient.mixin.ServerboundMovePlayerPacketAccessor
+import net.minecraft.network.protocol.game.ServerboundClientTickEndPacket
 import net.minecraft.network.protocol.game.ServerboundMovePlayerPacket
 import net.minecraft.network.protocol.game.ServerboundPlayerAbilitiesPacket
 import net.minecraft.world.entity.EquipmentSlot
@@ -93,29 +95,11 @@ object FlightModule : Module(
     @Commando
     fun onPacketSend(event: PacketSendEvent) {
         if (!inGame) return
-        val player = mc.player ?: return
         if (mode != "FunSky") return
 
-        val packet = event.packet
-        if (packet is ServerboundMovePlayerPacket && !packet.isOnGround) {
-            val x = packet.getX(player.x)
-            val y = packet.getY(player.y)
-            val z = packet.getZ(player.z)
-            val yaw = packet.getYRot(player.yRot)
-            val pitch = packet.getXRot(player.xRot)
-            val collision = player.horizontalCollision
-
-            val modifiedPacket = when {
-                packet.hasPosition() && packet.hasRotation() ->
-                    ServerboundMovePlayerPacket.PosRot(x, y, z, yaw, pitch, true, collision)
-                packet.hasPosition() ->
-                    ServerboundMovePlayerPacket.Pos(x, y, z, true, collision)
-                packet.hasRotation() ->
-                    ServerboundMovePlayerPacket.Rot(yaw, pitch, true, collision)
-                else ->
-                    ServerboundMovePlayerPacket.StatusOnly(true, collision)
-            }
-            player.connection.send(modifiedPacket)
+        val packet = event.packet as? ServerboundMovePlayerPacket ?: return
+        if (!packet.isOnGround) {
+            (packet as ServerboundMovePlayerPacketAccessor).`ancient$setOnGround`(true)
         }
     }
 
@@ -217,7 +201,9 @@ object FlightModule : Module(
         if (mc.options.keyJump.isDown) {
             val targetY = player.y + airJumpRiseSpeed.value
             player.connection.send(ServerboundMovePlayerPacket.Pos(player.x, player.y, player.z, false, player.horizontalCollision))
+            player.connection.send(ServerboundClientTickEndPacket.INSTANCE)
             player.connection.send(ServerboundMovePlayerPacket.Pos(player.x, targetY, player.z, false, player.horizontalCollision))
+            player.connection.send(ServerboundClientTickEndPacket.INSTANCE)
             player.setPos(player.x, targetY, player.z)
             player.deltaMovement = Vec3(player.deltaMovement.x, 0.0, player.deltaMovement.z)
         } else {

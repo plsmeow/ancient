@@ -11,6 +11,7 @@ import meow.ancient.client.util.render.ScissorUtil
 import meow.ancient.client.util.render.engine.controls.ClientRenderPipeline
 import meow.ancient.client.util.render.font.Fonts
 import meow.ancient.module.ModuleManager
+import net.minecraft.client.input.CharacterEvent
 import org.joml.Matrix4f
 import kotlin.math.hypot
 
@@ -22,6 +23,14 @@ class CategoryPanel(
 ) : GuiComponent {
     override var height: Float = 42f
     var isExpanded = true
+        set(value) {
+            if (!value) {
+                for (modComp in moduleComponents) {
+                    modComp.releaseInput()
+                }
+            }
+            field = value
+        }
     private val expandAnim = AnimFloat(if (isExpanded) 1f else 0f, if (isExpanded) 1f else 0f, 16f)
 
     var isDragging = false
@@ -162,10 +171,8 @@ class CategoryPanel(
             isDragging = false
             hasMovedWhileDragging = false
         }
-        if (isExpanded) {
-            for (modComp in moduleComponents) {
-                modComp.mouseReleased(mouseX, mouseY, button)
-            }
+        for (modComp in moduleComponents) {
+            modComp.mouseReleased(mouseX, mouseY, button)
         }
     }
 
@@ -188,6 +195,17 @@ class CategoryPanel(
         if (isExpanded) {
             for (modComp in moduleComponents) {
                 if (modComp.keyPressed(keyCode, scanCode, modifiers)) {
+                    return true
+                }
+            }
+        }
+        return false
+    }
+
+    fun charTyped(event: CharacterEvent): Boolean {
+        if (isExpanded) {
+            for (modComp in moduleComponents) {
+                if (modComp.charTyped(event)) {
                     return true
                 }
             }

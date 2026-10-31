@@ -2,8 +2,9 @@ package meow.ancient.module
 
 import meow.ancient.client.extensions.Category
 import meow.ancient.client.interfaces.ILoadable
-import meow.ancient.module.modules.combat.AutoCartModule
 import meow.ancient.module.modules.combat.BowBombModule
+import meow.ancient.module.modules.combat.AntiBotModule
+import meow.ancient.module.modules.combat.AutoTotemModule
 import meow.ancient.module.modules.combat.AutoMaceModule
 import meow.ancient.module.modules.combat.BreachSwapModule
 import meow.ancient.module.modules.combat.CriticalsModule
@@ -11,6 +12,7 @@ import meow.ancient.module.modules.combat.HitAuraModule
 import meow.ancient.module.modules.combat.MaceKillModule
 import meow.ancient.module.modules.combat.TriggerBotModule
 import meow.ancient.module.modules.combat.VelocityModule
+import meow.ancient.module.modules.combat.SpearKillModule
 import meow.ancient.module.modules.movement.AirStuckModule
 import meow.ancient.module.modules.movement.ElytraBoosterModule
 import meow.ancient.module.modules.movement.ElytraFlyModule
@@ -24,12 +26,22 @@ import meow.ancient.module.modules.movement.DragonFlyModule
 import meow.ancient.module.modules.movement.GroundSpoofModule
 import meow.ancient.module.modules.movement.InventoryMoveModule
 import meow.ancient.module.modules.movement.NoSlowModule
+import meow.ancient.module.modules.movement.SpeedModule
+import meow.ancient.module.modules.movement.NoWebModule
 import meow.ancient.module.modules.other.TestModule
 import meow.ancient.module.modules.player.ElytraHelperModule
 import meow.ancient.module.modules.player.NoDelayModule
+import meow.ancient.module.modules.player.ClickPearlModule
+import meow.ancient.module.modules.player.NoPushModule
+import meow.ancient.module.modules.render.ArrowsModule
 import meow.ancient.module.modules.render.ClickGuiModule
+import meow.ancient.module.modules.render.ClientSoundsModule
+import meow.ancient.module.modules.render.FreeCameraModule
+import meow.ancient.module.modules.render.FullBrightModule
 import meow.ancient.module.modules.render.HudModule
 import meow.ancient.module.modules.render.TagsModule
+import meow.ancient.module.modules.render.TargetEspModule
+import meow.ancient.module.modules.render.ViewModelModule
 
 object ModuleManager : ILoadable {
     val modules: MutableList<Module> = ArrayList()
@@ -38,13 +50,15 @@ object ModuleManager : ILoadable {
         modules.clear()
         add(
             HitAuraModule,
-            AutoCartModule,
+            AutoTotemModule,
+            AntiBotModule,
             TriggerBotModule,
             AutoMaceModule,
             BowBombModule,
             CriticalsModule,
             BreachSwapModule,
             VelocityModule,
+            SpearKillModule,
             AutoSprintModule,
             GroundSpoofModule,
             AirStuckModule,
@@ -58,12 +72,22 @@ object ModuleManager : ILoadable {
             DragonFlyModule,
             InventoryMoveModule,
             NoSlowModule,
+            SpeedModule,
+            NoWebModule,
             NoDelayModule,
             ElytraHelperModule,
+            ClickPearlModule,
+            NoPushModule,
             TestModule,
             ClickGuiModule,
             HudModule,
-            TagsModule
+            TagsModule,
+            FreeCameraModule,
+            TargetEspModule,
+            FullBrightModule,
+            ArrowsModule,
+            ViewModelModule,
+            ClientSoundsModule
         )
     }
 

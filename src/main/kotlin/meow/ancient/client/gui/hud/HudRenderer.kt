@@ -1,5 +1,6 @@
 package meow.ancient.client.gui.hud
 
+import com.mojang.blaze3d.platform.InputConstants
 import meow.ancient.client.extensions.mc
 import meow.ancient.client.gui.material.M3Theme
 import meow.ancient.client.util.render.RenderUtils
@@ -201,7 +202,7 @@ class HudRenderer(private val serverStats: HudServerStats) {
             val entry = modules[i++]
             if (!entry.state || entry === ClickGuiModule) continue
             if (showArrayList) arrayList.add(entry.name)
-            if (showKeybinds && entry.key > 0) keybinds.add(entry.name, KeybindSetting.formatKey(entry.key))
+            if (showKeybinds && entry.key != InputConstants.UNKNOWN.value) keybinds.add(entry.name, KeybindSetting.formatKey(entry.key))
         }
         if (arrayList.rowCount > 1) arrayList.rows.subList(0, arrayList.rowCount).sortWith(widthComparator)
     }

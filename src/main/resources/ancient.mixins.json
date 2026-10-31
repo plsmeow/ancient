@@ -20,10 +20,15 @@
         "MixinConnection",
         "MixinScreen",
         "MixinChatScreen",
+        "MixinCommandSuggestions",
         "MixinMouseHandler",
         "MixinAbstractContainerScreen",
         "MixinEntityRenderer",
-        "MixinFireworkRocketEntity"
+        "MixinFireworkRocketEntity",
+        "MixinCamera",
+        "MixinVisGraph",
+        "MixinGuiRenderer",
+        "MixinFirstPersonHandsAndItemsRenderer"
     ],
     "mixins": [
     ],

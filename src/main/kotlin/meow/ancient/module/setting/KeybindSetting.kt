@@ -24,8 +24,29 @@ class KeybindSetting(
     }
 
     companion object {
+        const val MOUSE_OFFSET = -100
+
+        @JvmStatic
+        fun isMouseButton(key: Int): Boolean = (key in -108..-101) || (key in -8..-2)
+
+        @JvmStatic
+        fun toMouseButton(key: Int): Int = if (key <= -100) -key - 100 else -key
+
+        @JvmStatic
+        fun fromMouseButton(button: Int): Int = if (button < 0) button else -100 - button
+
         fun formatKey(key: Int): String {
-            if (key <= 0 || key == InputConstants.UNKNOWN.value) return "NONE"
+            if (key == InputConstants.UNKNOWN.value || key == 0 || key == -1) return "NONE"
+            if (isMouseButton(key)) {
+                val btn = toMouseButton(key)
+                return when (btn) {
+                    InputConstants.MOUSE_BUTTON_LEFT -> "MOUSE1"
+                    InputConstants.MOUSE_BUTTON_RIGHT -> "MOUSE2"
+                    InputConstants.MOUSE_BUTTON_MIDDLE -> "MOUSE3"
+                    else -> "MOUSE$btn"
+                }
+            }
+            if (key <= 0) return "NONE"
             return when (key) {
                 InputConstants.KEY_RSHIFT -> "RSHIFT"
                 InputConstants.KEY_LSHIFT -> "LSHIFT"
@@ -60,7 +81,33 @@ class KeybindSetting(
             if (trimmed.isEmpty() || trimmed == "NONE" || trimmed == "CLEAR" || trimmed == "0") {
                 return InputConstants.UNKNOWN.value
             }
+            if (trimmed.startsWith("MOUSE") || (trimmed.startsWith("M") && trimmed.length > 1 && (trimmed[1].isDigit() || trimmed[1] == '_'))) {
+                val numStr = trimmed.removePrefix("MOUSE").removePrefix("M").removePrefix("_")
+                val btn = numStr.toIntOrNull()
+                if (btn != null && btn in 1..8) {
+                    val mcBtn = when (btn) {
+                        1 -> InputConstants.MOUSE_BUTTON_LEFT
+                        2 -> InputConstants.MOUSE_BUTTON_RIGHT
+                        3 -> InputConstants.MOUSE_BUTTON_MIDDLE
+                        else -> btn
+                    }
+                    return fromMouseButton(mcBtn)
+                }
+            }
+            if (trimmed.startsWith("BUTTON")) {
+                val btn = trimmed.removePrefix("BUTTON").removePrefix("_").toIntOrNull()
+                if (btn != null && btn in 1..8) {
+                    val mcBtn = when (btn) {
+                        1 -> InputConstants.MOUSE_BUTTON_LEFT
+                        2 -> InputConstants.MOUSE_BUTTON_RIGHT
+                        3 -> InputConstants.MOUSE_BUTTON_MIDDLE
+                        else -> btn
+                    }
+                    return fromMouseButton(mcBtn)
+                }
+            }
             return when (trimmed) {
+                "MIDDLE", "MIDDLE_CLICK" -> fromMouseButton(InputConstants.MOUSE_BUTTON_MIDDLE)
                 "RSHIFT", "RIGHT_SHIFT" -> InputConstants.KEY_RSHIFT
                 "LSHIFT", "LEFT_SHIFT", "SHIFT" -> InputConstants.KEY_LSHIFT
                 "RCTRL", "RCONTROL", "RIGHT_CTRL" -> InputConstants.KEY_RCONTROL

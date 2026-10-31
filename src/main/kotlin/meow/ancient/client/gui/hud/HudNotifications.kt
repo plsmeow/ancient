@@ -1,4 +1,5 @@
 package meow.ancient.client.gui.hud
+import meow.ancient.module.modules.render.HudModule
 
 import meow.ancient.client.extensions.mc
 import meow.ancient.client.gui.material.AnimFloat
@@ -166,8 +167,8 @@ class HudNotifications {
         val drawX = x + (rowOffset + (1f - alpha) * HORIZONTAL_SLIDE * slideDirection) * scale
         val drawY = y + entry.position.value * scale
         val drawWidth = entry.width * scale
-        RenderUtils.roundedRect(matrix, drawX, drawY, drawWidth, CARD_HEIGHT * scale,
-            palette.surfaceContainerLow.fade(alpha), 4f * scale, ClientRenderPipeline.HUD_RECT)
+        RenderUtils.hudBackground(matrix, drawX, drawY, drawWidth, CARD_HEIGHT * scale,
+            palette.surfaceContainerLow.alpha(if (HudModule.blur) 140 else 255), 4f * scale, opacity = alpha)
         RenderUtils.roundedRect(matrix, drawX + PADDING * scale, drawY + 6f * scale,
             2.5f * scale, 2.5f * scale, accent.fade(alpha), 1.25f * scale, ClientRenderPipeline.HUD_RECT)
         Fonts.google_sans_medium.drawString(matrix, entry.title, drawX + TEXT_X * scale, drawY + 4.5f * scale,

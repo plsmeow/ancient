@@ -4,15 +4,19 @@ import meow.ancient.client.util.rotation.RotationManager;
 import meow.ancient.event.EventManager;
 import meow.ancient.event.events.PlayerTickEndEvent;
 import meow.ancient.event.events.PlayerUpdateEvent;
+import meow.ancient.module.modules.combat.SpearKillModule;
 import meow.ancient.module.modules.movement.InventoryMoveModule;
 import meow.ancient.module.modules.movement.NoSlowModule;
 import net.minecraft.client.player.LocalPlayer;
+import meow.ancient.module.modules.player.NoPushModule;
+import net.minecraft.world.entity.MoverType;
+import net.minecraft.world.phys.Vec3;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.ModifyVariable;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
-
 @Mixin(LocalPlayer.class)
 public class MixinLocalPlayer {
     @Inject(method = "tick", at = @At("HEAD"))
@@ -49,6 +53,25 @@ public class MixinLocalPlayer {
     private void onItemUseSpeedMultiplier(CallbackInfoReturnable<Float> cir) {
         if (NoSlowModule.INSTANCE.shouldCancelSlowdown()) {
             cir.setReturnValue(1.0f);
+        }
+    }
+
+    @ModifyVariable(method = "move(Lnet/minecraft/world/entity/MoverType;Lnet/minecraft/world/phys/Vec3;)V", at = @At("HEAD"), argsOnly = true, ordinal = 0)
+    private Vec3 onMove(Vec3 movement, MoverType type) {
+        if (type == MoverType.SELF && SpearKillModule.INSTANCE.shouldOverrideMovement()) {
+            Vec3 motion = SpearKillModule.INSTANCE.getMotion();
+            if (motion != null) {
+                ((LocalPlayer) (Object) this).setDeltaMovement(motion);
+                return motion;
+            }
+        }
+        return movement;
+    }
+
+    @Inject(method = "moveTowardsClosestSpace", at = @At("HEAD"), cancellable = true)
+    private void onMoveTowardsClosestSpace(double x, double z, CallbackInfo ci) {
+        if (NoPushModule.INSTANCE.shouldCancelBlockPush()) {
+            ci.cancel();
         }
     }
 }

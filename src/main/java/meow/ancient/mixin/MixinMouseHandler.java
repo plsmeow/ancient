@@ -2,12 +2,17 @@ package meow.ancient.mixin;
 
 import com.mojang.blaze3d.platform.InputConstants;
 import meow.ancient.client.gui.hud.HudSettingsPopup;
+import meow.ancient.event.EventManager;
+import meow.ancient.event.events.KeyPressEvent;
 import meow.ancient.module.modules.render.HudModule;
+import meow.ancient.module.setting.KeybindSetting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.MouseHandler;
 import net.minecraft.client.gui.screens.ChatScreen;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.gui.screens.TitleScreen;
 import net.minecraft.client.input.MouseButtonEvent;
+import net.minecraft.client.input.MouseButtonInfo;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -22,6 +27,21 @@ public class MixinMouseHandler {
     @Shadow
     @Final
     private Minecraft minecraft;
+
+    @Inject(method = "onButton(JLnet/minecraft/client/input/MouseButtonInfo;I)V", at = @At("HEAD"), cancellable = true)
+    private void ancient$onButton(long window, MouseButtonInfo buttonInfo, int action, CallbackInfo ci) {
+        if (window == 0 || window != minecraft.getWindow().handle()) return;
+        if (minecraft.gui.screen() == null || minecraft.gui.screen() instanceof TitleScreen) {
+            if (buttonInfo.button() >= 4 || buttonInfo.button() == InputConstants.MOUSE_BUTTON_MIDDLE) {
+                int key = KeybindSetting.fromMouseButton(buttonInfo.button());
+                KeyPressEvent event = new KeyPressEvent(key, 0, action, buttonInfo.modifiers());
+                EventManager.INSTANCE.post(event);
+                if (event.getCancel()) {
+                    ci.cancel();
+                }
+            }
+        }
+    }
 
     @Inject(method = "onMove(JDDDD)V", at = @At("TAIL"))
     private void ancient$mouseMoved(long window, double x, double y, double deltaX, double deltaY, CallbackInfo ci) {

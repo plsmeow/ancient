@@ -33,6 +33,12 @@ object HudModule : Module("HUD", RENDER, "Material HUD with live player and serv
     val notificationLimit by notificationLimitSetting
     private val scaleSetting = number("Scale", 0.75, 0.5, 1.5, 0.05, 2)
     val scale by scaleSetting
+    private val blurSetting = boolean("Background Blur", false, description = "Apply Kawase blur behind HUD elements")
+    val blur by blurSetting
+    private val blurRadiusSetting = number("Blur Radius", 3.0, 1.0, 8.0, 0.5, 1, isVisible = { blur })
+    val blurRadius by blurRadiusSetting
+    private val blurIterationsSetting = number("Blur Quality", 4.0, 1.0, 6.0, 1.0, 0, isVisible = { blur })
+    val blurIterations by blurIterationsSetting
     val dragController = HudDragController(this)
 
     fun isElementEnabled(element: HudElement): Boolean = elements.contains(elementLabels[element.ordinal])

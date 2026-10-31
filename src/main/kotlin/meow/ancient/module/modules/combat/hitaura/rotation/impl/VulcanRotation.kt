@@ -1,11 +1,16 @@
 package meow.ancient.module.modules.combat.hitaura.rotation.impl
 
+import meow.ancient.client.extensions.mc
 import meow.ancient.client.util.rotation.Rotation
 import meow.ancient.module.modules.combat.hitaura.rotation.RotationStrategy
 import net.minecraft.world.entity.LivingEntity
-import java.util.concurrent.ThreadLocalRandom
 
-class VulcanRotation : RotationStrategy("Vulcan") {
+class VulcanRotation : RotationStrategy("Vulcan", keepTicks = 0) {
+    override fun shouldUpdateRotation(shouldSnapNow: Boolean): Boolean {
+        val player = mc.player ?: return false
+        return shouldSnapNow || player.getAttackStrengthScale(0.5f) >= 0.9f
+    }
+
     override fun calculate(
         current: Rotation,
         ideal: Rotation,
@@ -16,16 +21,10 @@ class VulcanRotation : RotationStrategy("Vulcan") {
         speed: Float,
         tickCounter: Int
     ): Rotation {
-        val rng = ThreadLocalRandom.current()
-        val maxYawStep = (speed.coerceAtMost(70.0f) + rng.nextFloat(-3.5f, 3.5f)).coerceAtLeast(5.0f)
-        val maxPitchStep = ((speed * 0.6f).coerceAtMost(42.0f) + rng.nextFloat(-2.0f, 2.0f)).coerceAtLeast(3.0f)
-
-        val stepYaw = deltaYaw.coerceIn(-maxYawStep, maxYawStep)
-        val stepPitch = (deltaPitch * 0.72f).coerceIn(-maxPitchStep, maxPitchStep)
-
-        return Rotation(
-            current.yaw + stepYaw,
-            (current.pitch + stepPitch).coerceIn(-90.0f, 90.0f)
-        )
+        val player = mc.player ?: return current
+        if (player.getAttackStrengthScale(0.5f) < 0.9f) {
+            return current
+        }
+        return Rotation(ideal.yaw, ideal.pitch.coerceIn(-89.9f, 89.9f))
     }
 }

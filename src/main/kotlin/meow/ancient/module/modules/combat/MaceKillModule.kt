@@ -6,6 +6,7 @@ import meow.ancient.client.extensions.mc
 import meow.ancient.client.util.other.ChatUtil
 import meow.ancient.event.events.PlayerUpdateEvent
 import meow.ancient.module.Module
+import net.minecraft.network.protocol.game.ServerboundClientTickEndPacket
 import net.minecraft.network.protocol.game.ServerboundMovePlayerPacket
 import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.item.Items
@@ -251,5 +252,6 @@ object MaceKillModule : Module(
     private fun sendTpPacket(x: Double, y: Double, z: Double, onGround: Boolean) {
         val player = mc.player ?: return
         player.connection.send(ServerboundMovePlayerPacket.Pos(x, y, z, onGround, player.horizontalCollision))
+        player.connection.send(ServerboundClientTickEndPacket.INSTANCE)
     }
 }

@@ -65,10 +65,14 @@ class CustomTextField(
         clearFocus()
         focusedField = this
         blinkStart = System.nanoTime()
+        mc.textInputManager().startTextInput(this)
     }
 
     fun blur() {
-        if (isFocused) focusedField = null
+        if (isFocused) {
+            mc.textInputManager().stopTextInput(this)
+            focusedField = null
+        }
         dragging = false
     }
 
@@ -94,6 +98,9 @@ class CustomTextField(
 
     fun render(matrix: Matrix4f, dt: Float, popup: Boolean = false) {
         ensureMetrics()
+        if (isFocused) {
+            mc.textInputManager().setTextInputArea(x.toInt(), y.toInt(), width.toInt(), height.toInt())
+        }
         val palette = M3Theme.current
         val rectPipeline = if (popup) ClientRenderPipeline.POPUP_RECT else ClientRenderPipeline.WINDOW_RECT
         val textPipeline = if (popup) ClientRenderPipeline.POPUP_TEXT else ClientRenderPipeline.WINDOW_TEXT
@@ -255,7 +262,10 @@ class CustomTextField(
         val hasFocus: Boolean get() = focusedField != null
 
         fun clearFocus() {
-            focusedField?.blur()
+            focusedField?.let {
+                mc.textInputManager().stopTextInput(it)
+                it.blur()
+            }
         }
 
         fun blurOutside(mouseX: Double, mouseY: Double) {

@@ -9,6 +9,7 @@ import meow.ancient.event.events.PlayerUpdateEvent
 import meow.ancient.event.events.ClientDisconnectEvent
 import meow.ancient.module.Module
 import meow.ancient.module.modules.combat.hitaura.*
+import meow.ancient.module.setting.MinecraftPickerCatalogs
 import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.item.ItemUseAnimation
 import sweetie.evaware.flora.api.Commando
@@ -44,17 +45,26 @@ object HitAuraModule : Module(
     }
 
     enum class RotationMode(val displayName: String) {
-        SMOOTH("Smooth"),
-        LINEAR("Linear"),
-        GRIM("Grim"),
+        VANILLA("Vanilla"),
+        SNAP("Snap"),
+        SPOOKY_TIME("SpookyTime"),
+        TEST("Test"),
+        TEST2("Test2"),
+        SLOTH_070926("Sloth 07.09.26"),
+        WELLMINE("Wellmine old"),
+        NO_ROT("NoRot"),
+        LONY_GRIEF("LonyGrief"),
         VULCAN("Vulcan"),
-        MATRIX("Matrix"),
-        SNAP("Snap");
+        FUNTIME("Funtime"),
+        UNIVERSAL("Universal"),
+        GRIM_1204("Grim 1.20.4"),
+        GRIM_FUN("GrimFun"),
+        MLSAC("MlsAC");
 
         companion object {
             val names: List<String> = entries.map { it.displayName }
             fun fromName(name: String): RotationMode =
-                entries.firstOrNull { it.displayName.equals(name, ignoreCase = true) } ?: SMOOTH
+                entries.firstOrNull { it.displayName.equals(name, ignoreCase = true) } ?: VANILLA
         }
     }
 
@@ -83,28 +93,30 @@ object HitAuraModule : Module(
     }
 
     enum class SprintResetMode(val displayName: String) {
-        LEGIT("Legit"),
         PACKET("Packet"),
         OFF("Off");
 
         companion object {
             val names: List<String> = entries.map { it.displayName }
             fun fromName(name: String): SprintResetMode =
-                entries.firstOrNull { it.displayName.equals(name, ignoreCase = true) } ?: LEGIT
+                entries.firstOrNull { it.displayName.equals(name, ignoreCase = true) } ?: PACKET
         }
     }
 
     // Target selection & Priority & FOV
-    val targets by multiMode(
+    val targets = targets(
         name = "Targets",
-        value = setOf("Players", "Mobs", "Naked"),
-        modes = listOf("Players", "Mobs", "Animals", "Invisibles", "Naked"),
-        description = ""
+        value = setOf("minecraft:player")
     )
     val ignoreOn by multiMode(
         name = "Ignore On",
         value = setOf("Gui"),
         modes = listOf("Use", "Gui")
+    )
+    val friendProtection by boolean(
+        name = "Friend Protection",
+        value = true,
+        description = ""
     )
     val targetMode by enum(
         name = "Target Mode",
@@ -205,7 +217,7 @@ object HitAuraModule : Module(
     // Rotations, GCD & MoveFix
     val rotationMode by enum(
         name = "Rotation",
-        defaultValue = RotationMode.SMOOTH,
+        defaultValue = RotationMode.VANILLA,
         nameMapper = { it.displayName },
         description = ""
     )
@@ -286,7 +298,7 @@ object HitAuraModule : Module(
     )
     val sprintReset by enum(
         name = "Sprint Reset",
-        defaultValue = SprintResetMode.LEGIT,
+        defaultValue = SprintResetMode.PACKET,
         nameMapper = { it.displayName },
         description = ""
     )
@@ -365,7 +377,7 @@ object HitAuraModule : Module(
             }
 
             val rotMode = rotationMode
-            val maxReach = if (rotMode == RotationMode.GRIM) attackRange.coerceAtMost(3.0) else attackRange
+            val maxReach = if (rotMode == RotationMode.GRIM_1204) attackRange.coerceAtMost(3.0) else attackRange
             val effectiveAimRange = if (player.isFallFlying && elytraTarget) elytraDistance.coerceAtLeast(maxReach)
                 else aimRange.coerceAtLeast(maxReach)
             val priorityMode = priority
@@ -377,7 +389,8 @@ object HitAuraModule : Module(
                 priority = priorityMode,
                 targetMode = tMode,
                 allowedTargets = targets,
-                throughWalls = throughWalls
+                throughWalls = throughWalls,
+                ignoreFriends = friendProtection
             ) ?: return@safeRun
 
             val pointMode = aimPoint
@@ -397,7 +410,11 @@ object HitAuraModule : Module(
             )
             val overrideAimPoint = if (elytraTarget && player.isFallFlying && elytraPredict) {
                 val targetVel = target.deltaMovement
-                target.position().add(targetVel.x * elytraPredictTicks, targetVel.y * elytraPredictTicks, targetVel.z * elytraPredictTicks)
+                target.position().add(
+                    targetVel.x * elytraPredictTicks,
+                    targetVel.y * elytraPredictTicks + target.eyeHeight * 0.75,
+                    targetVel.z * elytraPredictTicks
+                )
             } else null
 
             if (elytraTarget && elytraFreeze && player.isFallFlying) {
@@ -418,7 +435,7 @@ object HitAuraModule : Module(
                 overrideAimPoint = overrideAimPoint
             )
 
-            val enforceRayTrace = rayTrace || rotMode == RotationMode.GRIM
+            val enforceRayTrace = rayTrace || rotMode == RotationMode.GRIM_1204
 
             attackExecutor.tryAttack(
                 target = target,

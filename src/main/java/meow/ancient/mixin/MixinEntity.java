@@ -1,11 +1,17 @@
 package meow.ancient.mixin;
 
 import meow.ancient.client.util.rotation.RotationManager;
+import meow.ancient.module.modules.render.FreeCameraModule;
+import meow.ancient.module.modules.movement.NoWebModule;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.Vec3;
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.entity.Entity;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
+import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.Redirect;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 @Mixin(Entity.class)
 public class MixinEntity {
@@ -18,5 +24,20 @@ public class MixinEntity {
             return RotationManager.INSTANCE.getMovementYaw(instance.getYRot());
         }
         return instance.getYRot();
+    }
+
+    @Inject(method = "turn", at = @At("HEAD"), cancellable = true)
+    private void onTurn(double xo, double yo, CallbackInfo ci) {
+        if ((Object) this == Minecraft.getInstance().player && FreeCameraModule.INSTANCE.isEnabled()) {
+            FreeCameraModule.INSTANCE.changeLookDirection(xo * 0.15, yo * 0.15);
+            ci.cancel();
+        }
+    }
+
+    @Inject(method = "makeStuckInBlock", at = @At("HEAD"), cancellable = true)
+    private void onMakeStuckInBlock(BlockState state, Vec3 multiplier, CallbackInfo ci) {
+        if ((Object) this == Minecraft.getInstance().player && NoWebModule.INSTANCE.shouldCancelSlowdown()) {
+            ci.cancel();
+        }
     }
 }

@@ -4,7 +4,10 @@ import meow.ancient.client.util.rotation.MoveFixMode;
 import meow.ancient.client.util.rotation.Rotation;
 import meow.ancient.client.util.rotation.RotationManager;
 import net.minecraft.client.Minecraft;
+import meow.ancient.module.modules.player.NoPushModule;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.phys.Vec3;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
@@ -22,12 +25,7 @@ public class MixinLivingEntity {
         at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/LivingEntity;getYRot()F")
     )
     private float redirectJumpYaw(LivingEntity instance) {
-        if (instance == Minecraft.getInstance().player) {
-            if (RotationManager.INSTANCE.isActive() &&
-                (RotationManager.INSTANCE.getActiveMoveFix() == MoveFixMode.SILENT ||
-                 RotationManager.INSTANCE.getActiveMoveFix() == MoveFixMode.FREE)) {
-                return instance.getYRot();
-            }
+        if (instance == Minecraft.getInstance().player && RotationManager.INSTANCE.isActive() && RotationManager.INSTANCE.getActiveMoveFix() != MoveFixMode.OFF) {
             return RotationManager.INSTANCE.getMovementYaw(instance.getYRot());
         }
         return instance.getYRot();
@@ -52,6 +50,48 @@ public class MixinLivingEntity {
         if ((Object) this == Minecraft.getInstance().player && RotationManager.INSTANCE.isActive()) {
             Rotation rot = RotationManager.INSTANCE.getServerRotation();
             this.yHeadRot = rot.getYaw();
+        }
+    }
+
+    @Redirect(
+        method = "updateFallFlyingMovement(Lnet/minecraft/world/phys/Vec3;)Lnet/minecraft/world/phys/Vec3;",
+        at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/LivingEntity;getXRot()F")
+    )
+    private float redirectFallFlyingPitch(LivingEntity instance) {
+        if (instance == Minecraft.getInstance().player && RotationManager.INSTANCE.isActive() && RotationManager.INSTANCE.getActiveMoveFix() != MoveFixMode.OFF) {
+            Rotation rot = RotationManager.INSTANCE.getCurrentRotation();
+            if (rot != null) {
+                return rot.getPitch();
+            }
+        }
+        return instance.getXRot();
+    }
+
+    @Redirect(
+        method = "updateFallFlyingMovement(Lnet/minecraft/world/phys/Vec3;)Lnet/minecraft/world/phys/Vec3;",
+        at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/LivingEntity;getLookAngle()Lnet/minecraft/world/phys/Vec3;")
+    )
+    private Vec3 redirectFallFlyingLookAngle(LivingEntity instance) {
+        if (instance == Minecraft.getInstance().player && RotationManager.INSTANCE.isActive() && RotationManager.INSTANCE.getActiveMoveFix() != MoveFixMode.OFF) {
+            Rotation rot = RotationManager.INSTANCE.getCurrentRotation();
+            if (rot != null) {
+                return Entity.calculateViewVector(rot.getPitch(), rot.getYaw());
+            }
+        }
+        return instance.getLookAngle();
+    }
+
+    @Inject(method = "push(Lnet/minecraft/world/entity/Entity;)V", at = @At("HEAD"), cancellable = true)
+    private void onPush(Entity entity, CallbackInfo ci) {
+        if (NoPushModule.INSTANCE.shouldCancelEntityPush() && (Object) this == Minecraft.getInstance().player) {
+            ci.cancel();
+        }
+    }
+
+    @Inject(method = "doPush", at = @At("HEAD"), cancellable = true)
+    private void onDoPush(Entity entity, CallbackInfo ci) {
+        if (NoPushModule.INSTANCE.shouldCancelEntityPush() && ((Object) this == Minecraft.getInstance().player || entity == Minecraft.getInstance().player)) {
+            ci.cancel();
         }
     }
 }

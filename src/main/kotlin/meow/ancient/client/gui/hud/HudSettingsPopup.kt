@@ -6,8 +6,10 @@ import meow.ancient.client.extensions.currentScreen
 import meow.ancient.client.extensions.mc
 import meow.ancient.client.gui.material.M3Theme
 import meow.ancient.client.gui.material.components.CustomTextField
+import meow.ancient.client.gui.material.components.KeybindComponent
 import meow.ancient.client.gui.material.components.SettingComponent
 import meow.ancient.client.gui.material.components.SettingComponentFactory
+import meow.ancient.module.setting.KeybindSetting
 import meow.ancient.client.util.render.RenderUtils
 import meow.ancient.client.util.render.ScissorUtil
 import meow.ancient.client.util.render.engine.controls.ClientRenderPipeline
@@ -109,6 +111,16 @@ object HudSettingsPopup {
 
     fun mouseClicked(x: Double, y: Double, button: Int): Boolean {
         if (!isOpen) return false
+        if (button >= 4) {
+            for (component in components) {
+                if (component is KeybindComponent && component.isListening) {
+                    component.keySetting.set(KeybindSetting.fromMouseButton(button))
+                    component.stopListening()
+                    ConfigManager.saveConfig("default")
+                    return true
+                }
+            }
+        }
         if (!over(x, y) || button == 0 && x >= this.x + width - 18f && y < this.y + HEADER) {
             close()
             return true

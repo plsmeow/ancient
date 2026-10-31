@@ -3,7 +3,7 @@ package meow.ancient.module.modules.movement
 import meow.ancient.client.extensions.MOVEMENT
 import meow.ancient.client.extensions.inGame
 import meow.ancient.client.extensions.mc
-import meow.ancient.client.util.movement.MoveUtil
+import meow.ancient.client.util.rotation.RotationManager
 import meow.ancient.event.events.PlayerUpdateEvent
 import meow.ancient.module.Module
 import meow.ancient.module.modules.combat.HitAuraModule
@@ -54,25 +54,32 @@ object ElytraFlyModule : Module(
         val player = mc.player ?: return
         if (!player.isFallFlying) return
 
-        val yawRad = Math.toRadians(player.yRot.toDouble())
-        val forwardX = -sin(yawRad) * 0.1
-        val forwardZ = cos(yawRad) * 0.1
-        val rightX = -sin(yawRad + Math.PI / 2.0) * 0.1
-        val rightZ = cos(yawRad + Math.PI / 2.0) * 0.1
+        val rotation = if (RotationManager.isActive()) RotationManager.getServerRotation() else null
+        val yaw = rotation?.yaw ?: player.yRot
+        val pitch = rotation?.pitch ?: player.xRot
+        val yawRad = Math.toRadians(yaw.toDouble())
+        val pitchRad = Math.toRadians(pitch.toDouble())
+        val forwardX = -sin(yawRad) * cos(pitchRad)
+        val forwardY = -sin(pitchRad)
+        val forwardZ = cos(yawRad) * cos(pitchRad)
+        val rightX = -sin(yawRad + Math.PI / 2.0)
+        val rightZ = cos(yawRad + Math.PI / 2.0)
 
+        val hSpeed = horizontalSpeed.value * 10.0
         var velX = 0.0
+        var velY = 0.0
         var velZ = 0.0
         var movingForward = false
         var movingStrafe = false
 
-        val hSpeed = horizontalSpeed.value * 10.0
-
         if (mc.options.keyUp.isDown) {
             velX += forwardX * hSpeed
+            velY += forwardY * hSpeed
             velZ += forwardZ * hSpeed
             movingForward = true
         } else if (mc.options.keyDown.isDown) {
             velX -= forwardX * hSpeed
+            velY -= forwardY * hSpeed
             velZ -= forwardZ * hSpeed
             movingForward = true
         }
@@ -90,17 +97,16 @@ object ElytraFlyModule : Module(
         if (movingForward && movingStrafe) {
             val diagonal = 1.0 / sqrt(2.0)
             velX *= diagonal
+            velY *= diagonal
             velZ *= diagonal
         }
 
-        val velY = when {
-            mc.options.keyJump.isDown -> 0.5 * verticalSpeed.value
-            mc.options.keyShift.isDown -> -0.5 * verticalSpeed.value
-            else -> 0.0
-        }
+        if (mc.options.keyJump.isDown) velY += 0.5 * verticalSpeed.value
+        if (mc.options.keyShift.isDown) velY -= 0.5 * verticalSpeed.value
 
         player.deltaMovement = Vec3(velX, velY, velZ)
     }
+
 
     private fun processFireworkMode() {
         val player = mc.player ?: return

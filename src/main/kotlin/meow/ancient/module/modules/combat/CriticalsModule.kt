@@ -3,13 +3,16 @@ package meow.ancient.module.modules.combat
 import meow.ancient.client.extensions.COMBAT
 import meow.ancient.client.extensions.inGame
 import meow.ancient.client.extensions.mc
+import meow.ancient.event.events.PacketSendEvent
 import meow.ancient.module.Module
+import net.minecraft.network.protocol.game.ServerboundAttackPacket
+import net.minecraft.network.protocol.game.ServerboundClientTickEndPacket
 import net.minecraft.network.protocol.game.ServerboundMovePlayerPacket
 import net.minecraft.network.protocol.game.ServerboundPlayerCommandPacket
-import net.minecraft.network.protocol.game.ServerboundPlayerInputPacket
 import net.minecraft.world.effect.MobEffects
-import net.minecraft.world.entity.player.Input
+import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.level.block.Blocks
+import sweetie.evaware.flora.api.Commando
 
 object CriticalsModule : Module(
     name = "Criticals",
@@ -22,14 +25,28 @@ object CriticalsModule : Module(
     @JvmField
     var killAuraTriggered = false
 
+    @Commando
+    fun onPacketSend(event: PacketSendEvent) {
+        if (!inGame || !isEnabled() || killAuraTriggered) return
+        val packet = event.packet
+        if (packet is ServerboundAttackPacket) {
+            val level = mc.level ?: return
+            val target = level.getEntity(packet.entityId())
+            if (target != null && target !is LivingEntity) return
+            doCrit()
+        }
+    }
+
+
     fun doCrit() {
         val player = mc.player ?: return
         val level = mc.level ?: return
-        if (!isEnabled()) return
+        if (!canPacketCrit() && mode != "Grim") return
 
-        player.isSprinting = false
-        player.connection.send(ServerboundPlayerCommandPacket(player, ServerboundPlayerCommandPacket.Action.STOP_SPRINTING))
-        player.connection.send(ServerboundPlayerInputPacket(Input.EMPTY))
+        if (player.isSprinting) {
+            player.connection.send(ServerboundPlayerCommandPacket(player, ServerboundPlayerCommandPacket.Action.STOP_SPRINTING))
+            player.isSprinting = false
+        }
 
         val x = player.x
         val y = player.y
@@ -64,9 +81,6 @@ object CriticalsModule : Module(
             }
         }
 
-        if (!killAuraTriggered) {
-            player.connection.send(ServerboundPlayerInputPacket(player.input.keyPresses))
-        }
     }
 
     private fun canPacketCrit(): Boolean {
@@ -83,5 +97,6 @@ object CriticalsModule : Module(
     private fun sendPos(x: Double, y: Double, z: Double, onGround: Boolean) {
         val player = mc.player ?: return
         player.connection.send(ServerboundMovePlayerPacket.Pos(x, y, z, onGround, player.horizontalCollision))
+        player.connection.send(ServerboundClientTickEndPacket.INSTANCE)
     }
 }

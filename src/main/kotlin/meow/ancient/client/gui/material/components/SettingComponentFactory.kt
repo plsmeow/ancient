@@ -13,5 +13,6 @@ object SettingComponentFactory {
         is KeybindSetting -> KeybindComponent(setting)
         is PickerSetting<*> -> PickerComponent(setting)
         is TextSetting -> TextComponent(setting)
+        is TargetSetting -> TargetPickerComponent(setting)
     }
 }

@@ -46,6 +46,7 @@ open class Module(
         }
         if (outermost && enabled != previousState) {
             HudNotificationCenter.moduleToggled(name, enabled)
+            meow.ancient.module.modules.render.ClientSoundsModule.play(enabled)
         }
     }
 
@@ -89,6 +90,13 @@ open class Module(
         description: String = "",
         isVisible: () -> Boolean = { true }
     ) = register(PickerSetting(name, value, catalog, description, isVisible))
+    fun targets(
+        name: String = "Targets",
+        value: Set<String> = setOf("minecraft:player"),
+        description: String = "",
+        isVisible: () -> Boolean = { true }
+    ) = register(TargetSetting(name, value, description, isVisible))
+
 
     fun boolean(
         name: String,
@@ -113,8 +121,9 @@ open class Module(
         precision: Int = 1,
         unit: String = "",
         description: String = "",
-        isVisible: () -> Boolean = { true }
-    ) = register(NumberSetting(name, value, min, max, step, precision, unit, description, isVisible))
+        isVisible: () -> Boolean = { true },
+        limitMax: Boolean = true
+    ) = register(NumberSetting(name, value, min, max, step, precision, unit, description, isVisible, limitMax))
 
     fun numberSetting(
         name: String,

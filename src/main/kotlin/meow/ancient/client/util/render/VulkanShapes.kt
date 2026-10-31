@@ -82,7 +82,9 @@ class VulkanRectSdfRenderState(
     private val cBL: Int,
     private val borderWidth: Float,
     private val borderColor: Int,
-    private val scissor: ScreenRectangle?
+    private val scissor: ScreenRectangle?,
+    private val blur: Boolean = false,
+    private val opacity: Float = 1f
 ) : GuiElementRenderState {
     private val pose: Matrix3x2f = Matrix3x2f(pose)
     private val pad = 1.5f
@@ -96,16 +98,22 @@ class VulkanRectSdfRenderState(
     )
 
     override fun buildVertices(consumer: VertexConsumer) {
+        val blurred = blur && KawaseBlur.currentTextureView != null
+        val colorTL = if (blurred) cTL else applyOpacity(cTL)
+        val colorTR = if (blurred) cTR else applyOpacity(cTR)
+        val colorBR = if (blurred) cBR else applyOpacity(cBR)
+        val colorBL = if (blurred) cBL else applyOpacity(cBL)
+        val borderArgb = if (blurred) borderColor else applyOpacity(borderColor)
         val maxR = minOf(width, height) * 0.5f
         val sTL = (rTL.coerceIn(0f, maxR) * 64f).roundToInt().coerceIn(0, 32767)
         val sTR = (rTR.coerceIn(0f, maxR) * 64f).roundToInt().coerceIn(0, 32767)
         val sBR = (rBR.coerceIn(0f, maxR) * 64f).roundToInt().coerceIn(0, 32767)
         val sBL = (rBL.coerceIn(0f, maxR) * 64f).roundToInt().coerceIn(0, 32767)
 
-        val bcA = if (borderWidth > 0f) (borderColor ushr 24) and 0xFF else 0
-        val bcR = (borderColor ushr 16) and 0xFF
-        val bcG = (borderColor ushr 8) and 0xFF
-        val bcB = borderColor and 0xFF
+        val bcA = if (borderWidth > 0f) (borderArgb ushr 24) and 0xFF else 0
+        val bcR = (borderArgb ushr 16) and 0xFF
+        val bcG = (borderArgb ushr 8) and 0xFF
+        val bcB = borderArgb and 0xFF
 
         val packedBorderRgb = ((bcR shl 16) or (bcG shl 8) or bcB).toFloat()
         val bwFixed = if (bcA > 0) (borderWidth.coerceAtLeast(0f) * 64f).roundToInt().coerceIn(0, 65535) else 0
@@ -121,10 +129,10 @@ class VulkanRectSdfRenderState(
         val lx1 = width + pad
         val ly1 = height + pad
 
-        emitVertex(consumer, vx0, vy0, lx0, ly0, cTL, sTL, sTR, sBR, sBL, packedBorderRgb, packedBorderWA)
-        emitVertex(consumer, vx0, vy1, lx0, ly1, cBL, sTL, sTR, sBR, sBL, packedBorderRgb, packedBorderWA)
-        emitVertex(consumer, vx1, vy1, lx1, ly1, cBR, sTL, sTR, sBR, sBL, packedBorderRgb, packedBorderWA)
-        emitVertex(consumer, vx1, vy0, lx1, ly0, cTR, sTL, sTR, sBR, sBL, packedBorderRgb, packedBorderWA)
+        emitVertex(consumer, vx0, vy0, lx0, ly0, colorTL, sTL, sTR, sBR, sBL, packedBorderRgb, packedBorderWA, blurred)
+        emitVertex(consumer, vx0, vy1, lx0, ly1, colorBL, sTL, sTR, sBR, sBL, packedBorderRgb, packedBorderWA, blurred)
+        emitVertex(consumer, vx1, vy1, lx1, ly1, colorBR, sTL, sTR, sBR, sBL, packedBorderRgb, packedBorderWA, blurred)
+        emitVertex(consumer, vx1, vy0, lx1, ly0, colorTR, sTL, sTR, sBR, sBL, packedBorderRgb, packedBorderWA, blurred)
     }
 
     private fun emitVertex(
@@ -139,7 +147,8 @@ class VulkanRectSdfRenderState(
         sBR: Int,
         sBL: Int,
         packedBorderRgb: Float,
-        packedBorderWA: Float
+        packedBorderWA: Float,
+        blurred: Boolean
     ) {
         val tx = pose.m00() * vx + pose.m10() * vy + pose.m20()
         val ty = pose.m01() * vx + pose.m11() * vy + pose.m21()
@@ -150,13 +159,27 @@ class VulkanRectSdfRenderState(
             .setUv2(sBR, sBL)
             .setUv3(width, height)
             .setLineWidth(packedBorderWA)
+        if (blurred) consumer.setNormal(opacity, 0f, 0f)
     }
 
-    override fun pipeline(): RenderPipeline = VulkanShapePipelines.RECT_SDF
-    override fun textureSetup(): TextureSetup = TextureSetup.noTexture()
+    private fun applyOpacity(argb: Int): Int {
+        if (opacity >= 0.999f) return argb
+        val alpha = ((argb ushr 24) and 0xFF)
+        val fadedAlpha = (alpha * opacity).roundToInt().coerceIn(0, 255)
+        return (fadedAlpha shl 24) or (argb and 0x00FFFFFF)
+    }
+
+    override fun pipeline(): RenderPipeline =
+        if (blur && KawaseBlur.currentTextureView != null) VulkanShapePipelines.BLUR_RECT_SDF else VulkanShapePipelines.RECT_SDF
+
+    override fun textureSetup(): TextureSetup {
+        val view = if (blur) KawaseBlur.currentTextureView else null
+        return if (view != null) TextureSetup.singleTexture(view, KawaseBlur.sampler) else TextureSetup.noTexture()
+    }
     override fun scissorArea(): ScreenRectangle? = scissor
     override fun bounds(): ScreenRectangle? = boundsRect
 }
+
 
 object VulkanShapes {
     val whiteTextureId: Identifier by lazy {
@@ -168,12 +191,6 @@ object VulkanShapes {
         identifier
     }
 
-    private fun multiplyAlpha(argb: Int, alphaMul: Float): Int {
-        if (alphaMul >= 0.999f) return argb
-        val a = ((argb ushr 24) and 0xFF)
-        val na = (a * alphaMul.coerceIn(0f, 1f)).roundToInt().coerceIn(0, 255)
-        return (na shl 24) or (argb and 0x00FFFFFF)
-    }
 
     fun drawRect(
         gfx: GuiGraphicsExtractor,
@@ -182,23 +199,34 @@ object VulkanShapes {
         width: Float,
         height: Float,
         style: RectStyle
+    ) = drawSdfRect(gfx, x, y, width, height, style, false)
+
+    fun drawBlurredRect(
+        gfx: GuiGraphicsExtractor,
+        x: Float,
+        y: Float,
+        width: Float,
+        height: Float,
+        style: RectStyle
+    ) = drawSdfRect(gfx, x, y, width, height, style, true)
+
+    private fun drawSdfRect(
+        gfx: GuiGraphicsExtractor,
+        x: Float,
+        y: Float,
+        width: Float,
+        height: Float,
+        style: RectStyle,
+        blur: Boolean
     ) {
         if (width <= 0f || height <= 0f) return
-        val alphaMul = style.alpha.coerceIn(0f, 1f)
-        if (alphaMul <= 0f) return
+        val opacity = style.alpha.coerceIn(0f, 1f)
+        if (opacity <= 0f) return
 
         val colors = style.colors
         val corners = style.corners
         val border = style.border
-
-        val cTL = multiplyAlpha(colors.topLeft.argb, alphaMul)
-        val cTR = multiplyAlpha(colors.topRight.argb, alphaMul)
-        val cBR = multiplyAlpha(colors.bottomRight.argb, alphaMul)
-        val cBL = multiplyAlpha(colors.bottomLeft.argb, alphaMul)
-
         val hasBorder = border.width > 0f && border.color.a > 0
-        val bw = if (hasBorder) border.width else 0f
-        val bc = if (hasBorder) multiplyAlpha(border.color.argb, alphaMul) else 0
 
         gfx.guiRenderState.addGuiElement(
             VulkanRectSdfRenderState(
@@ -211,13 +239,15 @@ object VulkanShapes {
                 rTR = corners.topRight,
                 rBR = corners.bottomRight,
                 rBL = corners.bottomLeft,
-                cTL = cTL,
-                cTR = cTR,
-                cBR = cBR,
-                cBL = cBL,
-                borderWidth = bw,
-                borderColor = bc,
-                scissor = gfx.scissorStack.peek()
+                cTL = colors.topLeft.argb,
+                cTR = colors.topRight.argb,
+                cBR = colors.bottomRight.argb,
+                cBL = colors.bottomLeft.argb,
+                borderWidth = if (hasBorder) border.width else 0f,
+                borderColor = if (hasBorder) border.color.argb else 0,
+                scissor = gfx.scissorStack.peek(),
+                blur = blur,
+                opacity = opacity
             )
         )
     }

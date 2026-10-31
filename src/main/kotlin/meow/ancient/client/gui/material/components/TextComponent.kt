@@ -15,7 +15,9 @@ class TextComponent(private val textSetting: TextSetting) : SettingComponent(tex
         this.y = y
         this.width = width
         height = 46f
-        field.setText(textSetting.value)
+        if (!field.isFocused) {
+            field.setText(textSetting.value)
+        }
         val title = fitText(textSetting.name, width - 10f, 9.5f, 8f)
         Fonts.google_sans_medium.drawString(matrix, title.text, x + 5f, y + 3f, title.size, M3Theme.current.onSurface, false, ClientRenderPipeline.WINDOW_TEXT)
         field.setBounds(x, y + 18f, width, 28f)

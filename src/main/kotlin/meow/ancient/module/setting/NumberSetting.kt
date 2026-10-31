@@ -3,6 +3,7 @@ package meow.ancient.module.setting
 import com.google.gson.JsonElement
 import com.google.gson.JsonPrimitive
 import java.util.Locale
+import kotlin.math.floor
 
 class NumberSetting(
     name: String,
@@ -13,25 +14,25 @@ class NumberSetting(
     val precision: Int = 1,
     val unit: String = "",
     description: String = "",
-    isVisible: () -> Boolean = { true }
+    isVisible: () -> Boolean = { true },
+    val limitMax: Boolean = true
 ) : Setting<Double>(name, defaultValue, defaultValue, description, isVisible) {
 
     fun getFloat(): Float = value.toFloat()
     fun getInt(): Int = value.toInt()
 
     override fun set(newValue: Double) {
-        val clamped = newValue.coerceIn(min, max)
-        val stepped = if (step > 0) {
-            Math.round(clamped / step) * step
-        } else {
-            clamped
-        }
-        super.set(stepped)
+        if (!newValue.isFinite()) return
+        val clamped = if (limitMax) newValue.coerceIn(min, max) else newValue.coerceAtLeast(min)
+        val steps = clamped / step
+        val stepped = if (step > 0 && steps.isFinite()) floor(steps + 0.5) * step else clamped
+        val result = if (stepped.isFinite()) stepped else clamped
+        super.set(if (limitMax) result.coerceIn(min, max) else result.coerceAtLeast(min))
     }
 
     fun getFormattedValue(): String {
         return if (precision <= 0) {
-            "${value.toInt()}$unit"
+            String.format(Locale.US, "%.0f", value) + unit
         } else {
             String.format(Locale.US, "%.${precision}f$unit", value)
         }

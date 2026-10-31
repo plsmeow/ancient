@@ -1,4 +1,5 @@
 package meow.ancient.client.gui.hud
+import meow.ancient.module.modules.render.HudModule
 
 import meow.ancient.client.gui.material.AnimFloat
 import meow.ancient.client.gui.material.M3Theme
@@ -198,7 +199,7 @@ internal class HudCard(
             }
             HudForm.LIST -> {
                 desiredWidth = maxOf(titleWidth + 22f, naturalWidth + 16f)
-                desiredHeight = 21f + listHeight
+                desiredHeight = 26f + listHeight
             }
             HudForm.ARRAY -> {
                 desiredWidth = naturalWidth + 14f
@@ -248,10 +249,10 @@ internal class HudCard(
         val alpha = fade.value
         val palette = M3Theme.current
         if (form != HudForm.ARRAY) {
-            RenderUtils.roundedRectWithBorder(matrix, x, y, drawWidth, drawHeight,
-                palette.surfaceContainerLowest.alpha(190).fade(alpha),
+            RenderUtils.hudBackground(matrix, x, y, drawWidth, drawHeight,
+                palette.surfaceContainerLowest.alpha(if (HudModule.blur) 140 else 190),
                 (if (form == HudForm.WATERMARK || form == HudForm.CHIP) 8f else 5f) * scale,
-                0.55f * scale, palette.outlineVariant.alpha(95).fade(alpha), ClientRenderPipeline.HUD_RECT)
+                0.55f * scale, palette.outlineVariant.alpha(95), ClientRenderPipeline.HUD_RECT, opacity = alpha)
         }
         gfx.enableScissor(x.toInt(), y.toInt(), kotlin.math.ceil(x + drawWidth).toInt(),
             kotlin.math.ceil(y + drawHeight).toInt())
@@ -325,9 +326,8 @@ internal class HudCard(
             val rowX = x + arrayRowLeft(rowWidth / scale, opacity) * scale
             val rowY = y + row.position.value * scale
             val rowAlpha = alpha * opacity
-            RenderUtils.roundedRect(matrix, rowX, rowY, rowWidth, 11f * scale,
-                palette.surfaceContainerLowest.alpha(158).fade(rowAlpha), 3f * scale,
-                ClientRenderPipeline.HUD_RECT)
+            RenderUtils.hudBackground(matrix, rowX, rowY, rowWidth, 11f * scale,
+                palette.surfaceContainerLowest.alpha(if (HudModule.blur) 120 else 158), 3f * scale, opacity = rowAlpha)
             RenderUtils.roundedRect(matrix, rowX + rowWidth - 1.5f * scale, rowY + 2.5f * scale,
                 1.5f * scale, 6f * scale, palette.primary.fade(rowAlpha), 0.7f * scale,
                 ClientRenderPipeline.HUD_RECT)
@@ -335,9 +335,9 @@ internal class HudCard(
                 scale, rowAlpha)
         }
         if (previewOpacity.value > 0.002f) {
-            RenderUtils.roundedRect(matrix, x, y, width * scale, 12f * scale,
-                palette.surfaceContainerLowest.alpha(170).fade(alpha * previewOpacity.value),
-                3f * scale, ClientRenderPipeline.HUD_RECT)
+            RenderUtils.hudBackground(matrix, x, y, width * scale, 12f * scale,
+                palette.surfaceContainerLowest.alpha(if (HudModule.blur) 130 else 170),
+                3f * scale, opacity = alpha * previewOpacity.value)
             previewRow.draw(matrix, x + 7f * scale, y + 2f * scale, (width - 14f) * scale,
                 scale, alpha * previewOpacity.value)
         }

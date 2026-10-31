@@ -12,6 +12,7 @@ import meow.ancient.client.util.render.rect.RectType
 import meow.ancient.client.util.render.rect.RectUv
 import net.minecraft.client.gui.GuiGraphicsExtractor
 import org.joml.Matrix4f
+import meow.ancient.module.modules.render.HudModule
 
 object RenderUtils {
     var currentGraphics: GuiGraphicsExtractor? = null
@@ -46,6 +47,34 @@ object RenderUtils {
             style = RectStyle.solid(color),
             pipeline = pipeline
         )
+    }
+
+    fun hudBackground(
+        matrix: Matrix4f,
+        x: Float,
+        y: Float,
+        width: Float,
+        height: Float,
+        color: Color4b,
+        radius: Float,
+        borderWidth: Float = 0f,
+        borderColor: Color4b = Color4b.TRANSPARENT,
+        pipeline: ClientRenderPipeline = ClientRenderPipeline.HUD_RECT,
+        opacity: Float = 1f
+    ) {
+        val border = if (borderWidth > 0f && borderColor.a > 0) RectBorder(borderWidth, borderColor) else RectBorder.NONE
+        val style = RectStyle(
+            colors = RectColors.solid(color),
+            corners = RectCorners.all(radius),
+            border = border,
+            alpha = opacity
+        )
+        val gfx = currentGraphics
+        if (HudModule.isEnabled() && HudModule.blur && gfx != null) {
+            VulkanShapes.drawBlurredRect(gfx, x, y, width, height, style)
+        } else {
+            rect(matrix, x, y, width, height, style, pipeline)
+        }
     }
 
     fun roundedRect(

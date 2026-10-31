@@ -1,6 +1,7 @@
 package meow.ancient.client.gui.material.components
 
 import com.mojang.blaze3d.platform.InputConstants
+import meow.ancient.client.config.ConfigManager
 import meow.ancient.client.gui.material.AnimFloat
 import meow.ancient.client.gui.material.ClickGuiScreen
 import meow.ancient.client.gui.material.M3Theme
@@ -10,7 +11,7 @@ import meow.ancient.client.util.render.font.Fonts
 import meow.ancient.module.setting.KeybindSetting
 import org.joml.Matrix4f
 
-class KeybindComponent(private val keySetting: KeybindSetting) : SettingComponent(keySetting) {
+class KeybindComponent(val keySetting: KeybindSetting) : SettingComponent(keySetting) {
     var isListening = false
         private set
     private val hoverAnim = AnimFloat(0f, 0f, 14f)
@@ -101,13 +102,20 @@ class KeybindComponent(private val keySetting: KeybindSetting) : SettingComponen
     }
 
     override fun mouseClicked(mouseX: Double, mouseY: Double, button: Int): Boolean {
-        if ((button == 0 || button == 2) && isHovered(mouseX, mouseY, x, y, width, height)) {
+        if (isListening) {
+            if (button >= 4) {
+                keySetting.set(KeybindSetting.fromMouseButton(button))
+                isListening = false
+                ConfigManager.saveConfig("default")
+                return true
+            }
+            isListening = false
+            return true
+        } else if ((button == 0 || button == 2) && isHovered(mouseX, mouseY, x, y, width, height)) {
             val nextListening = !isListening
             ClickGuiScreen.clearAllListening()
             isListening = nextListening
             return true
-        } else if (isListening) {
-            isListening = false
         }
         return false
     }
@@ -120,6 +128,7 @@ class KeybindComponent(private val keySetting: KeybindSetting) : SettingComponen
                 keySetting.set(keyCode)
             }
             isListening = false
+            ConfigManager.saveConfig("default")
             return true
         }
         return false

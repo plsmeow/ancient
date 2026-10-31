@@ -1,19 +1,18 @@
 package meow.ancient.module.modules.combat.hitaura
+import meow.ancient.client.util.friend.FriendRepository
+import meow.ancient.client.util.target.TargetRepository
+import meow.ancient.module.modules.combat.AntiBotModule
 
 import meow.ancient.client.extensions.inGame
 import meow.ancient.client.extensions.mc
 import meow.ancient.client.util.rotation.RotationUtil
 import meow.ancient.module.modules.combat.HitAuraModule.TargetMode
 import meow.ancient.module.modules.combat.HitAuraModule.TargetPriority
-import net.minecraft.world.entity.AgeableMob
+import meow.ancient.module.setting.TargetSetting
 import net.minecraft.world.entity.Entity
+import net.minecraft.world.entity.EntityType
 import net.minecraft.world.entity.LivingEntity
-import net.minecraft.world.entity.Mob
-import net.minecraft.world.entity.ambient.AmbientCreature
-import net.minecraft.world.entity.animal.Animal
 import net.minecraft.world.entity.decoration.ArmorStand
-import net.minecraft.world.entity.monster.Enemy
-import net.minecraft.world.entity.npc.Npc
 import net.minecraft.world.entity.player.Player
 
 class TargetSelector {
@@ -23,6 +22,7 @@ class TargetSelector {
     private var switchIndex: Int = 0
     private var lastSwitchTime: Long = 0L
     private val candidateList = ArrayList<LivingEntity>()
+
 
     fun reset() {
         currentTarget = null
@@ -35,8 +35,9 @@ class TargetSelector {
         fov: Float,
         priority: TargetPriority,
         targetMode: TargetMode,
-        allowedTargets: Set<String>,
-        throughWalls: Boolean
+        allowedTargets: TargetSetting,
+        throughWalls: Boolean,
+        ignoreFriends: Boolean = true
     ): LivingEntity? {
         if (!inGame) {
             currentTarget = null
@@ -46,8 +47,15 @@ class TargetSelector {
 
         if (targetMode == TargetMode.SINGLE) {
             val locked = currentTarget
-            if (locked != null && isValidTarget(locked, aimRange, fov, allowedTargets, throughWalls)) {
-                return locked
+            if (locked != null && isValidTarget(locked, aimRange, fov, allowedTargets, throughWalls, ignoreFriends)) {
+                val lockedIsTarget = locked is Player && TargetRepository.isTarget(locked)
+                val hasAnyPriorityTarget = mc.level?.entitiesForRendering()?.any {
+                    it is Player && TargetRepository.isTarget(it) && isValidTarget(it, aimRange, fov, allowedTargets, throughWalls, ignoreFriends)
+                } ?: false
+
+                if (lockedIsTarget || !hasAnyPriorityTarget) {
+                    return locked
+                }
             }
         }
 
@@ -59,7 +67,7 @@ class TargetSelector {
 
         candidateList.clear()
         for (entity in currentLevel.entitiesForRendering()) {
-            if (entity is LivingEntity && isValidTarget(entity, aimRange, fov, allowedTargets, throughWalls)) {
+            if (entity is LivingEntity && isValidTarget(entity, aimRange, fov, allowedTargets, throughWalls, ignoreFriends)) {
                 candidateList.add(entity)
             }
         }
@@ -91,8 +99,9 @@ class TargetSelector {
         entity: Entity,
         maxRange: Double,
         fov: Float,
-        allowedTargets: Set<String>,
-        throughWalls: Boolean
+        allowedTargets: TargetSetting,
+        throughWalls: Boolean,
+        ignoreFriends: Boolean = true
     ): Boolean {
         val localPlayer = mc.player ?: return false
         if (entity === localPlayer) return false
@@ -100,30 +109,16 @@ class TargetSelector {
         if (!entity.isAlive || entity.isRemoved || entity.health <= 0.0f) return false
         if (entity is ArmorStand) return false
         if (entity.isSpectator) return false
+        if (entity is Player) {
+            if (ignoreFriends && FriendRepository.isFriend(entity)) return false
+            if (AntiBotModule.isBot(entity)) return false
+        }
 
         if (!throughWalls && !localPlayer.hasLineOfSight(entity)) {
             return false
         }
 
-        if (entity.isInvisible && !allowedTargets.contains("Invisibles")) {
-            return false
-        }
-
-        val matchesType = when (entity) {
-            is Player -> {
-                if (!allowedTargets.contains("Players")) false
-                else if (isNaked(entity) && !allowedTargets.contains("Naked")) false
-                else true
-            }
-            is Enemy -> allowedTargets.contains("Mobs")
-            is Animal, is AgeableMob, is AmbientCreature, is Npc -> allowedTargets.contains("Animals")
-            is Mob -> {
-                if (entity.type.category.isFriendly) allowedTargets.contains("Animals")
-                else allowedTargets.contains("Mobs")
-            }
-            else -> false
-        }
-        if (!matchesType) return false
+        if (!allowedTargets.isSelected(entity)) return false
 
         val dist = RotationUtil.getDistanceToBox(entity)
         if (dist > maxRange) return false
@@ -133,9 +128,6 @@ class TargetSelector {
         return true
     }
 
-    private fun isNaked(target: Player): Boolean {
-        return target.armorValue == 0
-    }
 
     companion object {
         private val DISTANCE = Comparator<LivingEntity> { a, b ->
@@ -156,12 +148,24 @@ class TargetSelector {
             if (res != 0) res else RotationUtil.getDistanceToBox(a).compareTo(RotationUtil.getDistanceToBox(b))
         }
 
-        fun getComparator(priority: TargetPriority): Comparator<LivingEntity> = when (priority) {
-            TargetPriority.DISTANCE -> DISTANCE
-            TargetPriority.HEALTH -> HEALTH
-            TargetPriority.FOV -> FOV
-            TargetPriority.HURT_TIME -> HURTIME
-            TargetPriority.ARMOR -> ARMOR
+        fun getComparator(priority: TargetPriority): Comparator<LivingEntity> {
+            val baseComparator = when (priority) {
+                TargetPriority.DISTANCE -> DISTANCE
+                TargetPriority.HEALTH -> HEALTH
+                TargetPriority.FOV -> FOV
+                TargetPriority.HURT_TIME -> HURTIME
+                TargetPriority.ARMOR -> ARMOR
+            }
+
+            return Comparator { a, b ->
+                val aTarget = a is Player && TargetRepository.isTarget(a)
+                val bTarget = b is Player && TargetRepository.isTarget(b)
+                if (aTarget != bTarget) {
+                    if (aTarget) -1 else 1
+                } else {
+                    baseComparator.compare(a, b)
+                }
+            }
         }
     }
 }

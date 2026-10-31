@@ -17,16 +17,25 @@ class AuraRotationProcessor {
     private var tickCounter: Int = 0
 
     private val strategies: Map<RotationMode, RotationStrategy> = mapOf(
-        RotationMode.SMOOTH to SmoothRotation(),
-        RotationMode.LINEAR to LinearRotation(),
-        RotationMode.GRIM to GrimRotation(),
+        RotationMode.VANILLA to VanillaRotation(),
+        RotationMode.SNAP to SnapRotation(),
+        RotationMode.SPOOKY_TIME to SpookyTimeRotation(),
+        RotationMode.TEST to TestRotation(),
+        RotationMode.TEST2 to Test2Rotation(),
+        RotationMode.SLOTH_070926 to Sloth070926Rotation(),
+        RotationMode.WELLMINE to WellmineRotation(),
+        RotationMode.NO_ROT to NoRotRotation(),
+        RotationMode.LONY_GRIEF to LonyGriefRotation(),
         RotationMode.VULCAN to VulcanRotation(),
-        RotationMode.MATRIX to MatrixRotation(),
-        RotationMode.SNAP to SnapRotation()
+        RotationMode.FUNTIME to FuntimeRotation(),
+        RotationMode.UNIVERSAL to UniversalRotation(),
+        RotationMode.GRIM_1204 to Grim1204Rotation(),
+        RotationMode.GRIM_FUN to GrimFunRotation(),
+        RotationMode.MLSAC to MlsacRotation()
     )
 
     fun getStrategy(mode: RotationMode): RotationStrategy {
-        return strategies[mode] ?: strategies.getValue(RotationMode.SMOOTH)
+        return strategies[mode] ?: strategies.getValue(RotationMode.VANILLA)
     }
 
     fun reset() {

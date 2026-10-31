@@ -4,6 +4,7 @@ import meow.ancient.client.interfaces.ILoadable
 import meow.ancient.client.listener.listeners.InputListener
 import meow.ancient.client.listener.listeners.RenderListener
 import meow.ancient.client.util.rotation.RotationManager
+import meow.ancient.client.util.movement.TeleportPath
 
 object ListenerManager : ILoadable {
     val listeners: MutableList<Listener> = ArrayList()
@@ -13,7 +14,8 @@ object ListenerManager : ILoadable {
         add(
             InputListener,
             RenderListener,
-            RotationManager
+            RotationManager,
+            TeleportPath
         )
         listeners.forEach(Listener::init)
     }
