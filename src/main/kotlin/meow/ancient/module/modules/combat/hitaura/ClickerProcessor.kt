@@ -27,7 +27,7 @@ class ClickerProcessor {
 
         return when (clickMode) {
             ClickMode.MODE_1_9 -> {
-                val cooldownReady = localPlayer.getAttackStrengthScale(0.5f) >= 0.91f
+                val cooldownReady = localPlayer.getAttackStrengthScale(0.0f) >= 0.95f
                 cooldownReady && clickTimer.isComplete(45L)
             }
             ClickMode.MODE_1_8 -> {

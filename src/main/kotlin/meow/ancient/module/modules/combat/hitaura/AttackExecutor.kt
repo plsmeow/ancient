@@ -16,7 +16,6 @@ import meow.ancient.module.modules.combat.HitAuraModule.ClickMode
 import meow.ancient.module.modules.combat.HitAuraModule.SprintResetMode
 import net.minecraft.world.InteractionHand
 import net.minecraft.world.entity.LivingEntity
-import net.minecraft.network.protocol.game.ServerboundPlayerCommandPacket
 
 class AttackExecutor(
     private val clickerProcessor: ClickerProcessor,
@@ -104,9 +103,7 @@ class AttackExecutor(
             }
             val packetCritReady = CriticalsModule.canPrepareCrit()
             val isCritAttack = onlyCrits && (criticalProcessor.isFallingForCrit() || packetCritReady)
-            if (sprintResetProcessor.preAttack(sprintResetMode, forceStopSprint = isCritAttack)) {
-                localPlayer.connection.send(ServerboundPlayerCommandPacket(localPlayer, ServerboundPlayerCommandPacket.Action.STOP_SPRINTING))
-            }
+            if (!sprintResetProcessor.preAttack(sprintResetMode, forceStopSprint = isCritAttack)) return false
             if (MaceKillModule.isEnabled()) {
                 MaceKillModule.doCrit()
             }

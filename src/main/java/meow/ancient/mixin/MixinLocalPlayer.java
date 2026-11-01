@@ -4,6 +4,8 @@ import meow.ancient.client.util.rotation.RotationManager;
 import meow.ancient.event.EventManager;
 import meow.ancient.event.events.PlayerTickEndEvent;
 import meow.ancient.event.events.PlayerUpdateEvent;
+import meow.ancient.event.events.PlayerMovementSentEvent;
+import meow.ancient.module.modules.combat.HitAuraModule;
 import meow.ancient.module.modules.combat.SpearKillModule;
 import meow.ancient.module.modules.movement.InventoryMoveModule;
 import meow.ancient.module.modules.movement.NoSlowModule;
@@ -40,6 +42,17 @@ public class MixinLocalPlayer {
     @Inject(method = "sendChanges", at = @At("RETURN"))
     private void onPostSendChanges(CallbackInfo ci) {
         RotationManager.INSTANCE.onPostSendChanges((LocalPlayer) (Object) this);
+        LocalPlayer player = (LocalPlayer) (Object) this;
+        if (player == net.minecraft.client.Minecraft.getInstance().player && player.connection.hasClientLoaded()) {
+            EventManager.INSTANCE.post(PlayerMovementSentEvent.INSTANCE);
+        }
+    }
+
+    @Inject(method = "canStartSprinting", at = @At("HEAD"), cancellable = true)
+    private void preventSprintBeforeCriticalMovement(CallbackInfoReturnable<Boolean> cir) {
+        if (HitAuraModule.INSTANCE.shouldPreventSprint()) {
+            cir.setReturnValue(false);
+        }
     }
 
     @Inject(method = "isSlowDueToUsingItem", at = @At("HEAD"), cancellable = true)

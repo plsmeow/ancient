@@ -5,22 +5,30 @@ import meow.ancient.client.extensions.mc
 import meow.ancient.module.modules.combat.HitAuraModule.SprintResetMode
 
 class SprintResetProcessor {
-    fun isResettingSprint(): Boolean = false
+    private var suppressSprint = false
+
+    fun isResettingSprint(): Boolean = suppressSprint
 
     fun reset() {
+        suppressSprint = false
     }
 
     fun onTick() {
+        suppressSprint = false
+    }
+
+    fun prepareAttack(forceStopSprint: Boolean) {
+        suppressSprint = forceStopSprint
+        if (!suppressSprint || !inGame) return
+        val player = mc.player ?: return
+        player.isSprinting = false
+        mc.options.keySprint.isDown = false
     }
 
     fun preAttack(mode: SprintResetMode, forceStopSprint: Boolean = false): Boolean {
         if (!inGame) return false
         val player = mc.player ?: return false
-        if (forceStopSprint && player.isSprinting) {
-            player.isSprinting = false
-            return true
-        }
-        return false
+        return !forceStopSprint || !player.isSprinting
     }
 
     fun postAttack(mode: SprintResetMode, packetReset: Boolean = false) {

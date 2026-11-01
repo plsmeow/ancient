@@ -8,3 +8,10 @@ class PlayerUpdateEvent : Event() {
         val INSTANCE = PlayerUpdateEvent()
     }
 }
+
+class PlayerMovementSentEvent : Event() {
+    companion object {
+        @JvmField
+        val INSTANCE = PlayerMovementSentEvent()
+    }
+}

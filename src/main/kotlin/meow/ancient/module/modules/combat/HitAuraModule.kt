@@ -8,6 +8,9 @@ import meow.ancient.client.util.rotation.MoveFixMode
 import meow.ancient.client.util.rotation.RotationManager
 import meow.ancient.event.events.PlayerUpdateEvent
 import meow.ancient.event.events.ClientDisconnectEvent
+import meow.ancient.event.events.PlayerMovementSentEvent
+import net.minecraft.client.player.LocalPlayer
+import net.minecraft.client.multiplayer.ClientLevel
 import meow.ancient.module.Module
 import meow.ancient.module.modules.combat.hitaura.*
 import meow.ancient.module.setting.MinecraftPickerCatalogs
@@ -18,7 +21,7 @@ import sweetie.evaware.flora.api.Commando
 object HitAuraModule : Module(
     name = "HitAura",
     category = COMBAT,
-    description = ""
+    description = "Aim before movement and recheck attacks after movement; 1.9 cooldown threshold is 95%"
 ) {
     enum class TargetPriority(val displayName: String) {
         DISTANCE("Distance"),
@@ -288,7 +291,7 @@ object HitAuraModule : Module(
     val onlyCrits by boolean(
         name = "Only Crits",
         value = true,
-        description = "Wait for critical timing when possible; hold jump to wait for descent above water"
+        description = "Recheck critical timing after movement; hold jump to wait for descent above water"
     )
     val smartCrits by boolean(
         name = "Smart Crits",
@@ -311,6 +314,20 @@ object HitAuraModule : Module(
         rotationProcessor = rotationProcessor
     )
 
+    private var pendingTarget: LivingEntity? = null
+    private var pendingPlayer: LocalPlayer? = null
+    private var pendingLevel: ClientLevel? = null
+    private var pendingTick = -1
+    private var pendingRequiresFall = false
+
+    private fun clearPendingAttack() {
+        pendingTarget = null
+        pendingPlayer = null
+        pendingLevel = null
+        pendingTick = -1
+        pendingRequiresFall = false
+    }
+
     val currentTarget: LivingEntity?
         get() = targetSelector.currentTarget
 
@@ -327,6 +344,7 @@ object HitAuraModule : Module(
 
     @Commando
     fun onDisconnect(event: ClientDisconnectEvent) {
+        clearPendingAttack()
         targetSelector.reset()
         rotationProcessor.reset()
         clickerProcessor.reset()
@@ -335,6 +353,7 @@ object HitAuraModule : Module(
     }
 
     override fun onEnable() {
+        clearPendingAttack()
         targetSelector.reset()
         rotationProcessor.reset()
         clickerProcessor.reset()
@@ -342,6 +361,7 @@ object HitAuraModule : Module(
     }
 
     override fun onDisable() {
+        clearPendingAttack()
         targetSelector.reset()
         rotationProcessor.reset()
         clickerProcessor.reset()
@@ -351,16 +371,12 @@ object HitAuraModule : Module(
 
     @Commando
     fun onUpdate(event: PlayerUpdateEvent) {
+        clearPendingAttack()
+        sprintResetProcessor.onTick()
         safeRun {
             if (player.isDeadOrDying) {
                 targetSelector.reset()
                 return@safeRun
-            }
-
-            sprintResetProcessor.onTick()
-
-            if (shouldPreventSprint()) {
-                player.isSprinting = false
             }
 
             if (shouldIgnoreContext()) {
@@ -391,7 +407,6 @@ object HitAuraModule : Module(
             val pointMode = aimPoint
             val moveFixMode = moveFix
             val cMode = clickMode
-            val sResetMode = if (AnticheatManager.isPacketSprintReset) SprintResetMode.PACKET else SprintResetMode.OFF
 
             val readyToAttackNow = attackExecutor.shouldPrepareAttack(
                 target = target,
@@ -430,22 +445,54 @@ object HitAuraModule : Module(
                 overrideAimPoint = overrideAimPoint
             )
 
-            val enforceRayTrace = rayTrace && !player.isFallFlying && rotMode != RotationMode.NO_ROT && rotMode != RotationMode.GRIM_1204
+            pendingTarget = target
+            pendingPlayer = player
+            pendingLevel = level
+            pendingTick = player.tickCount
+            pendingRequiresFall = onlyCrits && criticalProcessor.isFallingForCrit()
+            sprintResetProcessor.prepareAttack(onlyCrits && readyToAttackNow
+                && (pendingRequiresFall || CriticalsModule.canPrepareCrit()))
+        }
+    }
 
-            attackExecutor.tryAttack(
-                target = target,
-                attackRange = maxReach,
-                clickMode = cMode,
-                cps = cps,
-                randomizeCps = cpsRandomization,
-                cpsSpread = cpsSpread,
-                onlyCrits = onlyCrits,
-                smartCrits = smartCrits,
-                sprintResetMode = sResetMode,
-                rayTrace = enforceRayTrace,
-                throughWalls = throughWalls,
-                checkAimAngle = false
-            )
+    @Commando
+    fun onMovementSent(event: PlayerMovementSentEvent) {
+        val target = pendingTarget ?: return
+        val expectedPlayer = pendingPlayer
+        val expectedLevel = pendingLevel
+        val expectedTick = pendingTick
+        val requiresFall = pendingRequiresFall
+        clearPendingAttack()
+        try {
+            if (!isEnabled()) return
+            safeRun {
+                if (player !== expectedPlayer || level !== expectedLevel || player.isDeadOrDying) return@safeRun
+                if (player.tickCount != expectedTick && player.tickCount != expectedTick + 1) return@safeRun
+                if (currentTarget !== target || level.getEntity(target.id) !== target || shouldIgnoreContext()) return@safeRun
+                if (requiresFall && !criticalProcessor.isFallingForCrit()) return@safeRun
+
+                val rotMode = rotationMode
+                val maxReach = if (rotMode == RotationMode.GRIM_1204) attackRange.coerceAtMost(3.0) else attackRange
+                if (!targetSelector.isValidTarget(target, maxReach, fov.toFloat(), targets, throughWalls, friendProtection)) return@safeRun
+                val enforceRayTrace = rayTrace && !player.isFallFlying && rotMode != RotationMode.NO_ROT && rotMode != RotationMode.GRIM_1204
+                val sResetMode = if (AnticheatManager.isPacketSprintReset) SprintResetMode.PACKET else SprintResetMode.OFF
+                attackExecutor.tryAttack(
+                    target = target,
+                    attackRange = maxReach,
+                    clickMode = clickMode,
+                    cps = cps,
+                    randomizeCps = cpsRandomization,
+                    cpsSpread = cpsSpread,
+                    onlyCrits = onlyCrits,
+                    smartCrits = smartCrits,
+                    sprintResetMode = sResetMode,
+                    rayTrace = enforceRayTrace,
+                    throughWalls = throughWalls,
+                    checkAimAngle = false
+                )
+            }
+        } finally {
+            sprintResetProcessor.reset()
         }
     }
 }
