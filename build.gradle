@@ -34,6 +34,7 @@ dependencies {
 
 	// flora
 	implementation "com.github.evaware-dev:Flora:${project.flora_version}"
+	include "com.github.evaware-dev:Flora:${project.flora_version}"
 
 	// lombok
 	compileOnly "org.projectlombok:lombok:${project.lombok_version}"

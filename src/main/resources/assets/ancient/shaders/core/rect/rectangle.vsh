@@ -1,7 +1,5 @@
 #version 330 core
 
-#include<math_utils>
-
 layout(location = 0) in vec4 Position;
 layout(location = 1) in vec4 TopRightColor0;
 layout(location = 2) in vec4 TopLeftColor0;

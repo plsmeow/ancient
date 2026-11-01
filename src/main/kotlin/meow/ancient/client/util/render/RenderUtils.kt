@@ -98,6 +98,35 @@ object RenderUtils {
         )
     }
 
+    fun m3Shape(
+        matrix: Matrix4f,
+        x: Float,
+        y: Float,
+        width: Float,
+        height: Float,
+        shape: meow.ancient.client.gui.material.M3Shape,
+        color: Color4b,
+        borderColor: Color4b = Color4b.TRANSPARENT,
+        borderWidth: Float = 0f,
+        opacity: Float = 1f
+    ) {
+        val gfx = currentGraphics
+        if (gfx != null) {
+            VulkanShapes.drawM3Shape(
+                gfx = gfx,
+                x = x,
+                y = y,
+                width = width,
+                height = height,
+                shape = shape,
+                color = color.argb,
+                borderColor = borderColor.argb,
+                borderWidth = borderWidth,
+                opacity = opacity
+            )
+        }
+    }
+
     fun gradientRect(
         matrix: Matrix4f,
         x: Float,

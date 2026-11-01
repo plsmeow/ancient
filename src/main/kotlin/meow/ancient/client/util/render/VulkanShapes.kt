@@ -180,6 +180,93 @@ class VulkanRectSdfRenderState(
     override fun bounds(): ScreenRectangle? = boundsRect
 }
 
+class VulkanM3ShapeRenderState(
+    pose: Matrix3x2fc,
+    private val x: Float,
+    private val y: Float,
+    private val width: Float,
+    private val height: Float,
+    private val shapeType: Int,
+    private val fillColor: Int,
+    private val borderWidth: Float,
+    private val borderColor: Int,
+    private val scissor: ScreenRectangle?,
+    private val opacity: Float = 1f
+) : GuiElementRenderState {
+    private val pose: Matrix3x2f = Matrix3x2f(pose)
+    private val pad = 2.0f
+    private val boundsRect: ScreenRectangle? = VulkanQuadRenderState.computeBounds(
+        this.pose,
+        x - pad,
+        y - pad,
+        x + width + pad,
+        y + height + pad,
+        scissor
+    )
+
+    override fun buildVertices(consumer: VertexConsumer) {
+        val color = applyOpacity(fillColor)
+        val borderArgb = applyOpacity(borderColor)
+
+        val bcA = if (borderWidth > 0f) (borderArgb ushr 24) and 0xFF else 0
+        val bcR = (borderArgb ushr 16) and 0xFF
+        val bcG = (borderArgb ushr 8) and 0xFF
+        val bcB = borderArgb and 0xFF
+
+        val packedBorderRgb = ((bcR shl 16) or (bcG shl 8) or bcB).toFloat()
+        val bwFixed = if (bcA > 0) (borderWidth.coerceAtLeast(0f) * 64f).roundToInt().coerceIn(0, 65535) else 0
+        val packedBorderWA = ((bwFixed shl 8) or bcA).toFloat()
+
+        val vx0 = x - pad
+        val vy0 = y - pad
+        val vx1 = x + width + pad
+        val vy1 = y + height + pad
+
+        val lx0 = -pad
+        val ly0 = -pad
+        val lx1 = width + pad
+        val ly1 = height + pad
+
+        emitVertex(consumer, vx0, vy0, lx0, ly0, color, shapeType, packedBorderRgb, packedBorderWA)
+        emitVertex(consumer, vx0, vy1, lx0, ly1, color, shapeType, packedBorderRgb, packedBorderWA)
+        emitVertex(consumer, vx1, vy1, lx1, ly1, color, shapeType, packedBorderRgb, packedBorderWA)
+        emitVertex(consumer, vx1, vy0, lx1, ly0, color, shapeType, packedBorderRgb, packedBorderWA)
+    }
+
+    private fun emitVertex(
+        consumer: VertexConsumer,
+        vx: Float,
+        vy: Float,
+        lx: Float,
+        ly: Float,
+        color: Int,
+        shapeType: Int,
+        packedBorderRgb: Float,
+        packedBorderWA: Float
+    ) {
+        val tx = pose.m00() * vx + pose.m10() * vy + pose.m20()
+        val ty = pose.m01() * vx + pose.m11() * vy + pose.m21()
+        consumer.addVertex(tx, ty, packedBorderRgb)
+            .setColor(color)
+            .setUv(lx, ly)
+            .setUv1(shapeType, 0)
+            .setUv2(0, 0)
+            .setUv3(width, height)
+            .setLineWidth(packedBorderWA)
+    }
+
+    private fun applyOpacity(argb: Int): Int {
+        if (opacity >= 0.999f) return argb
+        val alpha = ((argb ushr 24) and 0xFF)
+        val fadedAlpha = (alpha * opacity).roundToInt().coerceIn(0, 255)
+        return (fadedAlpha shl 24) or (argb and 0x00FFFFFF)
+    }
+
+    override fun pipeline(): RenderPipeline = VulkanShapePipelines.M3_SHAPE_SDF
+    override fun textureSetup(): TextureSetup = TextureSetup.noTexture()
+    override fun scissorArea(): ScreenRectangle? = scissor
+    override fun bounds(): ScreenRectangle? = boundsRect
+}
 
 object VulkanShapes {
     val whiteTextureId: Identifier by lazy {
@@ -200,6 +287,36 @@ object VulkanShapes {
         height: Float,
         style: RectStyle
     ) = drawSdfRect(gfx, x, y, width, height, style, false)
+
+    fun drawM3Shape(
+        gfx: GuiGraphicsExtractor,
+        x: Float,
+        y: Float,
+        width: Float,
+        height: Float,
+        shape: meow.ancient.client.gui.material.M3Shape,
+        color: Int,
+        borderColor: Int = 0,
+        borderWidth: Float = 0f,
+        opacity: Float = 1f
+    ) {
+        if (width <= 0f || height <= 0f || opacity <= 0f) return
+        gfx.guiRenderState.addGuiElement(
+            VulkanM3ShapeRenderState(
+                pose = gfx.pose(),
+                x = x,
+                y = y,
+                width = width,
+                height = height,
+                shapeType = shape.id,
+                fillColor = color,
+                borderWidth = borderWidth,
+                borderColor = borderColor,
+                scissor = gfx.scissorStack.peek(),
+                opacity = opacity
+            )
+        )
+    }
 
     fun drawBlurredRect(
         gfx: GuiGraphicsExtractor,
