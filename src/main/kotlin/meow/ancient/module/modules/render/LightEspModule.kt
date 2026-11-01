@@ -126,7 +126,7 @@ object LightEspModule : Module(
                         val dy = by + 0.5 - py
                         val dz = bz + 0.5 - pz
                         if (dx * dx + dy * dy + dz * dz > maxDistSq) continue
-                        Gizmos.cuboid(BlockPos(bx, by, bz), style)
+                        Gizmos.cuboid(BlockPos(bx, by, bz), style).setAlwaysOnTop()
                         if (++count >= maxBoxes) break
                     }
                     if (count >= maxBoxes) break

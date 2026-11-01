@@ -254,9 +254,26 @@ object InventoryUtil {
         return finalSlot
     }
 
+    fun findHotbarSlot(item: Item): Int {
+        val player = mc.player ?: return -1
+        for (i in 0..8) {
+            if (player.inventory.getItem(i).`is`(item)) return i
+        }
+        return -1
+    }
+
+    fun findInventorySlot(item: Item): Int {
+        val player = mc.player ?: return -1
+        for (i in 9..35) {
+            if (player.inventory.getItem(i).`is`(item)) return i
+        }
+        return -1
+    }
+
     fun findItem(input: Item): Int {
-        val slot = findFirstSlot(allslots) { _, stack -> stack.item == input }
-        return if (slot in Hotbar_rad) slot + 36 else slot
+        val hotbar = findHotbarSlot(input)
+        if (hotbar != -1) return hotbar
+        return findInventorySlot(input)
     }
 
     fun hasElytraEquipped(): Boolean {

@@ -65,51 +65,9 @@ abstract class SettingComponent(val setting: Setting<*>) : GuiComponent {
     }
 
     class MarqueeText {
-        var offset = 0f
+        private var charOffset = 0f
         private var forward = true
-        private var pauseTime = 0f
-
-        fun update(isHovered: Boolean, maxScroll: Float, dt: Float): Float {
-            if (maxScroll <= 0f) {
-                offset = 0f
-                forward = true
-                pauseTime = 0f
-                return 0f
-            }
-
-            if (isHovered) {
-                if (forward) {
-                    if (offset <= 0f && pauseTime < 0.6f) {
-                        pauseTime += dt
-                    } else {
-                        offset += 28f * dt
-                        if (offset >= maxScroll) {
-                            offset = maxScroll
-                            forward = false
-                            pauseTime = 0f
-                        }
-                    }
-                } else {
-                    if (offset >= maxScroll && pauseTime < 0.7f) {
-                        pauseTime += dt
-                    } else {
-                        offset -= 28f * dt
-                        if (offset <= 0f) {
-                            offset = 0f
-                            forward = true
-                            pauseTime = 0f
-                        }
-                    }
-                }
-            } else {
-                if (offset > 0f) {
-                    offset = (offset - 50f * dt).coerceAtLeast(0f)
-                }
-                forward = true
-                pauseTime = 0f
-            }
-            return offset
-        }
+        private var pauseTimer = 0f
 
         fun render(
             matrix: Matrix4f,
@@ -119,61 +77,83 @@ abstract class SettingComponent(val setting: Setting<*>) : GuiComponent {
             maxWidth: Float,
             size: Float,
             color: Color4b,
-            bgColor: Color4b,
             isHovered: Boolean,
             dt: Float,
+            bgColor: Color4b? = null,
             pipeline: ClientRenderPipeline = ClientRenderPipeline.WINDOW_TEXT
         ) {
             val font = Fonts.google_sans_regular
             val totalW = font.width(text, size)
             if (totalW <= maxWidth) {
                 font.drawString(matrix, text, x, y, size, color, false, pipeline)
-                offset = 0f
+                charOffset = 0f
+                pauseTimer = 0f
+                forward = true
                 return
             }
 
-            val maxScroll = totalW - maxWidth
-            val curOffset = update(isHovered, maxScroll, dt)
-            val fadeW = 12f
-
-            ScissorUtil.withScissor(x, y - 2f, maxWidth, size + 5f) {
-                font.drawString(matrix, text, x - curOffset, y, size, color, false, pipeline)
+            if (!isHovered) {
+                charOffset = 0f
+                pauseTimer = 0f
+                forward = true
+                val trimmed = fitStart(font, text, maxWidth, size)
+                font.drawString(matrix, trimmed, x, y, size, color, false, pipeline)
+                return
             }
 
-            if (curOffset > 0.5f) {
-                val leftProgress = (curOffset / fadeW).coerceIn(0f, 1f)
-                val leftAlpha = (255 * leftProgress).toInt()
-                RenderUtils.gradientRect(
-                    matrix = matrix,
-                    x = x,
-                    y = y - 2f,
-                    width = fadeW,
-                    height = size + 5f,
-                    topLeft = bgColor.alpha(leftAlpha),
-                    topRight = bgColor.alpha(0),
-                    bottomRight = bgColor.alpha(0),
-                    bottomLeft = bgColor.alpha(leftAlpha),
-                    pipeline = ClientRenderPipeline.POPUP_RECT
-                )
+            val maxShift = (text.length - 3).coerceAtLeast(1)
+            if (forward) {
+                if (charOffset <= 0f && pauseTimer < 0.7f) {
+                    pauseTimer += dt
+                } else {
+                    charOffset += 7f * dt
+                    if (charOffset >= maxShift) {
+                        charOffset = maxShift.toFloat()
+                        forward = false
+                        pauseTimer = 0f
+                    }
+                }
+            } else {
+                if (charOffset >= maxShift && pauseTimer < 0.7f) {
+                    pauseTimer += dt
+                } else {
+                    charOffset -= 7f * dt
+                    if (charOffset <= 0f) {
+                        charOffset = 0f
+                        forward = true
+                        pauseTimer = 0f
+                    }
+                }
             }
 
-            if (curOffset < maxScroll - 0.5f) {
-                val rightProgress = ((maxScroll - curOffset) / fadeW).coerceIn(0f, 1f)
-                val rightAlpha = (255 * rightProgress).toInt()
-                val rightX = x + maxWidth - fadeW
-                RenderUtils.gradientRect(
-                    matrix = matrix,
-                    x = rightX,
-                    y = y - 2f,
-                    width = fadeW,
-                    height = size + 5f,
-                    topLeft = bgColor.alpha(0),
-                    topRight = bgColor.alpha(rightAlpha),
-                    bottomRight = bgColor.alpha(rightAlpha),
-                    bottomLeft = bgColor.alpha(0),
-                    pipeline = ClientRenderPipeline.POPUP_RECT
-                )
+            val startIndex = charOffset.toInt().coerceIn(0, text.length - 1)
+            val display = fitWindow(font, text, startIndex, maxWidth, size)
+            font.drawString(matrix, display, x, y, size, color, false, pipeline)
+        }
+
+        private fun fitStart(font: Font, text: String, maxWidth: Float, size: Float): String {
+            var len = text.length
+            while (len > 0) {
+                val candidate = text.substring(0, len) + "…"
+                if (font.width(candidate, size) <= maxWidth) return candidate
+                len--
             }
+            return ""
+        }
+
+        private fun fitWindow(font: Font, text: String, startIndex: Int, maxWidth: Float, size: Float): String {
+            val sub = text.substring(startIndex)
+            val prefix = if (startIndex > 0) "…" else ""
+            if (font.width(prefix + sub, size) <= maxWidth) {
+                return prefix + sub
+             }
+            var len = sub.length
+            while (len > 0) {
+                val candidate = prefix + sub.substring(0, len) + "…"
+                if (font.width(candidate, size) <= maxWidth) return candidate
+                len--
+            }
+            return ""
         }
     }
 }

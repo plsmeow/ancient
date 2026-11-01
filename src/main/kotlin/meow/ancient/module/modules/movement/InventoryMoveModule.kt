@@ -184,9 +184,8 @@ object InventoryMoveModule : Module(
         val screen = currentScreen ?: return
         if (!canMoveInScreen(screen)) return
         MoveUtil.updateMovementKeys(includeSneak = sneak)
-        if (AnticheatManager.isSwapBypassActive && screen is AbstractContainerScreen<*>) {
-            mc.options.keySprint.isDown = false
-            owner?.isSprinting = false
+        if (AutoSprintModule.isEnabled() && MoveUtil.isMoving()) {
+            owner?.isSprinting = true
         }
     }
 
@@ -237,8 +236,7 @@ object InventoryMoveModule : Module(
         pauseMovement()
     }
 
-    fun shouldPreventSprint(): Boolean = slownessActive()
-        && (isInventoryActionSlowed() || currentScreen is AbstractContainerScreen<*>)
+    fun shouldPreventSprint(): Boolean = isInventoryActionSlowed()
 
     fun canMoveInScreen(screen: Screen): Boolean = isEnabled() && mc.isWindowActive && !isTypingScreen(screen)
 

@@ -91,13 +91,13 @@ object BlockEspModule : Module(
                                 if (pos.distToCenterSqr(px, py, pz) > maxDistSq) continue
                                 val state = chunk.getBlockState(pos)
                                 if (state.block in selectedBlocks) {
-                                    Gizmos.cuboid(pos, style)
+                                    Gizmos.cuboid(pos, style).setAlwaysOnTop()
                                 }
                             }
                         } else {
                             chunk.findBlocks({ it.block in selectedBlocks }) { pos, _ ->
                                 if (pos.distToCenterSqr(px, py, pz) <= maxDistSq) {
-                                    Gizmos.cuboid(pos, style)
+                                    Gizmos.cuboid(pos, style).setAlwaysOnTop()
                                 }
                             }
                         }

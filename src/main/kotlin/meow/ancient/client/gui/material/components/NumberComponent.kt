@@ -17,6 +17,7 @@ import java.util.Locale
 class NumberComponent(private val numSetting: NumberSetting) : SettingComponent(numSetting) {
     private var isDragging = false
     private val thumbAnim = AnimFloat(0f, 0f, 16f)
+    private val labelMarquee = MarqueeText()
 
 
     var isEditing = false
@@ -87,20 +88,23 @@ class NumberComponent(private val numSetting: NumberSetting) : SettingComponent(
             numSetting.getFormattedValue()
         }
 
+        val rightX = x + width - 2f
         val valW = Fonts.google_sans_medium.width(if (isEditing && currentInput.isEmpty()) "_" else valText, 9.5f)
-        val maxTextW = (width - valW - 8f).coerceAtLeast(10f)
-        val fittedTitle = fitText(numSetting.name, maxTextW, 9.5f, 7.5f)
-        Fonts.google_sans_regular.drawString(
+        val maxTextW = (rightX - (x + 2f) - valW - 8f).coerceAtLeast(10f)
+
+        labelMarquee.render(
             matrix = matrix,
-            text = fittedTitle.text,
+            text = numSetting.name,
             x = x + 2f,
             y = y + 2.5f,
-            size = fittedTitle.size,
+            maxWidth = maxTextW,
+            size = 9.5f,
             color = palette.onSurface,
-            shadow = false,
+            bgColor = palette.surfaceContainerLowest,
+            isHovered = hovered,
+            dt = dt,
             pipeline = ClientRenderPipeline.WINDOW_TEXT
         )
-        val rightX = x + width - 2f
         if (isEditing) {
             val editPad = 5f
             val editW = (valW + editPad * 2).coerceAtLeast(22f)

@@ -17,6 +17,7 @@ import meow.ancient.module.modules.combat.HitBoxesModule
 import meow.ancient.module.modules.combat.CrystalAuraModule
 import meow.ancient.module.modules.combat.AnchorAuraModule
 import meow.ancient.module.modules.combat.TpAuraModule
+import meow.ancient.module.modules.combat.CrystalOptimizerModule
 import meow.ancient.module.modules.movement.StepModule
 import meow.ancient.module.modules.player.FastExpModule
 import meow.ancient.module.modules.movement.AirStuckModule
@@ -40,6 +41,7 @@ import meow.ancient.module.modules.player.ElytraHelperModule
 import meow.ancient.module.modules.player.NoDelayModule
 import meow.ancient.module.modules.player.AutoTpacceptModule
 import meow.ancient.module.modules.player.ClickPearlModule
+import meow.ancient.module.modules.player.FakePlayerModule
 import meow.ancient.module.modules.player.NoPushModule
 import meow.ancient.module.modules.player.TpLootModule
 import meow.ancient.module.modules.render.ArrowsModule
@@ -77,6 +79,7 @@ object ModuleManager : ILoadable {
             CrystalAuraModule,
             AnchorAuraModule,
             TpAuraModule,
+            CrystalOptimizerModule,
             AutoSprintModule,
             GroundSpoofModule,
             AirStuckModule,
@@ -99,6 +102,7 @@ object ModuleManager : ILoadable {
             ClickPearlModule,
             AutoTpacceptModule,
             NoPushModule,
+            FakePlayerModule,
             TpLootModule,
             AntiCheatModule,
             TestModule,
