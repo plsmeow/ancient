@@ -9,5 +9,5 @@ object CameraTweaksModule : Module(
     description = "Custom camera distance and anti-collision clipping"
 ) {
     val cameraClip by boolean("Camera Clip", true, "Prevents third-person camera from colliding with blocks")
-    val distance by number("Distance", 4.0, 1.0, 20.0, 0.5, 1, "Custom third-person camera distance")
+    val distance by number("Distance", 4.0, 1.0, 20.0, 0.5, 1, description = "Custom third-person camera distance")
 }

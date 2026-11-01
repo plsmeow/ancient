@@ -25,7 +25,11 @@ object CommandManager : ILoadable {
             PrefixCommand,
             VClipCommand,
             HClipCommand,
-            SayCommand
+            SayCommand,
+            MacroCommand,
+            FriendCommand,
+            TargetCommand,
+            StaffCommand
         )
         EventManager.register(this)
     }

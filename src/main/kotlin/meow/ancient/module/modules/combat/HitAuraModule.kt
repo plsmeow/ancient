@@ -185,7 +185,7 @@ object HitAuraModule : Module(
         description = ""
     )
     val elytraDistance by number(
-        name = "Elytra Distance",
+        name = "Elytra Dist",
         value = 100.0,
         min = 10.0,
         max = 300.0,
@@ -228,7 +228,7 @@ object HitAuraModule : Module(
         description = ""
     )
     val rotationSpeed by number(
-        name = "Rotation Speed",
+        name = "Rot Speed",
         value = 75.0,
         min = 10.0,
         max = 180.0,
@@ -274,7 +274,7 @@ object HitAuraModule : Module(
         isVisible = { clickMode == ClickMode.MODE_1_8 }
     )
     val cpsSpread by number(
-        name = "Random Spread",
+        name = "Spread",
         value = 2.0,
         min = 0.5,
         max = 5.0,

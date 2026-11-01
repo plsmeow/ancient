@@ -27,8 +27,8 @@ object ElytraFlyModule : Module(
     val mode by modeSetting
 
     // Default mode settings
-    val horizontalSpeed = number("Horizontal Speed", 1.0, 0.1, 5.0, 0.1, 1, isVisible = { mode == "Default" })
-    val verticalSpeed = number("Vertical Speed", 1.0, 0.1, 5.0, 0.1, 1, isVisible = { mode == "Default" })
+    val horizontalSpeed = number("H-Speed", 1.0, 0.1, 5.0, 0.1, 1, isVisible = { mode == "Default" })
+    val verticalSpeed = number("V-Speed", 1.0, 0.1, 5.0, 0.1, 1, isVisible = { mode == "Default" })
 
     // Firework mode settings
     val fireworkDelay = number("Firework Delay", 750.0, 100.0, 2000.0, 50.0, 0, isVisible = { mode == "Firework" })

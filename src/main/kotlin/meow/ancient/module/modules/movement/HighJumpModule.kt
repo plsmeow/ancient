@@ -25,9 +25,9 @@ object HighJumpModule : Module(
     val modeSetting = mode("Mode", "Funtime", listOf("Funtime", "Grim Shulker", "Funsky Elytra"))
     val mode by modeSetting
 
-    val funtimeJumpY = number("Funtime JumpY", 0.42, 0.1, 1.0, 0.01, 2, isVisible = { mode == "Funtime" })
-    val shulkerJumpY = number("Shulker JumpY", 1.0, 0.5, 5.0, 0.1, 1, isVisible = { mode == "Grim Shulker" })
-    val funskyVelocityY = number("Funsky Velocity Y", 1.5, 0.5, 5.0, 0.1, 1, isVisible = { mode == "Funsky Elytra" })
+    val funtimeJumpY = number("Funtime Y", 0.42, 0.1, 1.0, 0.01, 2, isVisible = { mode == "Funtime" })
+    val shulkerJumpY = number("Shulker Y", 1.0, 0.5, 5.0, 0.1, 1, isVisible = { mode == "Grim Shulker" })
+    val funskyVelocityY = number("Funsky Y", 1.5, 0.5, 5.0, 0.1, 1, isVisible = { mode == "Funsky Elytra" })
     val funskyVelocityForward = number("Funsky Forward", 0.0, 0.0, 5.0, 0.1, 1, isVisible = { mode == "Funsky Elytra" })
     val funskyDelay = number("Funsky Delay", 2.0, 1.0, 10.0, 1.0, 0, isVisible = { mode == "Funsky Elytra" })
     val funskyWaitTicks = number("Wait Ticks", 10.0, 1.0, 60.0, 1.0, 0, isVisible = { mode == "Funsky Elytra" })

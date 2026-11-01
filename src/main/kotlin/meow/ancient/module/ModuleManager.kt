@@ -37,6 +37,8 @@ import meow.ancient.module.modules.movement.SpeedModule
 import meow.ancient.module.modules.movement.NoWebModule
 import meow.ancient.module.modules.other.AntiCheatModule
 import meow.ancient.module.modules.other.TestModule
+import meow.ancient.module.modules.other.FtHelperModule
+import meow.ancient.module.modules.other.HwHelperModule
 import meow.ancient.module.modules.player.ElytraHelperModule
 import meow.ancient.module.modules.player.NoDelayModule
 import meow.ancient.module.modules.player.AutoTpacceptModule
@@ -106,6 +108,8 @@ object ModuleManager : ILoadable {
             TpLootModule,
             AntiCheatModule,
             TestModule,
+            FtHelperModule,
+            HwHelperModule,
             ClickGuiModule,
             HudModule,
             TagsModule,

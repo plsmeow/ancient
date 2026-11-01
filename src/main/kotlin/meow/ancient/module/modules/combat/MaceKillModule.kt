@@ -24,8 +24,8 @@ object MaceKillModule : Module(
     val modeSetting = mode("Mode", "Default", listOf("Default", "Custom", "Calculate", "Matrix", "NCP", "Sample"))
     val mode by modeSetting
     val fallHeight = number("Fall Height", 20.0, 5.0, 150.0, 1.0, 0)
-    val packetCount = number("Packet Count", 2.0, 1.0, 15.0, 1.0, 0, isVisible = { mode == "Custom" })
-    val heightSeparator = number("Height Separator", 8.9, 0.1, 20.0, 0.1, 1, isVisible = { mode == "NCP" })
+    val packetCount = number("Packets", 2.0, 1.0, 15.0, 1.0, 0, isVisible = { mode == "Custom" })
+    val heightSeparator = number("Height Sep", 8.9, 0.1, 20.0, 0.1, 1, isVisible = { mode == "NCP" })
     val customAttackDelay = boolean("Custom Delay", true)
     val attackDelay = number("Attack Delay", 5.0, 0.0, 20.0, 1.0, 0, isVisible = { customAttackDelay.value })
 

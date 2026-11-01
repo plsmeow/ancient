@@ -18,7 +18,7 @@ object AutoTpacceptModule : Module(
     description = "Automatically accepts teleport requests from players or friends"
 ) {
     val onlyFriends by boolean("Only Friends", true, "Only accept requests from friends")
-    val delay by number("Delay", 0.0, 0.0, 5.0, 0.1, 1, "Delay in seconds before accepting")
+    val delay by number("Delay", 0.0, 0.0, 5.0, 0.1, 1, unit = "s", description = "Delay in seconds before accepting")
     val command by text("Command", "tpaccept", 64, "Command to run when accepting request")
 
     private var acceptPending = false

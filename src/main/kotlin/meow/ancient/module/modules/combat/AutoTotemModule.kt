@@ -11,6 +11,8 @@ import meow.ancient.module.Module
 import net.minecraft.network.protocol.game.ClientboundEntityEventPacket
 import net.minecraft.world.entity.EquipmentSlot
 import net.minecraft.world.entity.boss.enderdragon.EndCrystal
+import net.minecraft.world.entity.player.Player
+import net.minecraft.world.item.Item
 import net.minecraft.world.item.Items
 import sweetie.evaware.flora.api.Commando
 
@@ -19,23 +21,24 @@ object AutoTotemModule : Module(
     category = COMBAT,
     description = "Automatically equips a totem in the offhand"
 ) {
-    val health by number("Health", 4.0, 1.0, 20.0, step = 0.5, precision = 1, unit = "HP")
-    val healthOnElytra by number("Health on Elytra", 11.0, 1.0, 20.0, step = 0.5, precision = 1, unit = "HP")
-    val crystalsCheck by boolean("Crystals Check", false)
+    val mode by mode("Mode", "Always", listOf("Always", "Health"))
+    val health by number("Health", 6.0, 1.0, 20.0, step = 0.5, precision = 1, unit = "HP", isVisible = { mode == "Health" })
+    val healthOnElytra by number("Elytra HP", 12.0, 1.0, 20.0, step = 0.5, precision = 1, unit = "HP", isVisible = { mode == "Health" })
+    val crystalsCheck by boolean("Crystals Check", true, isVisible = { mode == "Health" })
+    val crystalRange by number("Crystal Range", 8.0, 2.0, 16.0, 0.5, 1, unit = "m", isVisible = { mode == "Health" && crystalsCheck })
+    val swapBack by boolean("Swap Back", true, isVisible = { mode == "Health" })
+    val delay by number("Delay", 0.0, 0.0, 300.0, step = 10.0, precision = 0, unit = "ms")
 
-    private var swapBackItem = -1
-    private var cooldownTicks = 0
-    private val totemTimer = TimerUtil()
+    private var swapBackSlot = -1
+    private var swapBackItem: Item? = null
+    private var popCooldown = 0
+    private val timer = TimerUtil()
 
     @Commando
     fun onUpdate(event: PlayerUpdateEvent) {
         val player = mc.player ?: return
-
-        if (cooldownTicks > 0) {
-            cooldownTicks--
-        }
-
-        updateSwap()
+        if (popCooldown > 0) popCooldown--
+        updateSwap(player)
     }
 
     @Commando
@@ -45,73 +48,92 @@ object AutoTotemModule : Module(
             val player = mc.player ?: return
             val level = mc.level ?: return
             if (packet.getEntity(level) === player) {
-                cooldownTicks = 5
+                popCooldown = 10
+                swapBackSlot = -1
+                swapBackItem = null
+                timer.reset()
             }
         }
     }
 
     @Commando
     fun onDisconnect(event: ClientDisconnectEvent) {
-        swapBackItem = -1
-        cooldownTicks = 0
+        swapBackSlot = -1
+        swapBackItem = null
+        popCooldown = 0
     }
 
     override fun onDisable() {
-        swapBackItem = -1
-        cooldownTicks = 0
+        swapBackSlot = -1
+        swapBackItem = null
+        popCooldown = 0
     }
+    private fun condition(player: Player): Boolean {
+        if (player.isCreative || player.isSpectator || !player.isAlive) return false
+        if (mode == "Always") return true
 
-    private fun condition(): Boolean {
-        val player = mc.player ?: return false
         val level = mc.level ?: return false
+        val currentHealth = player.health + player.absorptionAmount
+        val onElytra = player.getItemBySlot(EquipmentSlot.CHEST).`is`(Items.ELYTRA)
 
-        if (player.isCreative || player.isSpectator) {
-            return false
-        }
+        if (currentHealth <= health) return true
+        if (onElytra && currentHealth <= healthOnElytra) return true
 
-        var crystalNearby = false
         if (crystalsCheck) {
+            val rSq = crystalRange * crystalRange
             for (entity in level.entitiesForRendering()) {
-                if (entity !is EndCrystal) continue
-                if (player.y >= entity.y && player.eyePosition.distanceTo(entity.boundingBox.center) <= 8.0) {
-                    crystalNearby = true
-                    break
+                if (entity !is EndCrystal || !entity.isAlive) continue
+                if (player.eyePosition.distanceToSqr(entity.boundingBox.center) <= rSq) {
+                    return true
                 }
             }
         }
 
-        val totalHealth = player.health + player.absorptionAmount
-        val onElytra = player.getItemBySlot(EquipmentSlot.CHEST).`is`(Items.ELYTRA)
-
-        return totalHealth <= health
-            || (onElytra && totalHealth <= healthOnElytra)
-            || (crystalsCheck && crystalNearby)
+        return false
     }
 
-    private fun updateSwap() {
-        val player = mc.player ?: return
+    private fun findTotemSlot(player: Player): Int {
+        for (i in 0..8) {
+            if (player.inventory.getItem(i).`is`(Items.TOTEM_OF_UNDYING)) return i
+        }
+        for (i in 9..35) {
+            if (player.inventory.getItem(i).`is`(Items.TOTEM_OF_UNDYING)) return i
+        }
+        return -1
+    }
+
+    private fun updateSwap(player: Player) {
         if (player.containerMenu !== player.inventoryMenu) return
 
         val offhand = player.offhandItem
-        val totemSlot = InventoryUtil.findItem(Items.TOTEM_OF_UNDYING)
+        val hasTotem = offhand.`is`(Items.TOTEM_OF_UNDYING)
+        val needTotem = condition(player)
 
-        if (condition()
-            && totemTimer.isComplete(300)
-            && totemSlot != -1
-            && !offhand.`is`(Items.TOTEM_OF_UNDYING)
-        ) {
-            if (swapBackItem == -1 && !offhand.isEmpty) {
-                swapBackItem = totemSlot
+        if (needTotem) {
+            if (hasTotem) return
+            if (!timer.isComplete(delay.toLong())) return
+
+            val totemSlot = findTotemSlot(player)
+            if (totemSlot == -1) return
+
+            if (swapBack && swapBackSlot == -1 && !offhand.isEmpty) {
+                swapBackSlot = totemSlot
+                swapBackItem = offhand.item
             }
 
             InventoryUtil.swapToOffhand(totemSlot)
-            totemTimer.reset()
-        }
+            timer.reset()
+        } else if (swapBack && swapBackSlot != -1 && popCooldown == 0) {
+            if (!timer.isComplete(delay.toLong())) return
 
-        if (!condition() && swapBackItem != -1 && cooldownTicks == 0) {
-            val backSlot = swapBackItem
-            InventoryUtil.swapToOffhand(backSlot)
-            swapBackItem = -1
+            val slot = swapBackSlot
+            val expected = swapBackItem
+            if (slot in 0..35 && expected != null && player.inventory.getItem(slot).`is`(expected)) {
+                InventoryUtil.swapToOffhand(slot)
+            }
+            swapBackSlot = -1
+            swapBackItem = null
+            timer.reset()
         }
     }
 }

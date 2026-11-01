@@ -13,6 +13,8 @@ import java.io.File
 object ConfigManager {
     private val gson = GsonBuilder().setPrettyPrinting().create()
 
+    var currentConfig: String = "default"
+
     val configDirectory: File
         get() {
             val dir = File(mc.gameDirectory, "ancient/configs")
@@ -22,7 +24,10 @@ object ConfigManager {
             return dir
         }
 
-    fun saveConfig(name: String = "default"): Boolean {
+    fun saveCurrentConfig(): Boolean = saveConfig(currentConfig)
+
+    fun saveConfig(name: String = currentConfig): Boolean {
+        currentConfig = name
         return try {
             val file = File(configDirectory, "$name.json")
             val root = JsonObject()
@@ -58,6 +63,7 @@ object ConfigManager {
         return try {
             val file = File(configDirectory, "$name.json")
             if (!file.exists()) return false
+            currentConfig = name
 
             val root = JsonParser.parseString(file.readText()).asJsonObject
             if (root.has("prefix")) {

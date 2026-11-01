@@ -6,6 +6,7 @@ import meow.ancient.client.extensions.mc
 import meow.ancient.client.util.anticheat.AnticheatManager
 import meow.ancient.client.util.combat.ExplosionDamageUtil
 import meow.ancient.client.util.friend.FriendRepository
+import meow.ancient.client.util.target.TargetRepository
 import meow.ancient.client.util.inventory.InventoryUtil
 import meow.ancient.client.util.inventory.SwapUtil
 import meow.ancient.client.util.rotation.MoveFixMode
@@ -61,14 +62,15 @@ object CrystalAuraModule : Module(
         val player = mc.player ?: return
         val level = mc.level ?: return
 
-        placeTimer++
-        breakTimer++
-
         val target = findTarget(player)
         if (target == null) {
             restoreSlot(player)
             return
         }
+
+        placeTimer++
+        breakTimer++
+
         val targetHp = AnticheatManager.getHealth(target)
 
         if (breakTimer >= breakDelay.toInt()) {
@@ -90,25 +92,28 @@ object CrystalAuraModule : Module(
                 return
             }
         }
-        restoreSlot(player)
     }
 
     private fun findTarget(player: Player): Player? {
         val level = mc.level ?: return null
         var best: Player? = null
         var bestDist = targetRange * targetRange
+        var bestIsTarget = false
+        val maxReachSq = targetRange * targetRange
         for (entity in level.entitiesForRendering()) {
             if (entity !is Player || entity === player || !entity.isAlive || entity.isCreative || entity.isSpectator) continue
             if (FriendRepository.isFriend(entity)) continue
             val dist = player.distanceToSqr(entity)
-            if (dist <= bestDist) {
-                bestDist = dist
+            if (dist > maxReachSq) continue
+            val isTarget = TargetRepository.isTarget(entity)
+            if (best == null || (isTarget && !bestIsTarget) || (isTarget == bestIsTarget && dist < bestDist)) {
                 best = entity
+                bestDist = dist
+                bestIsTarget = isTarget
             }
         }
         return best
     }
-
     private fun breakCrystals(player: LocalPlayer, target: Player, targetHp: Float): Boolean {
         val level = mc.level ?: return false
         var bestCrystal: EndCrystal? = null
@@ -247,31 +252,40 @@ object CrystalAuraModule : Module(
         val obsidianSlot = InventoryUtil.findHotbarSlot(Items.OBSIDIAN)
         if (obsidianSlot == -1) return false
 
+        val hasCrystal = player.offhandItem.`is`(Items.END_CRYSTAL) ||
+            InventoryUtil.findHotbarSlot(Items.END_CRYSTAL) != -1 ||
+            InventoryUtil.findInventorySlot(Items.END_CRYSTAL) != -1
+        if (!hasCrystal) return false
+
         val pPos = player.blockPosition()
         val r = placeRange.toInt() + 1
         val maxReachSq = placeRange * placeRange
+
+        val targetY = target.blockPosition().y
+        val minX = pPos.x - r
+        val maxX = pPos.x + r
+        val minY = (pPos.y - r).coerceAtLeast(level.minY)
+        val maxY = minOf(pPos.y + r, targetY - 1).coerceAtMost(level.maxY)
+        if (minY > maxY) return false
+        val minZ = pPos.z - r
+        val maxZ = pPos.z + r
+
+        val crystalBox = AABB(0.0, 0.0, 0.0, 1.0, 2.0, 1.0)
+        val requiredMinDamage = minDamage.toFloat()
 
         var bestPos: BlockPos? = null
         var bestDamage = 0.0f
         var bestHit: BlockHitResult? = null
 
-        val minX = pPos.x - r
-        val maxX = pPos.x + r
-        val minY = (pPos.y - r).coerceAtLeast(level.minY)
-        val maxY = (pPos.y + r).coerceAtMost(level.maxY)
-        val minZ = pPos.z - r
-        val maxZ = pPos.z + r
-
-        val crystalBox = AABB(0.0, 0.0, 0.0, 1.0, 2.0, 1.0)
-
         for (x in minX..maxX) {
             for (y in minY..maxY) {
                 for (z in minZ..maxZ) {
                     val pos = BlockPos(x, y, z)
+                    if (pos.y >= targetY) continue
                     if (!level.getBlockState(pos).canBeReplaced()) continue
 
                     val upPos = pos.above()
-                    if (!level.getBlockState(upPos).canBeReplaced()) continue
+                    if (!level.getBlockState(upPos).isAir) continue
 
                     val center = Vec3.atCenterOf(pos)
                     if (player.eyePosition.distanceToSqr(center) > maxReachSq) continue
@@ -282,12 +296,11 @@ object CrystalAuraModule : Module(
                     val hit = findBasePlacementHit(pos, player) ?: continue
 
                     val explosionPos = Vec3(pos.x + 0.5, pos.y + 1.0, pos.z + 0.5)
-                    val selfDamage = ExplosionDamageUtil.crystalDamage(explosionPos, player)
+                    val selfDamage = ExplosionDamageUtil.crystalDamage(explosionPos, player, pos)
                     if (selfDamage > maxSelfDamage.toFloat()) continue
 
-                    val targetDamage = ExplosionDamageUtil.crystalDamage(explosionPos, target)
-                    val isLethal = lethalOverride && targetDamage >= targetHp
-                    if (!isLethal && targetDamage < minDamage.toFloat()) continue
+                    val targetDamage = ExplosionDamageUtil.crystalDamage(explosionPos, target, pos)
+                    if (targetDamage < requiredMinDamage) continue
 
                     if (targetDamage > bestDamage) {
                         bestDamage = targetDamage
@@ -297,7 +310,6 @@ object CrystalAuraModule : Module(
                 }
             }
         }
-
         val hitResult = bestHit ?: return false
 
         if (rotations) {
@@ -385,14 +397,14 @@ object CrystalAuraModule : Module(
     }
 
     private fun restoreSlot(player: LocalPlayer) {
-        if (originalSlot != -1 && silentSlots) {
-            if (player.inventory.selectedSlot != originalSlot) {
-                InventoryUtil.swapToSlot(originalSlot)
-            }
+        val slot = originalSlot
+        if (slot in 0..8) {
             originalSlot = -1
+            if (player.inventory.selectedSlot != slot) {
+                InventoryUtil.swapToSlot(slot)
+            }
         }
     }
-
     override fun onDisable() {
         placeTimer = 0
         breakTimer = 0

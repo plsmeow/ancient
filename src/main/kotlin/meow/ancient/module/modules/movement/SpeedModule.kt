@@ -54,14 +54,14 @@ object SpeedModule : Module(
         modes = listOf("Contact", "Vulcan", "Vanilla", "Polar", "MetaHVH")
     )
 
-    val boost by number("Boost Strength", 8.0, 1.0, 20.0, 0.1, 1, isVisible = { mode == "Contact" })
+    val boost by number("Boost", 8.0, 1.0, 20.0, 0.1, 1, isVisible = { mode == "Contact" })
     val targetRange by number("Target Range", 3.0, 0.5, 10.0, 0.1, 1, isVisible = { mode == "Contact" })
     val contactRange by number("Contact Range", 0.5, 0.1, 2.0, 0.1, 1, isVisible = { mode == "Contact" })
     val playersOnly by boolean("Players Only", true, isVisible = { mode == "Contact" })
     val contactOnlyWhileMoving by boolean("Only While Moving", true, isVisible = { mode == "Contact" })
     val onlyWithAura by boolean("Only With Aura", false, isVisible = { mode == "Contact" })
     val predict by boolean("Predict", true, isVisible = { mode == "Contact" })
-    val predictStrength by number("Predict Strength", 2.0, 0.1, 10.0, 0.1, 1, isVisible = { mode == "Contact" && predict })
+    val predictStrength by number("Predict", 2.0, 0.1, 10.0, 0.1, 1, isVisible = { mode == "Contact" && predict })
 
     val vulcanOnlyWhileMoving by boolean("Only While Moving", true, isVisible = { mode == "Vulcan" })
 
@@ -71,15 +71,15 @@ object SpeedModule : Module(
     val waterFix by boolean("Water Fix", false, isVisible = { mode == "Vanilla" })
     val hvhTarget by boolean("HvH Target", false, isVisible = { mode == "Vanilla" })
     val hvhPredictMode by mode("Predict Mode", "Simple", listOf("Simple", "Extrapolation"), isVisible = { mode == "Vanilla" && hvhTarget })
-    val hvhPredictStrength by number("Predict Strength", 4.0, 0.5, 20.0, 0.1, 1, isVisible = { mode == "Vanilla" && hvhTarget })
+    val hvhPredictStrength by number("Predict", 4.0, 0.5, 20.0, 0.1, 1, isVisible = { mode == "Vanilla" && hvhTarget })
     val hvhRender by boolean("Render Predict", true, isVisible = { mode == "Vanilla" && hvhTarget })
     val leave by boolean("Leave", false, isVisible = { mode == "Vanilla" && hvhTarget })
-    val leaveDistance by number("Leave Distance", 8.0, 4.0, 20.0, 0.5, 1, unit = " blocks", isVisible = { mode == "Vanilla" && hvhTarget && leave })
-    val attackDistance by number("Attack Distance", 4.0, 1.0, 6.0, 0.1, 1, unit = " blocks", isVisible = { mode == "Vanilla" && hvhTarget && leave })
+    val leaveDistance by number("Leave Dist", 8.0, 4.0, 20.0, 0.5, 1, unit = "b", isVisible = { mode == "Vanilla" && hvhTarget && leave })
+    val attackDistance by number("Attack Dist", 4.0, 1.0, 6.0, 0.1, 1, unit = "b", isVisible = { mode == "Vanilla" && hvhTarget && leave })
 
     val metaHvhSpeed by number("Base Speed", 0.36, 0.1, 1.0, 0.01, 2, isVisible = { mode == "MetaHVH" })
     val metaHvhTarget by boolean("HvH Target", false, isVisible = { mode == "MetaHVH" })
-    val metaHvhPredictStrength by number("Predict Strength", 4.0, 0.5, 20.0, 0.1, 1, isVisible = { mode == "MetaHVH" && metaHvhTarget })
+    val metaHvhPredictStrength by number("Predict", 4.0, 0.5, 20.0, 0.1, 1, isVisible = { mode == "MetaHVH" && metaHvhTarget })
 
     private const val VANILLA_DEFAULT_SPEED = 0.2873
     private const val HVH_TARGET_ZONE = 0.6

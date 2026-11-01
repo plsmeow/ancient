@@ -4,6 +4,8 @@ import meow.ancient.client.extensions.COMBAT
 import meow.ancient.client.extensions.inGame
 import meow.ancient.client.extensions.mc
 import meow.ancient.client.util.movement.TeleportPath
+import meow.ancient.client.util.friend.FriendRepository
+import meow.ancient.client.util.target.TargetRepository
 import meow.ancient.client.util.other.ChatUtil
 import meow.ancient.client.util.other.DamageUtils
 import meow.ancient.client.util.rotation.GCDUtil
@@ -55,8 +57,8 @@ object SpearKillModule : Module(
     val teleportTypeSetting = mode("Teleport Type", "Simple", listOf("Simple", "Step", "Vault", "Bypass"), isVisible = { mode == "Teleport" })
     val teleportType by teleportTypeSetting
 
-    val stepDistance = number("Step Distance", 4.0, 0.1, 10.0, 0.1, 1, isVisible = { mode == "Teleport" && teleportType == "Step" })
-    val bypassPackets = number("Bypass Packets", 10.0, 1.0, 50.0, 1.0, 0, isVisible = { mode == "Teleport" && teleportType == "Bypass" })
+    val stepDistance = number("Step Dist", 4.0, 0.1, 10.0, 0.1, 1, isVisible = { mode == "Teleport" && teleportType == "Step" })
+    val bypassPackets = number("Packets", 10.0, 1.0, 50.0, 1.0, 0, isVisible = { mode == "Teleport" && teleportType == "Bypass" })
     val bypassOnGround = boolean("Bypass On Ground", true, isVisible = { mode == "Teleport" && teleportType == "Bypass" })
 
     val range = number("Range", 32.0, 1.0, 100.0, 1.0, 0)
@@ -69,7 +71,7 @@ object SpearKillModule : Module(
 
     val silent = boolean("Silent", false)
     val prediction = boolean("Prediction", true)
-    val predictionTicks = number("Prediction Ticks", 2.0, 0.0, 10.0, 0.1, 1, isVisible = { prediction.value })
+    val predictionTicks = number("Predict Ticks", 2.0, 0.0, 10.0, 0.1, 1, isVisible = { prediction.value })
     val targets = targets("Targets", setOf("minecraft:player"))
 
 
@@ -405,6 +407,7 @@ object SpearKillModule : Module(
         if (entity === player || entity === mc.cameraEntity || !targetPresent(entity)) return false
         if (!targets.isSelected(entity)) return false
         if (player.distanceToSqr(entity) > range.value * range.value) return false
+        if (FriendRepository.isFriend(entity)) return false
         if (entity is Player && (entity.isCreative || entity.isSpectator)) return false
         return true
     }
@@ -422,14 +425,17 @@ object SpearKillModule : Module(
         val player = mc.player ?: return null
         var best: Entity? = null
         var bestAngle = Double.MAX_VALUE
+        var bestIsTarget = false
         for (entity in level.entitiesForRendering()) {
             if (!canSelect(entity)) continue
             val directionVec = entity.boundingBox.center.subtract(player.eyePosition).normalize()
             val dot = Mth.clamp(player.getViewVector(1f).dot(directionVec), -1.0, 1.0)
             val angle = acos(dot)
-            if (angle < bestAngle) {
+            val isTarget = TargetRepository.isTarget(entity)
+            if (best == null || (isTarget && !bestIsTarget) || (isTarget == bestIsTarget && angle < bestAngle)) {
                 bestAngle = angle
                 best = entity
+                bestIsTarget = isTarget
             }
         }
         return best

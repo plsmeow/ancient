@@ -1,16 +1,19 @@
 package meow.ancient
 
 import meow.ancient.client.command.CommandManager
+import meow.ancient.client.config.AutoSaveManager
 import meow.ancient.client.config.ConfigManager
 import meow.ancient.client.gui.material.ThemeManager
 import meow.ancient.client.listener.ListenerManager
 import meow.ancient.client.sound.ModSounds
-import meow.ancient.client.util.friend.FriendRepository
 import meow.ancient.client.util.inventory.SlownessManager
 import meow.ancient.client.util.render.VulkanShapePipelines
 import meow.ancient.client.util.render.font.VulkanFontPipelines
 import meow.ancient.module.ModuleManager
 import net.fabricmc.api.ClientModInitializer
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLevelEvents
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents
 
 object Ancient : ClientModInitializer {
 	override fun onInitializeClient() {
@@ -18,16 +21,23 @@ object Ancient : ClientModInitializer {
 		ThemeManager.load()
 		VulkanFontPipelines.init()
 		VulkanShapePipelines.init()
-		net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents.END_CLIENT_TICK.register { SlownessManager.update() }
+		ClientTickEvents.END_CLIENT_TICK.register {
+			SlownessManager.update()
+			AutoSaveManager.onTick()
+		}
+		ClientLevelEvents.AFTER_CLIENT_LEVEL_CHANGE.register { _, _ ->
+			AutoSaveManager.saveAll()
+		}
+		ClientLifecycleEvents.CLIENT_STOPPING.register {
+			AutoSaveManager.saveAll()
+		}
 		ListenerManager.load()
 		ModuleManager.load()
 		CommandManager.load()
 		ConfigManager.loadConfig("default")
 
 		Runtime.getRuntime().addShutdownHook(Thread {
-			ConfigManager.saveConfig("default")
-			FriendRepository.save()
-			ThemeManager.save()
+			AutoSaveManager.saveAll()
 		})
 	}
 }

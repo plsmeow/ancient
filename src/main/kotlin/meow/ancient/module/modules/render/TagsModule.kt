@@ -1,6 +1,8 @@
 package meow.ancient.module.modules.render
 
 import meow.ancient.client.util.anticheat.AnticheatManager
+import meow.ancient.client.util.friend.FriendRepository
+import meow.ancient.client.util.target.TargetRepository
 import meow.ancient.client.extensions.RENDER
 import meow.ancient.client.extensions.mc
 import meow.ancient.client.gui.material.M3Palette
@@ -17,8 +19,12 @@ import meow.ancient.module.setting.MinecraftPickerCatalogs
 import net.minecraft.util.Mth
 import net.minecraft.world.entity.Entity
 import net.minecraft.world.entity.EntityAttachment
+import net.minecraft.client.gui.GuiGraphicsExtractor
+import net.minecraft.world.entity.EquipmentSlot
 import net.minecraft.world.entity.EntityType
 import net.minecraft.world.entity.LivingEntity
+import net.minecraft.world.entity.player.Player
+import net.minecraft.world.item.ItemStack
 import org.joml.Vector3f
 import sweetie.evaware.flora.api.Commando
 import kotlin.math.ceil
@@ -42,6 +48,23 @@ object TagsModule : Module(
         name = "Self",
         value = true,
         description = ""
+    )
+
+    val items by boolean(
+        name = "Items",
+        value = true,
+        description = ""
+    )
+
+    val itemSize by number(
+        name = "Item Size",
+        value = 1.0,
+        min = 0.5,
+        max = 2.5,
+        step = 0.05,
+        precision = 2,
+        description = "",
+        isVisible = { items }
     )
 
     val entityTypes by picker("Entity Types", setOf("minecraft:player"), MinecraftPickerCatalogs.entities)
@@ -94,6 +117,79 @@ object TagsModule : Module(
 
     private fun obtainTag(): ProjectedTag {
         return if (tagPool.isNotEmpty()) tagPool.removeAt(tagPool.lastIndex) else ProjectedTag()
+    }
+
+    private val equipmentCache = ArrayList<ItemStack>(6)
+    private val itemTagPool = ArrayList<ProjectedTag>()
+    private val activeItemTags = ArrayList<ProjectedTag>()
+
+    private fun obtainItemTag(): ProjectedTag {
+        return if (itemTagPool.isNotEmpty()) itemTagPool.removeAt(itemTagPool.lastIndex) else ProjectedTag()
+    }
+
+    fun renderItems(graphics: GuiGraphicsExtractor, partialTicks: Float) {
+        if (!isEnabled() || !items) return
+        safeRun {
+            itemTagPool.addAll(activeItemTags)
+            activeItemTags.clear()
+
+            for (target in level.entitiesForRendering()) {
+                val player = target as? Player ?: continue
+                if (!isTarget(player)) continue
+                val projected = projectTag(player, partialTicks) ?: continue
+                val tag = obtainItemTag()
+                tag.set(player, projected.x, projected.y, projected.z)
+                activeItemTags.add(tag)
+            }
+
+            if (activeItemTags.isEmpty()) return@safeRun
+
+            activeItemTags.sortWith(DEPTH_COMPARATOR)
+
+            val tagScale = size.toFloat()
+            val itemScale = itemSize.toFloat() * tagScale
+            val rectH = 13.5f * tagScale
+            val step = 14.0f * itemScale
+            val renderedItemSize = 16.0f * itemScale
+
+            val pose = graphics.pose()
+
+            for (tag in activeItemTags) {
+                val player = tag.target as? Player ?: continue
+
+                equipmentCache.clear()
+                equipmentCache.add(player.getItemBySlot(EquipmentSlot.HEAD))
+                equipmentCache.add(player.getItemBySlot(EquipmentSlot.CHEST))
+                equipmentCache.add(player.getItemBySlot(EquipmentSlot.LEGS))
+                equipmentCache.add(player.getItemBySlot(EquipmentSlot.FEET))
+                equipmentCache.add(player.getItemBySlot(EquipmentSlot.MAINHAND))
+                equipmentCache.add(player.getItemBySlot(EquipmentSlot.OFFHAND))
+                equipmentCache.removeIf { it.isEmpty }
+
+                if (equipmentCache.isEmpty()) continue
+
+                val count = equipmentCache.size
+                val totalW = (count - 1) * step + renderedItemSize
+                val startX = tag.screenX - totalW * 0.5f
+                val rectY = tag.screenY - rectH
+                val itemY = rectY - renderedItemSize - 1.5f * tagScale
+
+                for (i in 0 until count) {
+                    val stack = equipmentCache[i]
+                    val itemX = startX + i * step
+
+                    pose.pushMatrix()
+                    try {
+                        pose.translate(itemX, itemY)
+                        pose.scale(itemScale, itemScale)
+                        graphics.fakeItem(stack, 0, 0)
+                        graphics.itemDecorations(mc.font, stack, 0, 0)
+                    } finally {
+                        pose.popMatrix()
+                    }
+                }
+            }
+        }
     }
 
     @Commando
@@ -150,10 +246,21 @@ object TagsModule : Module(
                 val hpPct = (hp / maxHp).coerceIn(0f, 1f)
                 val hpColor = getHealthColor(hpPct, absorption > 0f, palette)
 
+                val isFriend = target is Player && FriendRepository.isFriend(target)
+                val isTargetPlayer = target is Player && TargetRepository.isTarget(target)
+                val statusColor = when {
+                    isFriend -> Color4b(85, 239, 196, 255)
+                    isTargetPlayer -> Color4b(255, 82, 82, 255)
+                    else -> null
+                }
+                val barW = 2.5f * scale
+                val barGap = 3.5f * scale
+                val totalBarW = if (statusColor != null) barW + barGap else 0f
+
                 val nameW = font.width(nameText, fontSize)
                 val hpTextW = if (living != null) font.width(hpText, badgeFontSize) else 0f
                 val badgeW = if (living != null) hpTextW + badgePadX * 2f else 0f
-                val rectW = padX + nameW + (if (living != null) gap + badgeW else 0f) + padX
+                val rectW = padX + nameW + (if (living != null) gap + badgeW else 0f) + totalBarW + padX
                 val rectX = tag.screenX - rectW * 0.5f
                 val rectY = tag.screenY - rectH
 
@@ -179,9 +286,25 @@ object TagsModule : Module(
                     shadow = false,
                     pipeline = ClientRenderPipeline.HUD_TEXT
                 )
+                if (statusColor != null) {
+                    val barH = if (living != null) badgeH else (rectH - 4.0f * scale)
+                    val barX = rectX + rectW - padX - barW
+                    val barY = rectY + (rectH - barH) * 0.5f
+                    RenderUtils.roundedRect(
+                        matrix = matrix,
+                        x = barX,
+                        y = barY,
+                        width = barW,
+                        height = barH,
+                        color = statusColor,
+                        radius = 1.25f * scale,
+                        pipeline = ClientRenderPipeline.HUD_RECT
+                    )
+                }
+
                 if (living == null) continue
 
-                val badgeX = rectX + rectW - padX - badgeW
+                val badgeX = rectX + rectW - padX - totalBarW - badgeW
                 val badgeY = rectY + (rectH - badgeH) * 0.5f
 
                 RenderUtils.roundedRect(

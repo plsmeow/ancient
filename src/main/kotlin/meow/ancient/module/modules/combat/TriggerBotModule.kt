@@ -4,6 +4,7 @@ import meow.ancient.client.extensions.COMBAT
 import meow.ancient.client.extensions.inGame
 import meow.ancient.client.extensions.mc
 import meow.ancient.client.util.rotation.RayTraceUtil
+import meow.ancient.client.util.friend.FriendRepository
 import meow.ancient.client.util.rotation.RotationUtil
 import meow.ancient.event.events.PlayerUpdateEvent
 import meow.ancient.module.Module
@@ -175,8 +176,7 @@ object TriggerBotModule : Module(
         val player = mc.player ?: return false
 
         if (!targets.isSelected(entity)) return false
-        if (entity is Player && (entity.isCreative || entity.isSpectator)) return false
-
+        if (entity is Player && (entity.isCreative || entity.isSpectator || FriendRepository.isFriend(entity))) return false
         return player.eyePosition.distanceTo(entity.position()) <= reach
     }
 

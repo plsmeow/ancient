@@ -27,6 +27,7 @@ import meow.ancient.client.util.render.rect.RectRenderer
 import meow.ancient.event.EventManager
 import meow.ancient.event.events.OverlayRenderEvent
 import meow.ancient.module.modules.render.HudModule
+import meow.ancient.module.modules.render.TagsModule
 import net.minecraft.client.DeltaTracker
 import net.minecraft.client.gui.GuiGraphicsExtractor
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents
@@ -77,6 +78,9 @@ object RenderListener : Listener() {
             val mouseY = InputListener.mouseY()
 
             val event = cachedOverlayEvent.update(partialTicks, mouseX, mouseY)
+            if (TagsModule.isEnabled()) {
+                TagsModule.renderItems(guiGraphics, partialTicks)
+            }
             if (isOpenGLActive()) {
                 if (HudModule.isEnabled()) HudModule.onOverlay(event)
             } else {

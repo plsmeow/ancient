@@ -1,152 +1,257 @@
 package meow.ancient.client.util.combat
 
+import meow.ancient.client.extensions.mc
 import net.minecraft.core.BlockPos
-import net.minecraft.core.Direction
-import net.minecraft.util.Mth
+import net.minecraft.core.component.DataComponents
+import net.minecraft.resources.ResourceKey
+import net.minecraft.tags.DamageTypeTags
 import net.minecraft.world.Difficulty
+import net.minecraft.world.damagesource.CombatRules
+import net.minecraft.world.damagesource.DamageSource
 import net.minecraft.world.effect.MobEffects
+import net.minecraft.world.entity.Entity
+import net.minecraft.world.entity.EquipmentSlot
 import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.entity.ai.attributes.Attributes
 import net.minecraft.world.entity.player.Player
+import net.minecraft.world.item.ItemStack
+import net.minecraft.world.item.enchantment.Enchantment
+import net.minecraft.world.item.enchantment.Enchantments
+import net.minecraft.world.item.enchantment.ItemEnchantments
 import net.minecraft.world.level.BlockGetter
-import net.minecraft.world.level.ClipContext
-import net.minecraft.world.level.Level
 import net.minecraft.world.level.block.Blocks
-import net.minecraft.world.level.block.entity.BlockEntity
 import net.minecraft.world.level.block.state.BlockState
-import net.minecraft.world.level.material.FluidState
-import net.minecraft.world.level.material.Fluids
 import net.minecraft.world.phys.AABB
-import net.minecraft.world.phys.HitResult
+import net.minecraft.world.phys.BlockHitResult
 import net.minecraft.world.phys.Vec3
-import net.minecraft.world.phys.shapes.CollisionContext
+import java.util.function.BiFunction
+import kotlin.math.floor
+import kotlin.math.max
+import kotlin.math.min
+import kotlin.math.sqrt
 
 object ExplosionDamageUtil {
 
-    class SimulatedBlockView(
-        private val base: BlockGetter,
-        private val overridePos: BlockPos,
-        private val overrideState: BlockState
-    ) : BlockGetter {
-        override fun getBlockEntity(pos: BlockPos): BlockEntity? =
-            if (pos == overridePos) null else base.getBlockEntity(pos)
+    class ExposureRaycastContext(val start: Vec3, val end: Vec3)
 
-        override fun getBlockState(pos: BlockPos): BlockState =
-            if (pos == overridePos) overrideState else base.getBlockState(pos)
+    fun interface RaycastFactory : BiFunction<ExposureRaycastContext, BlockPos, BlockHitResult?>
 
-        override fun getFluidState(pos: BlockPos): FluidState =
-            if (pos == overridePos) Fluids.EMPTY.defaultFluidState() else base.getFluidState(pos)
-
-        override fun getHeight(): Int = base.height
-        override fun getMinY(): Int = base.minY
+    val HIT_FACTORY: RaycastFactory = RaycastFactory { context, blockPos ->
+        val level = mc.level ?: return@RaycastFactory null
+        val blockState = level.getBlockState(blockPos)
+        if (blockState.block.explosionResistance < 600f) return@RaycastFactory null
+        blockState.getCollisionShape(level, blockPos).clip(context.start, context.end, blockPos)
     }
 
-    fun crystalDamage(explosionPos: Vec3, target: LivingEntity): Float =
-        computeDamage(explosionPos, target, target.level(), 6.0f)
+    fun getOverridingHitFactory(overridePos: BlockPos, overrideState: BlockState): RaycastFactory {
+        return RaycastFactory { context, blockPos ->
+            val level = mc.level ?: return@RaycastFactory null
+            val blockState = if (blockPos == overridePos) overrideState else {
+                val state = level.getBlockState(blockPos)
+                if (state.block.explosionResistance < 600f) return@RaycastFactory null
+                state
+            }
+            blockState.getCollisionShape(level, blockPos).clip(context.start, context.end, blockPos)
+        }
+    }
+
+    fun crystalDamage(
+        target: LivingEntity,
+        crystal: Vec3,
+        predictMovement: Boolean = false,
+        obsidianPos: BlockPos? = null
+    ): Float {
+        val factory = if (obsidianPos != null) {
+            getOverridingHitFactory(obsidianPos, Blocks.OBSIDIAN.defaultBlockState())
+        } else {
+            HIT_FACTORY
+        }
+        return explosionDamage(target, crystal, 12f, predictMovement, factory)
+    }
+
+    fun crystalDamage(explosionPos: Vec3, target: LivingEntity, obsidianPos: BlockPos? = null): Float {
+        return crystalDamage(target, explosionPos, false, obsidianPos)
+    }
+
+    fun anchorDamage(target: LivingEntity, anchorPos: BlockPos): Float {
+        val anchorCenter = Vec3(anchorPos.x + 0.5, anchorPos.y + 1.0, anchorPos.z + 0.5)
+        return explosionDamage(
+            target,
+            anchorCenter,
+            10f,
+            false,
+            getOverridingHitFactory(anchorPos, Blocks.AIR.defaultBlockState())
+        )
+    }
 
     fun anchorDamage(anchorPos: BlockPos, target: LivingEntity): Float {
-        val simulated = SimulatedBlockView(target.level(), anchorPos, Blocks.AIR.defaultBlockState())
-        return computeDamage(Vec3.atCenterOf(anchorPos).add(0.0, 0.5, 0.0), target, simulated, 5.0f)
+        return anchorDamage(target, anchorPos)
     }
 
-    private fun computeDamage(
-        explosionPos: Vec3,
+    fun explosionDamage(
         target: LivingEntity,
-        blockGetter: BlockGetter,
-        power: Float
+        explosionPos: Vec3,
+        power: Float,
+        predictMovement: Boolean,
+        raycastFactory: RaycastFactory
     ): Float {
-        if (target is Player && (target.isCreative || target.isSpectator)) return 0.0f
-        val maxDist = power * 2.0
-        val dist = target.position().distanceTo(explosionPos)
-        if (dist > maxDist) return 0.0f
+        if (target is Player && (target.isCreative || target.isSpectator)) return 0f
 
-        val box = target.boundingBox
-        val exposure = getExposure(blockGetter, explosionPos, box, CollisionContext.of(target))
-        return applyReductions(target, dist, exposure, power)
+        val position = if (predictMovement) target.position().add(target.deltaMovement) else target.position()
+        var box = target.boundingBox
+        if (predictMovement) box = box.move(target.deltaMovement)
+
+        return explosionDamage(target, position, box, explosionPos, power, raycastFactory)
     }
 
-    private fun applyReductions(target: LivingEntity, dist: Double, exposure: Double, power: Float): Float {
-        if (target is Player && (target.isCreative || target.isSpectator)) return 0.0f
-        val level = target.level()
-        val difficulty = if (level is Level) level.difficulty else Difficulty.NORMAL
-        val raw = rawDamage(dist, exposure, power, difficulty)
-        if (raw <= 0.0f) return 0.0f
+    fun explosionDamage(
+        target: LivingEntity,
+        targetPos: Vec3,
+        targetBox: AABB,
+        explosionPos: Vec3,
+        power: Float,
+        raycastFactory: RaycastFactory
+    ): Float {
+        val level = mc.level ?: return 0f
+        val dx = targetPos.x - explosionPos.x
+        val dy = targetPos.y - explosionPos.y
+        val dz = targetPos.z - explosionPos.z
+        val modDistance = sqrt(dx * dx + dy * dy + dz * dz)
+        if (modDistance > power) return 0f
 
-        val armor = target.armorValue.toFloat()
-        val toughness = target.getAttributeValue(Attributes.ARMOR_TOUGHNESS).toFloat()
-        val clampedArmor = (armor - raw / (2.0f + toughness / 4.0f)).coerceIn(armor * 0.2f, 20.0f)
-        var damage = raw * (1.0f - clampedArmor / 25.0f)
+        val exposure = getExposure(explosionPos, targetBox, raycastFactory)
+        val impact = (1.0 - (modDistance / power)) * exposure
+        val damage = (((impact * impact + impact) / 2.0 * 7.0 * 12.0) + 1.0).toFloat()
 
-        val resistance = target.getEffect(MobEffects.RESISTANCE)
-        if (resistance != null) {
-            val resistanceFactor = (1.0f - (resistance.amplifier + 1) * 0.2f).coerceAtLeast(0.0f)
-            damage *= resistanceFactor
-        }
-
-        return damage.coerceAtLeast(0.0f)
+        return calculateReductions(damage, target, level.damageSources().explosion(null))
     }
 
-    private fun rawDamage(dist: Double, exposure: Double, power: Float, difficulty: Difficulty): Float {
-        val maxDist = power * 2.0
-        if (dist > maxDist) return 0.0f
-
-        val impact = (1.0 - dist / maxDist) * exposure
-        val baseDamage = ((impact * impact + impact) * 7.0 * power.toDouble() + 1.0).toFloat()
-
-        return when (difficulty) {
-            Difficulty.PEACEFUL -> 0.0f
-            Difficulty.EASY -> minOf(baseDamage / 2.0f + 1.0f, baseDamage)
-            Difficulty.NORMAL -> baseDamage
-            Difficulty.HARD -> baseDamage * 1.5f
-        }
-    }
-
-    private fun getExposure(
-        blockGetter: BlockGetter,
-        source: Vec3,
-        box: AABB,
-        context: CollisionContext
-    ): Double {
-        val stepX = 1.0 / (box.xsize * 2.0 + 1.0)
-        val stepY = 1.0 / (box.ysize * 2.0 + 1.0)
-        val stepZ = 1.0 / (box.zsize * 2.0 + 1.0)
-        val offsetX = (1.0 - Math.floor(1.0 / stepX) * stepX) / 2.0
-        val offsetZ = (1.0 - Math.floor(1.0 / stepZ) * stepZ) / 2.0
-
-        var missed = 0
-        var total = 0
-
-        var x = 0.0
-        while (x <= 1.0) {
-            var y = 0.0
-            while (y <= 1.0) {
-                var z = 0.0
-                while (z <= 1.0) {
-                    val point = Vec3(
-                        Mth.lerp(x, box.minX, box.maxX) + offsetX,
-                        Mth.lerp(y, box.minY, box.maxY),
-                        Mth.lerp(z, box.minZ, box.maxZ) + offsetZ
-                    )
-                    val clip = blockGetter.clip(
-                        ClipContext(
-                            point,
-                            source,
-                            ClipContext.Block.COLLIDER,
-                            ClipContext.Fluid.NONE,
-                            context
-                        )
-                    )
-                    if (clip.type == HitResult.Type.MISS) {
-                        missed++
-                    }
-                    total++
-                    z += stepZ
-                }
-                y += stepY
+    fun calculateReductions(damage: Float, entity: Entity, damageSource: DamageSource): Float {
+        val level = mc.level ?: return damage
+        var d = damage
+        if (damageSource.scalesWithDifficulty()) {
+            when (level.difficulty) {
+                Difficulty.EASY -> d = min(d / 2f + 1f, d)
+                Difficulty.HARD -> d *= 1.5f
+                else -> {}
             }
-            x += stepX
         }
 
-        return if (total == 0) 0.0 else missed.toDouble() / total.toDouble()
+        if (entity is LivingEntity) {
+            val armor = floor(entity.getAttributeValue(Attributes.ARMOR)).toFloat()
+            val toughness = entity.getAttributeValue(Attributes.ARMOR_TOUGHNESS).toFloat()
+            d = CombatRules.getDamageAfterAbsorb(entity, d, damageSource, armor, toughness)
+            d = resistanceReduction(entity, d)
+            d = protectionReduction(entity, d, damageSource)
+        }
+
+        return max(d, 0f)
+    }
+
+    private fun resistanceReduction(player: LivingEntity, damage: Float): Float {
+        val resistance = player.getEffect(MobEffects.RESISTANCE)
+        if (resistance != null) {
+            val lvl = resistance.amplifier + 1
+            return max(damage * (1f - (lvl * 0.2f)), 0f)
+        }
+        return max(damage, 0f)
+    }
+
+    private val ARMOR_SLOTS = listOf(
+        EquipmentSlot.FEET,
+        EquipmentSlot.LEGS,
+        EquipmentSlot.CHEST,
+        EquipmentSlot.HEAD
+    )
+
+    private fun protectionReduction(player: LivingEntity, damage: Float, source: DamageSource): Float {
+        if (source.`is`(DamageTypeTags.BYPASSES_INVULNERABILITY)) return damage
+
+        var damageProtection = 0
+
+        for (slot in ARMOR_SLOTS) {
+            val stack = player.getItemBySlot(slot)
+            if (stack.isEmpty) continue
+
+            damageProtection += getEnchantmentLevel(stack, Enchantments.PROTECTION)
+
+            if (source.`is`(DamageTypeTags.IS_FIRE)) {
+                damageProtection += 2 * getEnchantmentLevel(stack, Enchantments.FIRE_PROTECTION)
+            }
+            if (source.`is`(DamageTypeTags.IS_EXPLOSION)) {
+                damageProtection += 2 * getEnchantmentLevel(stack, Enchantments.BLAST_PROTECTION)
+            }
+            if (source.`is`(DamageTypeTags.IS_PROJECTILE)) {
+                damageProtection += 2 * getEnchantmentLevel(stack, Enchantments.PROJECTILE_PROTECTION)
+            }
+            if (source.`is`(DamageTypeTags.IS_FALL)) {
+                damageProtection += 3 * getEnchantmentLevel(stack, Enchantments.FEATHER_FALLING)
+            }
+        }
+
+        return CombatRules.getDamageAfterMagicAbsorb(damage, damageProtection.toFloat())
+    }
+
+    private fun getEnchantmentLevel(stack: ItemStack, enchantmentKey: ResourceKey<Enchantment>): Int {
+        val enchantments = stack.getOrDefault(DataComponents.ENCHANTMENTS, ItemEnchantments.EMPTY)
+        for (entry in enchantments.entrySet()) {
+            if (entry.key.`is`(enchantmentKey)) {
+                return entry.intValue
+            }
+        }
+        return 0
+    }
+
+    fun getExposure(source: Vec3, box: AABB, raycastFactory: RaycastFactory): Double {
+        val xDiff = box.maxX - box.minX
+        val yDiff = box.maxY - box.minY
+        val zDiff = box.maxZ - box.minZ
+
+        val xStep = 1.0 / (xDiff * 2.0 + 1.0)
+        val yStep = 1.0 / (yDiff * 2.0 + 1.0)
+        val zStep = 1.0 / (zDiff * 2.0 + 1.0)
+
+        if (xStep <= 0.0 || yStep <= 0.0 || zStep <= 0.0) return 0.0
+
+        var misses = 0
+        var hits = 0
+
+        val xOffset = (1.0 - floor(1.0 / xStep) * xStep) * 0.5
+        val zOffset = (1.0 - floor(1.0 / zStep) * zStep) * 0.5
+
+        val actualXStep = xStep * xDiff
+        val actualYStep = yStep * yDiff
+        val actualZStep = zStep * zDiff
+
+        val startX = box.minX + xOffset
+        val startY = box.minY
+        val startZ = box.minZ + zOffset
+        val endX = box.maxX + xOffset
+        val endY = box.maxY
+        val endZ = box.maxZ + zOffset
+
+        var x = startX
+        while (x <= endX) {
+            var y = startY
+            while (y <= endY) {
+                var z = startZ
+                while (z <= endZ) {
+                    val position = Vec3(x, y, z)
+                    if (raycast(ExposureRaycastContext(position, source), raycastFactory) == null) {
+                        misses++
+                    }
+                    hits++
+                    z += actualZStep
+                }
+                y += actualYStep
+            }
+            x += actualXStep
+        }
+
+        return if (hits > 0) misses.toDouble() / hits.toDouble() else 0.0
+    }
+
+    private fun raycast(context: ExposureRaycastContext, raycastFactory: RaycastFactory): BlockHitResult? {
+        return MeteorDamageHelper.raycast(context.start, context.end, context, raycastFactory)
     }
 }

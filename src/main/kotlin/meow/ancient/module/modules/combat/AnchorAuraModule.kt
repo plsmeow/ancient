@@ -6,6 +6,7 @@ import meow.ancient.client.extensions.mc
 import meow.ancient.client.util.anticheat.AnticheatManager
 import meow.ancient.client.util.combat.ExplosionDamageUtil
 import meow.ancient.client.util.friend.FriendRepository
+import meow.ancient.client.util.target.TargetRepository
 import meow.ancient.client.util.inventory.InventoryUtil
 import meow.ancient.client.util.inventory.SwapUtil
 import meow.ancient.client.util.rotation.MoveFixMode
@@ -63,14 +64,15 @@ object AnchorAuraModule : Module(
 
         if (level.dimension() == Level.NETHER) return
 
-        tickTimer++
-        if (tickTimer < delay.toInt()) return
-
         val target = findTarget(player)
         if (target == null) {
             restoreSlot(player)
             return
         }
+
+        tickTimer++
+        if (tickTimer < delay.toInt()) return
+
         val targetHp = AnticheatManager.getHealth(target)
 
         val executed = explodeChargedAnchor(player, target, targetHp)
@@ -79,8 +81,6 @@ object AnchorAuraModule : Module(
 
         if (executed) {
             tickTimer = 0
-        } else {
-            restoreSlot(player)
         }
     }
 
@@ -88,13 +88,18 @@ object AnchorAuraModule : Module(
         val level = mc.level ?: return null
         var best: Player? = null
         var bestDist = targetRange * targetRange
+        var bestIsTarget = false
+        val maxReachSq = targetRange * targetRange
         for (entity in level.entitiesForRendering()) {
             if (entity !is Player || entity === player || !entity.isAlive || entity.isCreative || entity.isSpectator) continue
             if (FriendRepository.isFriend(entity)) continue
             val dist = player.distanceToSqr(entity)
-            if (dist <= bestDist) {
-                bestDist = dist
+            if (dist > maxReachSq) continue
+            val isTarget = TargetRepository.isTarget(entity)
+            if (best == null || (isTarget && !bestIsTarget) || (isTarget == bestIsTarget && dist < bestDist)) {
                 best = entity
+                bestDist = dist
+                bestIsTarget = isTarget
             }
         }
         return best
@@ -424,11 +429,12 @@ object AnchorAuraModule : Module(
     }
 
     private fun restoreSlot(player: LocalPlayer) {
-        if (originalSlot != -1 && silentSlots) {
-            if (player.inventory.selectedSlot != originalSlot) {
-                InventoryUtil.swapToSlot(originalSlot)
-            }
+        val slot = originalSlot
+        if (slot in 0..8) {
             originalSlot = -1
+            if (player.inventory.selectedSlot != slot) {
+                InventoryUtil.swapToSlot(slot)
+            }
         }
     }
 

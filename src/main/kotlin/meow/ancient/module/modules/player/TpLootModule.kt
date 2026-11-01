@@ -22,8 +22,8 @@ object TpLootModule : Module(
     description = "Teleports to selected dropped items, then leaves or returns to the starting position."
 ) {
     val tpMode = mode("Teleport Type", "Bypass", listOf("Simple", "Step", "Vault", "Bypass"))
-    val stepDistance = number("Step Distance", 4.0, 0.1, 10.0, 0.1, 1, isVisible = { tpMode.value == "Step" })
-    val bypassPackets = number("Bypass Packets", 10.0, 0.0, 50.0, 1.0, 0, isVisible = { tpMode.value == "Bypass" })
+    val stepDistance = number("Step Dist", 4.0, 0.1, 10.0, 0.1, 1, isVisible = { tpMode.value == "Step" })
+    val bypassPackets = number("Packets", 10.0, 0.0, 50.0, 1.0, 0, isVisible = { tpMode.value == "Bypass" })
     val bypassOnGround = boolean("Bypass On Ground", true, isVisible = { tpMode.value == "Bypass" })
     val searchRadius = number("Search Radius", 100.0, 5.0, 500.0, 5.0, 0)
     val autoLeave = boolean("Auto Leave", false)

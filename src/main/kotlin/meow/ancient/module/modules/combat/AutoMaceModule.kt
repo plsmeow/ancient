@@ -41,7 +41,7 @@ object AutoMaceModule : Module(
     val elytraHandling by boolean("Elytra Handling", false)
     val returnElytra by boolean("Return Elytra", false, isVisible = { elytraHandling })
     val returnDelay by number(
-        "Return Delay", 0.0, 0.0, 10.0, step = 1.0, precision = 0, unit = "ticks",
+        "Return Delay", 0.0, 0.0, 10.0, step = 1.0, precision = 0, unit = "t",
         isVisible = { elytraHandling && returnElytra }
     )
 

@@ -2,6 +2,7 @@ package meow.ancient.client.util.friend
 
 import com.google.gson.GsonBuilder
 import com.google.gson.reflect.TypeToken
+import meow.ancient.client.extensions.mc
 import net.minecraft.world.entity.Entity
 import net.minecraft.world.entity.player.Player
 import java.io.File
@@ -10,7 +11,9 @@ import java.util.concurrent.CopyOnWriteArrayList
 data class Friend(val name: String)
 
 object FriendRepository {
-    private val file = File(".options/friends.json")
+    private val dir = File(mc.gameDirectory, "ancient")
+    private val file = File(dir, "friends.json")
+    private val legacyFile = File(".options/friends.json")
     private val gson = GsonBuilder().setPrettyPrinting().create()
 
     val friends: MutableList<Friend> = CopyOnWriteArrayList()
@@ -58,20 +61,27 @@ object FriendRepository {
 
     fun save() {
         try {
-            file.parentFile?.mkdirs()
+            dir.mkdirs()
             file.writeText(gson.toJson(friends))
         } catch (_: Exception) {
         }
     }
 
     fun load() {
-        if (!file.exists()) return
+        val targetFile = when {
+            file.exists() -> file
+            legacyFile.exists() -> legacyFile
+            else -> null
+        } ?: return
         try {
             val listType = object : TypeToken<ArrayList<Friend>>() {}.type
-            val loaded: List<Friend>? = gson.fromJson(file.readText(), listType)
+            val loaded: List<Friend>? = gson.fromJson(targetFile.readText(), listType)
             if (loaded != null) {
                 friends.clear()
                 friends.addAll(loaded)
+            }
+            if (targetFile === legacyFile && !file.exists()) {
+                save()
             }
         } catch (_: Exception) {
         }

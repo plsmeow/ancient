@@ -385,9 +385,7 @@ class HudRenderer(private val serverStats: HudServerStats) {
             for (score in rawList) {
                 val team = scoreboardService.getPlayersTeam(score.owner)
                 val lineText = net.minecraft.world.scores.PlayerTeam.formatNameForTeam(team, score.ownerName()).string
-                val detail = score.display()?.string ?: ""
-                val full = if (detail.isNotEmpty()) "$lineText $detail" else lineText
-                lines.add(full)
+                lines.add(lineText)
             }
 
             while (lines.isNotEmpty() && isBlankScore(lines.first())) {

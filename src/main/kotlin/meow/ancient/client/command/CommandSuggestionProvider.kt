@@ -6,6 +6,11 @@ import com.mojang.brigadier.suggestion.Suggestions
 import meow.ancient.client.config.ConfigManager
 import meow.ancient.module.ModuleManager
 import meow.ancient.client.extensions.Category
+import meow.ancient.client.extensions.mc
+import meow.ancient.client.util.friend.FriendRepository
+import meow.ancient.client.util.macro.MacroRepository
+import meow.ancient.client.util.target.TargetRepository
+import meow.ancient.module.setting.KeybindSetting
 
 object CommandSuggestionProvider {
     private val COMMON_KEYS = ('a'..'z').map(Char::toString) + ('0'..'9').map(Char::toString) +
@@ -81,6 +86,42 @@ object CommandSuggestionProvider {
                     1 -> if (args[0].lowercase() in listOf("load", "save", "create", "delete", "del", "remove")) {
                         ConfigManager.listConfigs()
                     } else emptyList()
+                    else -> emptyList()
+                }
+                "macro" -> when (args.size) {
+                    0 -> listOf("add", "remove", "del", "delete", "clear", "list")
+                    1 -> when (args[0].lowercase()) {
+                        "add" -> COMMON_KEYS
+                        "remove", "del", "delete" -> MacroRepository.macros.map { KeybindSetting.formatKey(it.key).lowercase() }
+                        else -> emptyList()
+                    }
+                    else -> emptyList()
+                }
+                "friend" -> when (args.size) {
+                    0 -> listOf("add", "remove", "del", "delete", "clear", "list")
+                    1 -> when (args[0].lowercase()) {
+                        "add" -> mc.level?.players()?.map { it.name.string } ?: emptyList()
+                        "remove", "del", "delete" -> FriendRepository.friends.map { it.name }
+                        else -> emptyList()
+                    }
+                    else -> emptyList()
+                }
+                "target" -> when (args.size) {
+                    0 -> listOf("add", "remove", "del", "delete", "clear", "list")
+                    1 -> when (args[0].lowercase()) {
+                        "add" -> mc.level?.players()?.map { it.name.string } ?: emptyList()
+                        "remove", "del", "delete" -> TargetRepository.targets
+                        else -> emptyList()
+                    }
+                    else -> emptyList()
+                }
+                "staff" -> when (args.size) {
+                    0 -> listOf("add", "remove", "del", "delete", "clear", "list")
+                    1 -> when (args[0].lowercase()) {
+                        "add" -> mc.level?.players()?.map { it.name.string } ?: emptyList()
+                        "remove", "del", "delete" -> meow.ancient.client.util.staff.StaffRepository.staffList
+                        else -> emptyList()
+                    }
                     else -> emptyList()
                 }
                 else -> emptyList()

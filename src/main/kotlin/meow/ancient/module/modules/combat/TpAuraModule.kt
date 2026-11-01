@@ -4,6 +4,7 @@ import meow.ancient.client.extensions.COMBAT
 import meow.ancient.client.extensions.inGame
 import meow.ancient.client.extensions.mc
 import meow.ancient.client.util.friend.FriendRepository
+import meow.ancient.client.util.target.TargetRepository
 import meow.ancient.client.util.movement.TeleportPath
 import meow.ancient.event.events.PlayerUpdateEvent
 import meow.ancient.module.Module
@@ -97,6 +98,8 @@ object TpAuraModule : Module(
         val level = mc.level ?: return null
         var best: LivingEntity? = null
         var bestDist = maxDistance * maxDistance
+        var bestIsTarget = false
+        val maxReachSq = maxDistance * maxDistance
 
         for (entity in level.entitiesForRendering()) {
             if (entity !is LivingEntity || entity === player || !entity.isAlive) continue
@@ -105,9 +108,12 @@ object TpAuraModule : Module(
             if (FriendRepository.isFriend(entity)) continue
 
             val dist = player.distanceToSqr(entity)
-            if (dist <= bestDist) {
-                bestDist = dist
+            if (dist > maxReachSq) continue
+            val isTarget = TargetRepository.isTarget(entity)
+            if (best == null || (isTarget && !bestIsTarget) || (isTarget == bestIsTarget && dist < bestDist)) {
                 best = entity
+                bestDist = dist
+                bestIsTarget = isTarget
             }
         }
         return best

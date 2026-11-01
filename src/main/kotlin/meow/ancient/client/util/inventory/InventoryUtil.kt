@@ -26,10 +26,14 @@ object InventoryUtil {
 
     fun swapToOffhand(slot: Int, closeInvPacket: Boolean = true) {
         val player = mc.player ?: return
+        val gameMode = mc.gameMode ?: return
         val menu = player.containerMenu
-        if (!canModifyInventory(player) || slot !in menu.slots.indices) return
+        if (menu !== player.inventoryMenu || !canModifyInventory(player)) return
         SwapUtil.clickWithBypass(closeAfter = closeInvPacket) {
-            clickSlotDirect(slot, 40)
+            when (slot) {
+                in 0..8 -> gameMode.handleContainerInput(menu.containerId, 45, slot, ContainerInput.SWAP, player)
+                in 9..35 -> gameMode.handleContainerInput(menu.containerId, slot, 40, ContainerInput.SWAP, player)
+            }
         }
     }
 
@@ -46,6 +50,61 @@ object InventoryUtil {
         val slot = if (inventorySlot in Hotbar_rad) inventorySlot + 36 else inventorySlot
         SwapUtil.clickWithBypass(closeAfter = closeInvPacket) {
             clickSlotDirect(slot, swapSlot)
+        }
+    }
+
+    fun swapAndUse(item: Item, legit: Boolean = false) {
+        val player = mc.player ?: return
+        if (player.cooldowns.isOnCooldown(item.defaultInstance)) return
+
+        if (player.mainHandItem.`is`(item)) {
+            if (legit) useItemLegit(InteractionHand.MAIN_HAND)
+            else useItem(InteractionHand.MAIN_HAND)
+            return
+        }
+
+        if (player.offhandItem.`is`(item)) {
+            if (legit) useItemLegit(InteractionHand.OFF_HAND)
+            else useItem(InteractionHand.OFF_HAND)
+            return
+        }
+
+        val hotbarSlot = findHotbarSlot(item)
+        if (hotbarSlot != -1) {
+            if (legit) {
+                useItemLegit(InteractionHand.MAIN_HAND, hotbarSlot)
+            } else {
+                withSilentSlot(hotbarSlot, Runnable {
+                    useItem(InteractionHand.MAIN_HAND)
+                })
+            }
+            return
+        }
+
+        val inventorySlot = findInventorySlot(item)
+        if (inventorySlot == -1) return
+
+        val swapSlot = findBestSlotInHotBar()
+        if (swapSlot == -1) return
+        val previous = player.inventory.selectedSlot
+        val menuSlot = inventorySlot
+
+        if (clickSlot(menuSlot, swapSlot)) {
+            try {
+                if (legit) {
+                    useItemLegit(InteractionHand.MAIN_HAND, swapSlot)
+                } else {
+                    player.connection.send(ServerboundSetCarriedItemPacket(swapSlot))
+                    try {
+                        useItem(InteractionHand.MAIN_HAND)
+                    } finally {
+                        player.connection.send(ServerboundSetCarriedItemPacket(previous))
+                    }
+                }
+            } finally {
+                clickSlot(menuSlot, swapSlot)
+                closeInventory()
+            }
         }
     }
 
