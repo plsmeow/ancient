@@ -288,12 +288,12 @@ object HitAuraModule : Module(
     val onlyCrits by boolean(
         name = "Only Crits",
         value = true,
-        description = ""
+        description = "Wait for critical timing when possible; hold jump to wait for descent above water"
     )
     val smartCrits by boolean(
         name = "Smart Crits",
         value = true,
-        description = "",
+        description = "Allow grounded attacks without jumping; coordinate with ready Criticals modes",
         isVisible = { onlyCrits }
     )
 

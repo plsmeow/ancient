@@ -16,6 +16,7 @@ import meow.ancient.module.modules.combat.HitAuraModule.ClickMode
 import meow.ancient.module.modules.combat.HitAuraModule.SprintResetMode
 import net.minecraft.world.InteractionHand
 import net.minecraft.world.entity.LivingEntity
+import net.minecraft.network.protocol.game.ServerboundPlayerCommandPacket
 
 class AttackExecutor(
     private val clickerProcessor: ClickerProcessor,
@@ -90,7 +91,6 @@ class AttackExecutor(
         var previousAxeSlot = -1
         var breachSwapSlot = -1
         var executed = false
-        var packetSprintReset = false
         try {
             val macePreparation = AutoMaceModule.beforeAttack()
             if (macePreparation == AutoMaceModule.AttackPreparation.WAITING
@@ -102,20 +102,23 @@ class AttackExecutor(
             if (previousAxeSlot == -1 && BreachSwapModule.isActive()) {
                 breachSwapSlot = BreachSwapModule.swapToBreachMace()
             }
-            val isCritAttack = onlyCrits && criticalProcessor.isFallingForCrit()
-            sprintResetProcessor.preAttack(sprintResetMode, forceStopSprint = isCritAttack)
+            val packetCritReady = CriticalsModule.canPrepareCrit()
+            val isCritAttack = onlyCrits && (criticalProcessor.isFallingForCrit() || packetCritReady)
+            if (sprintResetProcessor.preAttack(sprintResetMode, forceStopSprint = isCritAttack)) {
+                localPlayer.connection.send(ServerboundPlayerCommandPacket(localPlayer, ServerboundPlayerCommandPacket.Action.STOP_SPRINTING))
+            }
             if (MaceKillModule.isEnabled()) {
                 MaceKillModule.doCrit()
-            }
-            if (CriticalsModule.isEnabled()) {
-                CriticalsModule.killAuraTriggered = true
-                CriticalsModule.doCrit()
             }
 
             val grim = if (HitAuraModule.rotationMode == HitAuraModule.RotationMode.GRIM_1204) {
                 rotationProcessor.getStrategy(HitAuraModule.RotationMode.GRIM_1204) as? meow.ancient.module.modules.combat.hitaura.rotation.impl.Grim1204Rotation
             } else null
             grim?.sendRotationPacket(localPlayer)
+            if (CriticalsModule.isEnabled()) {
+                CriticalsModule.killAuraTriggered = true
+                CriticalsModule.doCrit()
+            }
 
             val swingAnimation = localPlayer.getItemInHand(InteractionHand.MAIN_HAND).attackAnimation
             if (clickMode == ClickMode.MODE_1_8) {
