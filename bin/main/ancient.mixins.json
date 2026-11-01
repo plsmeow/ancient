@@ -1,0 +1,42 @@
+{
+    "required": true,
+    "minVersion": "0.8",
+    "package": "meow.ancient.mixin",
+    "compatibilityLevel": "JAVA_21",
+    "priority": 1337,
+    "mixinPriority": 1337,
+    "client": [
+        "MixinMinecraft",
+        "ServerboundMovePlayerPacketAccessor",
+        "MixinLocalPlayer",
+        "MixinKeyboardInput",
+        "MixinClientInput",
+        "MixinEntity",
+        "MixinLivingEntity",
+        "MixinLivingEntityRenderer",
+        "MixinGameRenderer",
+        "MixinKeyboardHandler",
+        "MixinHud",
+        "MixinConnection",
+        "MixinScreen",
+        "MixinChatScreen",
+        "MixinCommandSuggestions",
+        "MixinMouseHandler",
+        "MixinAbstractContainerScreen",
+        "MixinEntityRenderer",
+        "MixinFireworkRocketEntity",
+        "MixinCamera",
+        "MixinVisGraph",
+        "MixinGuiRenderer",
+        "MixinFirstPersonHandsAndItemsRenderer",
+        "MixinScreenEffectRenderer",
+        "MixinWeatherEffectRenderer",
+        "MixinWorldBorderRenderer",
+        "MixinEntityHitboxDebugRenderer"
+    ],
+    "mixins": [
+    ],
+    "injectors": {
+        "defaultRequire": 1
+    }
+}
