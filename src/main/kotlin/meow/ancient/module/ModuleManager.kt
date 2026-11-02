@@ -61,6 +61,7 @@ import meow.ancient.module.modules.render.TagsModule
 import meow.ancient.module.modules.render.NoRenderModule
 import meow.ancient.module.modules.render.TargetEspModule
 import meow.ancient.module.modules.render.ViewModelModule
+import meow.ancient.module.modules.render.PredictionsModule
 
 object ModuleManager : ILoadable {
     val modules: MutableList<Module> = ArrayList()
@@ -126,6 +127,7 @@ object ModuleManager : ILoadable {
             ChamsModule,
             BlockEspModule,
             LightEspModule,
+            PredictionsModule,
         )
     }
 
