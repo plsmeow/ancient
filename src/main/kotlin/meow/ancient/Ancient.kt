@@ -10,6 +10,8 @@ import meow.ancient.client.util.inventory.SlownessManager
 import meow.ancient.client.util.render.VulkanShapePipelines
 import meow.ancient.client.util.render.font.VulkanFontPipelines
 import meow.ancient.module.ModuleManager
+import meow.ancient.module.modules.combat.HitAuraModule
+import meow.ancient.module.modules.combat.hitaura.rotation.impl.NeuroRotation
 import net.fabricmc.api.ClientModInitializer
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLevelEvents
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents
@@ -29,6 +31,7 @@ object Ancient : ClientModInitializer {
 			AutoSaveManager.saveAll()
 		}
 		ClientLifecycleEvents.CLIENT_STOPPING.register {
+			stopNeuroRecording()
 			AutoSaveManager.saveAll()
 		}
 		ListenerManager.load()
@@ -37,7 +40,13 @@ object Ancient : ClientModInitializer {
 		ConfigManager.loadConfig("default")
 
 		Runtime.getRuntime().addShutdownHook(Thread {
+			stopNeuroRecording()
 			AutoSaveManager.saveAll()
 		})
+	}
+
+	private fun stopNeuroRecording() {
+		val recorder = (HitAuraModule.rotationProcessor.getStrategy(HitAuraModule.RotationMode.NEURO) as NeuroRotation).recorder
+		if (recorder.isRecording) recorder.stopRecording()
 	}
 }

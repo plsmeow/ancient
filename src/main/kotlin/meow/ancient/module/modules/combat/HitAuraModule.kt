@@ -62,7 +62,8 @@ object HitAuraModule : Module(
         UNIVERSAL("Universal"),
         GRIM_1204("Grim 1.20.4"),
         GRIM_FUN("GrimFun"),
-        MLSAC("MlsAC");
+        MLSAC("MlsAC"),
+        NEURO("Neuro");
 
         companion object {
             val names: List<String> = entries.map { it.displayName }
@@ -223,6 +224,20 @@ object HitAuraModule : Module(
         defaultValue = RotationMode.VANILLA,
         nameMapper = { it.displayName },
         description = ""
+    )
+    val neuroSnap by boolean(
+        name = "Neuro Snap",
+        value = false,
+        isVisible = { rotationMode == RotationMode.NEURO }
+    )
+    val neuroSnapTicks by number(
+        name = "Neuro Snap Ticks",
+        value = 2.0,
+        min = 1.0,
+        max = 10.0,
+        step = 1.0,
+        precision = 0,
+        isVisible = { rotationMode == RotationMode.NEURO && neuroSnap }
     )
     val aimPoint by enum(
         name = "Aim Point",
@@ -400,7 +415,10 @@ object HitAuraModule : Module(
                 allowedTargets = targets,
                 throughWalls = throughWalls,
                 ignoreFriends = friendProtection
-            ) ?: return@safeRun
+            ) ?: run {
+                if (rotMode == RotationMode.NEURO) rotationProcessor.returnNeuroRotation(moveFix, gcdFix)
+                return@safeRun
+            }
 
             val pointMode = aimPoint
             val moveFixMode = moveFix

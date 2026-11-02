@@ -2,12 +2,17 @@ package meow.ancient.client.config
 
 import com.google.gson.GsonBuilder
 import com.google.gson.JsonArray
+import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import meow.ancient.client.command.CommandManager
 import meow.ancient.client.extensions.mc
+import meow.ancient.client.util.bind.SettingBindingManager
 import meow.ancient.module.ModuleManager
 import meow.ancient.module.modules.render.HudModule
+import meow.ancient.module.setting.Setting
+import meow.ancient.module.setting.SettingBinding
+import meow.ancient.module.setting.SettingBindMode
 import java.io.File
 
 object ConfigManager {
@@ -41,10 +46,18 @@ object ConfigManager {
                 modObj.addProperty("expanded", module.isExpanded)
 
                 val settingsObj = JsonObject()
+                val bindingsObj = JsonObject()
                 for (setting in module.settings) {
-                    settingsObj.add(setting.name, setting.serialize())
+                    settingsObj.add(setting.name, setting.serializeBase())
+                    val binding = setting.binding ?: continue
+                    val bindingObj = JsonObject()
+                    bindingObj.addProperty("key", binding.key)
+                    bindingObj.addProperty("mode", binding.mode.name)
+                    bindingObj.add("value", binding.value.deepCopy())
+                    bindingsObj.add(setting.name, bindingObj)
                 }
                 modObj.add("settings", settingsObj)
+                modObj.add("bindings", bindingsObj)
 
                 modulesObj.add(module.name, modObj)
             }
@@ -71,6 +84,9 @@ object ConfigManager {
             }
 
             val modulesObj = root.getAsJsonObject("modules") ?: return false
+            for (module in ModuleManager.modules) {
+                for (setting in module.settings) SettingBindingManager.clear(setting)
+            }
 
             for (module in ModuleManager.modules) {
                 val modObj = modulesObj.getAsJsonObject(module.name) ?: continue
@@ -85,20 +101,45 @@ object ConfigManager {
                     module.isExpanded = modObj.get("expanded").asBoolean
                 }
 
-                val settingsObj = modObj.getAsJsonObject("settings") ?: continue
-                if (module === HudModule) {
-                    HudModule.dragController.prepareConfigLoad()
-                    migrateHudElements(settingsObj)
+                val settingsObj = modObj.getAsJsonObject("settings")
+                if (settingsObj != null) {
+                    if (module === HudModule) {
+                        HudModule.dragController.prepareConfigLoad()
+                        migrateHudElements(settingsObj)
+                    }
+                    for (setting in module.settings) {
+                        val settingElement = settingsObj.get(setting.name) ?: continue
+                        setting.deserialize(settingElement)
+                    }
                 }
-                for (setting in module.settings) {
-                    val settingElement = settingsObj.get(setting.name) ?: continue
-                    setting.deserialize(settingElement)
+                val bindingsObj = modObj.get("bindings")?.takeIf { it.isJsonObject }?.asJsonObject
+                if (bindingsObj != null) {
+                    for (setting in module.settings) {
+                        val bindingElement = bindingsObj.get(setting.name) ?: continue
+                        loadBinding(setting, bindingElement)
+                    }
                 }
             }
             true
         } catch (e: Exception) {
             e.printStackTrace()
             false
+        }
+    }
+
+    private fun loadBinding(setting: Setting<*>, element: JsonElement) {
+        if (!SettingBindingManager.supports(setting) || !element.isJsonObject) return
+        val obj = element.asJsonObject
+        val key = obj.get("key") ?: return
+        val mode = obj.get("mode") ?: return
+        val value = obj.get("value") ?: return
+        if (!key.isJsonPrimitive || !key.asJsonPrimitive.isNumber || !key.asDouble.isFinite()) return
+        if (!mode.isJsonPrimitive || !mode.asJsonPrimitive.isString) return
+        val bindMode = SettingBindMode.entries.firstOrNull { it.name == mode.asString } ?: return
+        try {
+            SettingBindingManager.configure(setting, SettingBinding(key.asInt, bindMode, value.deepCopy()))
+        } catch (_: IllegalArgumentException) {
+            SettingBindingManager.clear(setting)
         }
     }
 

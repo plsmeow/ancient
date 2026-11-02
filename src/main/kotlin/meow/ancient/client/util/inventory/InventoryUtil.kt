@@ -55,15 +55,17 @@ object InventoryUtil {
 
     fun swapAndUse(item: Item, legit: Boolean = false) {
         val player = mc.player ?: return
-        if (player.cooldowns.isOnCooldown(item.defaultInstance)) return
+        if (player.containerMenu !== player.inventoryMenu || !canModifyInventory(player)) return
 
         if (player.mainHandItem.`is`(item)) {
+            if (player.cooldowns.isOnCooldown(player.mainHandItem)) return
             if (legit) useItemLegit(InteractionHand.MAIN_HAND)
             else useItem(InteractionHand.MAIN_HAND)
             return
         }
 
         if (player.offhandItem.`is`(item)) {
+            if (player.cooldowns.isOnCooldown(player.offhandItem)) return
             if (legit) useItemLegit(InteractionHand.OFF_HAND)
             else useItem(InteractionHand.OFF_HAND)
             return
@@ -71,6 +73,7 @@ object InventoryUtil {
 
         val hotbarSlot = findHotbarSlot(item)
         if (hotbarSlot != -1) {
+            if (player.cooldowns.isOnCooldown(player.inventory.getItem(hotbarSlot))) return
             if (legit) {
                 useItemLegit(InteractionHand.MAIN_HAND, hotbarSlot)
             } else {
@@ -82,28 +85,26 @@ object InventoryUtil {
         }
 
         val inventorySlot = findInventorySlot(item)
-        if (inventorySlot == -1) return
+        if (inventorySlot == -1 || player.cooldowns.isOnCooldown(player.inventory.getItem(inventorySlot))) return
 
-        val swapSlot = findBestSlotInHotBar()
-        if (swapSlot == -1) return
-        val previous = player.inventory.selectedSlot
+        val swapSlot = findBestSlotInHotBar().takeIf { it >= 0 } ?: 8
         val menuSlot = inventorySlot
+        val bridgeSlot = player.inventoryMenu.getSlot(swapSlot + 36)
+        if (!bridgeSlot.mayPickup(player) || !bridgeSlot.mayPlace(player.inventory.getItem(inventorySlot))) return
 
         if (clickSlot(menuSlot, swapSlot)) {
             try {
                 if (legit) {
                     useItemLegit(InteractionHand.MAIN_HAND, swapSlot)
                 } else {
-                    player.connection.send(ServerboundSetCarriedItemPacket(swapSlot))
-                    try {
-                        useItem(InteractionHand.MAIN_HAND)
-                    } finally {
-                        player.connection.send(ServerboundSetCarriedItemPacket(previous))
-                    }
+                    withSilentSlot(swapSlot, Runnable { useItem(InteractionHand.MAIN_HAND) })
                 }
             } finally {
-                clickSlot(menuSlot, swapSlot)
-                closeInventory()
+                try {
+                    if (mc.player === player && player.containerMenu === player.inventoryMenu) clickSlot(menuSlot, swapSlot)
+                } finally {
+                    if (mc.player === player && player.containerMenu === player.inventoryMenu) closeInventory()
+                }
             }
         }
     }

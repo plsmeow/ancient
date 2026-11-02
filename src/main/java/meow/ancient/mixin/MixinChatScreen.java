@@ -22,7 +22,7 @@ public class MixinChatScreen {
         int popupButton = event.button() == InputConstants.MOUSE_BUTTON_LEFT ? 0
                 : event.button() == InputConstants.MOUSE_BUTTON_RIGHT ? 1
                 : event.button() == InputConstants.MOUSE_BUTTON_MIDDLE ? 2 : event.button();
-        if (HudSettingsPopup.INSTANCE.mouseClicked(event.x(), event.y(), popupButton)) {
+        if (HudSettingsPopup.INSTANCE.mouseClicked(event.x(), event.y(), popupButton, event.modifiers())) {
             cir.setReturnValue(true);
             return;
         }

@@ -13,6 +13,7 @@ import meow.ancient.client.util.render.engine.controls.ClientRenderPipeline
 import meow.ancient.client.util.render.font.Fonts
 import meow.ancient.module.Module
 import meow.ancient.module.setting.KeybindSetting
+import meow.ancient.client.util.bind.SettingBindingManager
 import net.minecraft.client.input.CharacterEvent
 import org.joml.Matrix4f
 
@@ -272,7 +273,9 @@ class ModuleComponent(val module: Module) : GuiComponent {
         return height
     }
 
-    override fun mouseClicked(mouseX: Double, mouseY: Double, button: Int): Boolean {
+    override fun mouseClicked(mouseX: Double, mouseY: Double, button: Int): Boolean = mouseClicked(mouseX, mouseY, button, 0)
+
+    override fun mouseClicked(mouseX: Double, mouseY: Double, button: Int, modifiers: Int): Boolean {
         releaseUnrevealedSettings()
         if (isBinding && button >= 4) {
             module.key = KeybindSetting.fromMouseButton(button)
@@ -315,7 +318,12 @@ class ModuleComponent(val module: Module) : GuiComponent {
 
         if (isInsideSettingsClip(mouseX, mouseY)) {
             for (comp in settingComponents) {
-                if (isSettingRevealed(comp) && isHovered(mouseX, mouseY, comp.x, comp.y, comp.width, comp.height) && comp.mouseClicked(mouseX, mouseY, button)) {
+                if (!isSettingRevealed(comp) || !isHovered(mouseX, mouseY, comp.x, comp.y, comp.width, comp.height)) continue
+                if (button == 2 && SettingBindingManager.supports(comp.setting)) {
+                    ClickGuiScreen.openSettingBinding(SettingBindingWindow(comp.setting, mouseX.toFloat(), mouseY.toFloat()))
+                    return true
+                }
+                if (comp.mouseClicked(mouseX, mouseY, button, modifiers)) {
                     releaseUnrevealedSettings()
                     return true
                 }

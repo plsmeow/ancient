@@ -11,7 +11,7 @@ import meow.ancient.module.modules.combat.BreachSwapModule
 import meow.ancient.module.modules.combat.HitAuraModule
 import meow.ancient.module.modules.combat.MaceKillModule
 import meow.ancient.module.modules.combat.CriticalsModule
-import meow.ancient.module.modules.combat.TriggerBotModule
+import meow.ancient.module.modules.combat.hitaura.rotation.impl.NeuroRotation
 import meow.ancient.module.modules.combat.HitAuraModule.ClickMode
 import meow.ancient.module.modules.combat.HitAuraModule.SprintResetMode
 import net.minecraft.world.InteractionHand
@@ -58,6 +58,8 @@ class AttackExecutor(
         if (!shouldPrepareAttack(target, attackRange, clickMode, cps, randomizeCps, cpsSpread, onlyCrits, smartCrits)) {
             return false
         }
+        if (HitAuraModule.rotationMode == HitAuraModule.RotationMode.NEURO &&
+            !(rotationProcessor.getStrategy(HitAuraModule.RotationMode.NEURO) as NeuroRotation).isAttackReady()) return false
 
         val localPlayer = mc.player ?: return false
         val currentGameMode = mc.gameMode ?: return false
@@ -95,8 +97,8 @@ class AttackExecutor(
             if (macePreparation == AutoMaceModule.AttackPreparation.WAITING
                 || forceMaceReady && macePreparation != AutoMaceModule.AttackPreparation.READY) return false
 
-            if (HitAuraModule.breakShield && TriggerBotModule.isTargetBlocking(target)) {
-                previousAxeSlot = TriggerBotModule.swapToAxe(target)
+            if (HitAuraModule.breakShield && ShieldBreakProcessor.isTargetBlocking(target)) {
+                previousAxeSlot = ShieldBreakProcessor.swapToAxe(target)
             }
             if (previousAxeSlot == -1 && BreachSwapModule.isActive()) {
                 breachSwapSlot = BreachSwapModule.swapToBreachMace()
@@ -126,6 +128,9 @@ class AttackExecutor(
                 executed = true
                 localPlayer.swing(InteractionHand.MAIN_HAND, swingAnimation, false)
             }
+            if (HitAuraModule.rotationMode == HitAuraModule.RotationMode.NEURO) {
+                (rotationProcessor.getStrategy(HitAuraModule.RotationMode.NEURO) as NeuroRotation).notifyAttack()
+            }
             grim?.sendResetPacket(localPlayer)
             return true
         } finally {
@@ -138,7 +143,7 @@ class AttackExecutor(
                     BreachSwapModule.swapBack(breachSwapSlot)
                 }
                 if (previousAxeSlot != -1) {
-                    TriggerBotModule.swapBack(previousAxeSlot)
+                    ShieldBreakProcessor.swapBack(previousAxeSlot)
                 }
                 if (executed) {
                     BreachSwapModule.onAttackExecuted()

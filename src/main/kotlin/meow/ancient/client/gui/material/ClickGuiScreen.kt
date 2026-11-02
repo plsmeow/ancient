@@ -13,6 +13,7 @@ import meow.ancient.client.gui.material.components.ModuleComponent
 import meow.ancient.client.gui.material.components.NumberComponent
 import meow.ancient.client.gui.material.components.PickerWindow
 import meow.ancient.client.gui.material.components.SearchBarComponent
+import meow.ancient.client.gui.material.components.SettingBindingWindow
 import meow.ancient.client.gui.material.components.TargetPickerComponent
 import meow.ancient.client.gui.material.components.TargetPickerWindow
 import meow.ancient.client.gui.material.components.ThemePickerComponent
@@ -101,8 +102,11 @@ object ClickGuiScreen : Screen(Component.literal("Ancient ClickGUI")), IRenderab
     var parentScreen: Screen? = null
     var activeColorPicker: ColorPickerWindow? = null
         set(value) {
+            activeColorPicker?.mouseReleased(-1.0, -1.0, 0)
             if (value != null) {
                 closePicker()
+                closeTargetPicker()
+                if (activeSettingBinding?.owns(value.setting) == false) closeSettingBinding()
                 clearAllListening()
                 releasePanelInput()
             }
@@ -111,8 +115,31 @@ object ClickGuiScreen : Screen(Component.literal("Ancient ClickGUI")), IRenderab
     private var activePicker: PickerWindow? = null
     var activeTargetPicker: TargetPickerWindow? = null
         private set
+    private var activeSettingBinding: SettingBindingWindow? = null
+
+    fun openSettingBinding(window: SettingBindingWindow) {
+        activeColorPicker = null
+        closePicker()
+        closeTargetPicker()
+        closeSettingBinding()
+        clearAllListening(applyNumberEdits = false)
+        releasePanelInput()
+        activeSettingBinding = window
+    }
+
+    private fun closeSettingBinding() {
+        val window = activeSettingBinding ?: return
+        activeColorPicker = null
+        closePicker()
+        closeTargetPicker()
+        window.close()
+        activeSettingBinding = null
+        clearFocus()
+        CustomTextField.clearFocus()
+    }
 
     fun openPicker(picker: PickerWindow) {
+        if (activeSettingBinding?.owns(picker.setting) == false) closeSettingBinding()
         activeColorPicker = null
         closePicker()
         closeTargetPicker()
@@ -123,6 +150,7 @@ object ClickGuiScreen : Screen(Component.literal("Ancient ClickGUI")), IRenderab
     }
 
     fun openTargetPicker(picker: TargetPickerWindow) {
+        if (activeSettingBinding?.owns(picker.setting) == false) closeSettingBinding()
         activeColorPicker = null
         closePicker()
         closeTargetPicker()
@@ -176,6 +204,8 @@ object ClickGuiScreen : Screen(Component.literal("Ancient ClickGUI")), IRenderab
         super.init()
         initPanels()
         closePicker()
+        closeTargetPicker()
+        closeSettingBinding()
         activeColorPicker = null
         releasePanelInput()
         lastFrameTime = System.currentTimeMillis()
@@ -215,6 +245,7 @@ object ClickGuiScreen : Screen(Component.literal("Ancient ClickGUI")), IRenderab
         RenderUtils.currentGraphics?.nextStratum()
         themePicker.render(matrix, mouseX, mouseY, dt)
 
+        activeSettingBinding?.render(matrix, mouseX, mouseY, dt, activeColorPicker == null && activePicker == null && activeTargetPicker == null)
         activeColorPicker?.let {
             RenderUtils.currentGraphics?.nextStratum()
             it.render(matrix, mouseX, mouseY, dt)
@@ -254,8 +285,9 @@ object ClickGuiScreen : Screen(Component.literal("Ancient ClickGUI")), IRenderab
         else -> button
     }
 
-    fun clearAllListening(exceptModule: ModuleComponent? = null, exceptKeybind: KeybindComponent? = null, exceptNumber: NumberComponent? = null) {
+    fun clearAllListening(exceptModule: ModuleComponent? = null, exceptKeybind: KeybindComponent? = null, exceptNumber: NumberComponent? = null, applyNumberEdits: Boolean = true) {
         CustomTextField.clearFocus()
+        activeSettingBinding?.releaseEditorInput(exceptNumber, applyNumberEdits)
         for (panel in panels) {
             for (modComp in panel.moduleComponents) {
                 if (modComp !== exceptModule) {
@@ -266,7 +298,7 @@ object ClickGuiScreen : Screen(Component.literal("Ancient ClickGUI")), IRenderab
                         settingComp.stopListening()
                     }
                     if (settingComp is NumberComponent && settingComp !== exceptNumber) {
-                        settingComp.stopEditing()
+                        settingComp.stopEditing(apply = applyNumberEdits)
                     }
                 }
             }
@@ -275,6 +307,35 @@ object ClickGuiScreen : Screen(Component.literal("Ancient ClickGUI")), IRenderab
 
     override fun mouseClicked(event: MouseButtonEvent, bl: Boolean): Boolean {
         val rawButton = event.button()
+        val mouseX = event.x()
+        val mouseY = event.y()
+        val button = normalizeButton(event.button())
+        activeTargetPicker?.let {
+            it.mouseClicked(event, button)
+            activeSettingBinding?.commit()
+            if (it.closed) closeTargetPicker()
+            return true
+        }
+        activePicker?.let {
+            it.mouseClicked(event, button)
+            activeSettingBinding?.commit()
+            if (it.closed) closePicker()
+            return true
+        }
+
+        val picker = activeColorPicker
+        if (picker != null) {
+            if (!picker.mouseClicked(mouseX, mouseY, button)) {
+                activeColorPicker = null
+            }
+            activeSettingBinding?.commit()
+            return true
+        }
+        activeSettingBinding?.let {
+            it.mouseClicked(event, button)
+            if (it.closed) closeSettingBinding()
+            return true
+        }
         if (rawButton >= 4) {
             for (panel in panels) {
                 for (modComp in panel.moduleComponents) {
@@ -301,27 +362,6 @@ object ClickGuiScreen : Screen(Component.literal("Ancient ClickGUI")), IRenderab
                 }
             }
         }
-        val mouseX = event.x()
-        val mouseY = event.y()
-        val button = normalizeButton(event.button())
-        activeTargetPicker?.let {
-            it.mouseClicked(event, button)
-            if (it.closed) closeTargetPicker()
-            return true
-        }
-        activePicker?.let {
-            it.mouseClicked(event, button)
-            if (it.closed) closePicker()
-            return true
-        }
-
-        val picker = activeColorPicker
-        if (picker != null) {
-            if (!picker.mouseClicked(mouseX, mouseY, button)) {
-                activeColorPicker = null
-            }
-            return true
-        }
         if (themePicker.mouseClicked(mouseX, mouseY, button)) {
             return true
         }
@@ -333,7 +373,7 @@ object ClickGuiScreen : Screen(Component.literal("Ancient ClickGUI")), IRenderab
         CustomTextField.clearFocus()
         for (i in panels.indices.reversed()) {
             val panel = panels[i]
-            if (panel.mouseClicked(mouseX, mouseY, button)) {
+            if (panel.mouseClicked(mouseX, mouseY, button, event.modifiers())) {
                 panels.removeAt(i)
                 panels.add(panel)
                 return true
@@ -350,14 +390,21 @@ object ClickGuiScreen : Screen(Component.literal("Ancient ClickGUI")), IRenderab
         val button = normalizeButton(event.button())
         activeTargetPicker?.let {
             it.mouseReleased(event)
+            activeSettingBinding?.commit()
             return true
         }
         activePicker?.let {
             it.mouseReleased(event)
+            activeSettingBinding?.commit()
             return true
         }
         activeColorPicker?.let {
             it.mouseReleased(mouseX, mouseY, button)
+            activeSettingBinding?.commit()
+            return true
+        }
+        activeSettingBinding?.let {
+            it.mouseReleased(event, button)
             return true
         }
         for (panel in panels) {
@@ -382,6 +429,10 @@ object ClickGuiScreen : Screen(Component.literal("Ancient ClickGUI")), IRenderab
             it.mouseDragged(mouseX, mouseY, button, deltaX, deltaY)
             return true
         }
+        activeSettingBinding?.let {
+            it.mouseDragged(event, button, deltaX, deltaY)
+            return true
+        }
         for (panel in panels) {
             panel.mouseDragged(mouseX, mouseY, button, deltaX, deltaY)
         }
@@ -398,6 +449,10 @@ object ClickGuiScreen : Screen(Component.literal("Ancient ClickGUI")), IRenderab
             return true
         }
         if (activeColorPicker != null) return true
+        activeSettingBinding?.let {
+            it.mouseScrolled(mouseX, mouseY, scrollY)
+            return true
+        }
         if (searchBar.mouseScrolled(mouseX, mouseY, scrollY)) return true
         if (panels.isEmpty()) return true
         val horizontal = scrollX + if (mc.hasShiftDown()) scrollY else 0.0
@@ -437,11 +492,13 @@ object ClickGuiScreen : Screen(Component.literal("Ancient ClickGUI")), IRenderab
         val modifiers = event.modifiers()
         activeTargetPicker?.let {
             it.keyPressed(event)
+            activeSettingBinding?.commit()
             if (it.closed) closeTargetPicker()
             return true
         }
         activePicker?.let {
             it.keyPressed(event)
+            activeSettingBinding?.commit()
             if (it.closed) closePicker()
             return true
         }
@@ -453,6 +510,11 @@ object ClickGuiScreen : Screen(Component.literal("Ancient ClickGUI")), IRenderab
                 return true
             }
             picker.keyPressed(keyCode, scanCode, modifiers)
+            return true
+        }
+        activeSettingBinding?.let {
+            it.keyPressed(event)
+            if (it.closed) closeSettingBinding()
             return true
         }
         val isCtrl = (modifiers and InputQuirks.EDIT_SHORTCUT_KEY_MODIFIER != 0) || (modifiers and InputConstants.MOD_CONTROL != 0)
@@ -485,13 +547,19 @@ object ClickGuiScreen : Screen(Component.literal("Ancient ClickGUI")), IRenderab
     override fun charTyped(event: CharacterEvent): Boolean {
         activeTargetPicker?.let {
             it.charTyped(event)
+            activeSettingBinding?.commit()
             return true
         }
         activePicker?.let {
             it.charTyped(event)
+            activeSettingBinding?.commit()
             return true
         }
         if (activeColorPicker != null) return true
+        activeSettingBinding?.let {
+            it.charTyped(event)
+            return true
+        }
         if (CustomTextField.charTypedFocused(event)) return true
         for (panel in panels) {
             if (panel.charTyped(event)) {
@@ -509,6 +577,7 @@ object ClickGuiScreen : Screen(Component.literal("Ancient ClickGUI")), IRenderab
     }
 
     fun isBindingKey(): Boolean {
+        if (activeSettingBinding?.isListening == true) return true
         for (panel in panels) {
             for (modComp in panel.moduleComponents) {
                 if (modComp.isBinding) return true
@@ -520,9 +589,10 @@ object ClickGuiScreen : Screen(Component.literal("Ancient ClickGUI")), IRenderab
         return false
     }
 
-    override fun isInputCaptured(): Boolean = activeTargetPicker != null || activePicker != null || activeColorPicker != null || CustomTextField.hasFocus || super.isInputCaptured()
+    override fun isInputCaptured(): Boolean = activeSettingBinding != null || activeTargetPicker != null || activePicker != null || activeColorPicker != null || CustomTextField.hasFocus || super.isInputCaptured()
 
     override fun removed() {
+        closeSettingBinding()
         closePicker()
         closeTargetPicker()
         activeColorPicker = null
@@ -532,6 +602,7 @@ object ClickGuiScreen : Screen(Component.literal("Ancient ClickGUI")), IRenderab
     }
 
     override fun onClose() {
+        closeSettingBinding()
         clearAllListening()
         activeColorPicker = null
         closePicker()

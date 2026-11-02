@@ -29,7 +29,8 @@ object CommandManager : ILoadable {
             MacroCommand,
             FriendCommand,
             TargetCommand,
-            StaffCommand
+            StaffCommand,
+            NeuroCommand
         )
         EventManager.register(this)
     }

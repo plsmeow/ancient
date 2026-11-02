@@ -10,6 +10,7 @@ import meow.ancient.client.extensions.mc
 import meow.ancient.client.util.friend.FriendRepository
 import meow.ancient.client.util.macro.MacroRepository
 import meow.ancient.client.util.target.TargetRepository
+import meow.ancient.client.util.neuro.NeuroModel
 import meow.ancient.module.setting.KeybindSetting
 
 object CommandSuggestionProvider {
@@ -118,10 +119,27 @@ object CommandSuggestionProvider {
                 "staff" -> when (args.size) {
                     0 -> listOf("add", "remove", "del", "delete", "clear", "list")
                     1 -> when (args[0].lowercase()) {
-                        "add" -> mc.level?.players()?.map { it.name.string } ?: emptyList()
+                        "add" -> mc.connection?.onlinePlayers?.map { it.profile.name() } ?: emptyList()
                         "remove", "del", "delete" -> meow.ancient.client.util.staff.StaffRepository.staffList
                         else -> emptyList()
                     }
+                    else -> emptyList()
+                }
+                "neuro" -> when (args.size) {
+                    0 -> listOf("status", "list", "models", "load", "dir", "train", "record", "rec", "stop", "data", "why")
+                    1 -> when (args[0].lowercase()) {
+                        "load", "train" -> NeuroModel.listModels()
+                        "record", "rec" -> try {
+                            java.nio.file.Files.list(NeuroModel.getDataDir()).use { files ->
+                                files.filter { java.nio.file.Files.isRegularFile(it) && it.fileName.toString().endsWith(".csv") }
+                                    .map { it.fileName.toString().removeSuffix(".csv") }.sorted().toList()
+                            }
+                        } catch (_: Exception) {
+                            emptyList()
+                        }
+                        else -> emptyList()
+                    }
+                    2 -> if (args[0].equals("train", ignoreCase = true)) listOf("auto", "100", "400") else emptyList()
                     else -> emptyList()
                 }
                 else -> emptyList()

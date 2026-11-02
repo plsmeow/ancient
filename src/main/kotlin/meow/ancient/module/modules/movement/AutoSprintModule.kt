@@ -8,6 +8,7 @@ import meow.ancient.client.util.movement.MoveUtil
 import meow.ancient.event.events.PlayerUpdateEvent
 import meow.ancient.module.Module
 import meow.ancient.module.modules.combat.HitAuraModule
+import meow.ancient.module.modules.combat.TriggerBotModule
 import sweetie.evaware.flora.api.Commando
 
 object AutoSprintModule : Module(
@@ -17,7 +18,7 @@ object AutoSprintModule : Module(
 ) {
     fun shouldSprint(): Boolean {
         if (!isEnabled() || !inGame) return false
-        if (HitAuraModule.shouldPreventSprint()) return false
+        if (HitAuraModule.shouldPreventSprint() || TriggerBotModule.shouldPreventSprint()) return false
         if (InventoryMoveModule.shouldPreventSprint()) return false
         val screen = currentScreen
         if (screen != null && !InventoryMoveModule.canMoveInScreen(screen)) return false
@@ -33,7 +34,7 @@ object AutoSprintModule : Module(
     @Commando
     fun onUpdate(event: PlayerUpdateEvent) {
         safeRun {
-            if (HitAuraModule.shouldPreventSprint() || InventoryMoveModule.shouldPreventSprint()) {
+            if (HitAuraModule.shouldPreventSprint() || TriggerBotModule.shouldPreventSprint() || InventoryMoveModule.shouldPreventSprint()) {
                 player.isSprinting = false
                 return@safeRun
             }

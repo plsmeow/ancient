@@ -132,7 +132,9 @@ class CategoryPanel(
         return height
     }
 
-    override fun mouseClicked(mouseX: Double, mouseY: Double, button: Int): Boolean {
+    override fun mouseClicked(mouseX: Double, mouseY: Double, button: Int): Boolean = mouseClicked(mouseX, mouseY, button, 0)
+
+    override fun mouseClicked(mouseX: Double, mouseY: Double, button: Int, modifiers: Int): Boolean {
         val headerH = 37f
 
         if (isHovered(mouseX, mouseY, x, y, width, if (isExpanded) headerH else 42f)) {
@@ -154,7 +156,7 @@ class CategoryPanel(
 
         if (isExpanded && isHovered(mouseX, mouseY, x, y + headerH, width, height - headerH)) {
             for (modComp in moduleComponents) {
-                if (modComp.mouseClicked(mouseX, mouseY, button)) {
+                if (modComp.mouseClicked(mouseX, mouseY, button, modifiers)) {
                     return true
                 }
             }

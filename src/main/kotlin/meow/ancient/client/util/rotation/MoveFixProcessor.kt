@@ -61,7 +61,8 @@ object MoveFixProcessor {
         val rawDirection = DirectionalInput(input)
         hasForwardInput = rawDirection.forwards
 
-        when (mode) {
+        val effectiveMode = if (mode == MoveFixMode.SILENT && mc.player?.isSwimming == true) MoveFixMode.FREE else mode
+        when (effectiveMode) {
             MoveFixMode.OFF, MoveFixMode.STRICT -> return
             MoveFixMode.SILENT -> {
                 if (!rawDirection.isMoving) {

@@ -31,15 +31,11 @@ public class MixinMouseHandler {
     @Inject(method = "onButton(JLnet/minecraft/client/input/MouseButtonInfo;I)V", at = @At("HEAD"), cancellable = true)
     private void ancient$onButton(long window, MouseButtonInfo buttonInfo, int action, CallbackInfo ci) {
         if (window == 0 || window != minecraft.getWindow().handle()) return;
-        if (minecraft.gui.screen() == null || !(minecraft.gui.screen() instanceof ClickGuiScreen)) {
-            if (buttonInfo.button() >= 4 || buttonInfo.button() == InputConstants.MOUSE_BUTTON_MIDDLE) {
-                int key = KeybindSetting.fromMouseButton(buttonInfo.button());
-                KeyPressEvent event = new KeyPressEvent(key, 0, action, buttonInfo.modifiers());
-                EventManager.INSTANCE.post(event);
-                if (event.getCancel()) {
-                    ci.cancel();
-                }
-            }
+        int key = KeybindSetting.fromMouseButton(buttonInfo.button());
+        KeyPressEvent event = new KeyPressEvent(key, 0, action, buttonInfo.modifiers());
+        EventManager.INSTANCE.post(event);
+        if (event.getCancel()) {
+            ci.cancel();
         }
     }
 

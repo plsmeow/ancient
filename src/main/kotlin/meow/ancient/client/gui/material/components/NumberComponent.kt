@@ -206,13 +206,16 @@ class NumberComponent(private val numSetting: NumberSetting) : SettingComponent(
         numSetting.set(rawVal)
     }
 
-    override fun mouseClicked(mouseX: Double, mouseY: Double, button: Int): Boolean {
+    override fun mouseClicked(mouseX: Double, mouseY: Double, button: Int): Boolean = mouseClicked(mouseX, mouseY, button, 0)
+
+    override fun mouseClicked(mouseX: Double, mouseY: Double, button: Int, modifiers: Int): Boolean {
         if (isHovered(mouseX, mouseY, x, y, width, height)) {
-            if (button == 2) {
+            if (button == 0 && (modifiers and InputConstants.MOD_CONTROL) != 0) {
                 if (isEditing) {
                     stopEditing(apply = true)
                 } else {
                     ClickGuiScreen.clearAllListening(exceptNumber = this)
+                    isDragging = false
                     isEditing = true
                     currentInput = if (numSetting.precision <= 0) {
                         "${numSetting.value.toInt()}"

@@ -23,6 +23,7 @@ class CriticalProcessor {
     fun isFallingForCrit(): Boolean {
         if (!inGame) return false
         val player = mc.player ?: return false
+        if (!canPerformCrit()) return false
         if (GroundSpoofModule.isSpoofingAir()) return true
         return !player.onGround() && player.fallDistance > 0.0 && player.deltaMovement.y < 0.0
     }

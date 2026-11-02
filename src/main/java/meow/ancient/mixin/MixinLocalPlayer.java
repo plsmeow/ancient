@@ -7,6 +7,7 @@ import meow.ancient.event.events.PlayerUpdateEvent;
 import meow.ancient.event.events.PlayerMovementSentEvent;
 import meow.ancient.module.modules.combat.HitAuraModule;
 import meow.ancient.module.modules.combat.SpearKillModule;
+import meow.ancient.module.modules.combat.TriggerBotModule;
 import meow.ancient.module.modules.movement.InventoryMoveModule;
 import meow.ancient.module.modules.movement.NoSlowModule;
 import net.minecraft.client.player.LocalPlayer;
@@ -50,7 +51,7 @@ public class MixinLocalPlayer {
 
     @Inject(method = "canStartSprinting", at = @At("HEAD"), cancellable = true)
     private void preventSprintBeforeCriticalMovement(CallbackInfoReturnable<Boolean> cir) {
-        if (HitAuraModule.INSTANCE.shouldPreventSprint()) {
+        if (HitAuraModule.INSTANCE.shouldPreventSprint() || TriggerBotModule.INSTANCE.shouldPreventSprint()) {
             cir.setReturnValue(false);
         }
     }
