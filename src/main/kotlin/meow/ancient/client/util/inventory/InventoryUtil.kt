@@ -7,6 +7,7 @@ import net.minecraft.core.component.DataComponents
 import net.minecraft.core.registries.Registries
 import net.minecraft.network.protocol.game.ServerboundContainerClosePacket
 import net.minecraft.network.protocol.game.ServerboundSetCarriedItemPacket
+import net.minecraft.network.protocol.game.ServerboundUseItemOnPacket
 import net.minecraft.network.protocol.game.ServerboundUseItemPacket
 import net.minecraft.tags.ItemTags
 import net.minecraft.world.InteractionHand
@@ -18,6 +19,7 @@ import net.minecraft.world.item.Items
 import net.minecraft.world.item.component.SwingAnimation
 import net.minecraft.world.item.enchantment.EnchantmentHelper
 import net.minecraft.world.item.enchantment.Enchantments
+import net.minecraft.world.phys.BlockHitResult
 
 object InventoryUtil {
     private val Hotbar_rad = 0 until 9
@@ -146,6 +148,18 @@ object InventoryUtil {
             if (!canModifyInventory(player)) return@Runnable
             player.connection.send(ServerboundContainerClosePacket(player.containerMenu.containerId))
         })
+    }
+
+    fun useItemOnPacket(hand: InteractionHand, hitResult: BlockHitResult): Boolean {
+        val player = mc.player ?: return false
+        val gameMode = mc.gameMode ?: return false
+        val level = mc.level ?: return false
+        if (!canModifyInventory(player)) return false
+        gameMode.startPrediction(level) { sequence ->
+            ServerboundUseItemOnPacket(hand, hitResult, sequence)
+        }
+        player.swing(hand, SwingAnimation.DEFAULT, false)
+        return true
     }
 
     fun useItem(hand: InteractionHand) {

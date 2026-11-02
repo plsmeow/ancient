@@ -37,7 +37,6 @@ import net.minecraft.world.phys.Vec3
 import sweetie.evaware.flora.api.Commando
 import kotlin.math.acos
 import kotlin.math.ceil
-import kotlin.math.cos
 import kotlin.math.min
 import kotlin.math.sin
 
@@ -60,9 +59,6 @@ object SpearKillModule : Module(
     val stepDistance = number("Step Dist", 4.0, 0.1, 10.0, 0.1, 1, isVisible = { mode == "Teleport" && teleportType == "Step" })
     val bypassPackets = number("Packets", 10.0, 1.0, 50.0, 1.0, 0, isVisible = { mode == "Teleport" && teleportType == "Bypass" })
     val bypassOnGround = boolean("Bypass On Ground", true, isVisible = { mode == "Teleport" && teleportType == "Bypass" })
-
-    val range = number("Range", 32.0, 1.0, 100.0, 1.0, 0)
-    val fov = number("FOV", 180.0, 1.0, 360.0, 1.0, 0)
 
     val splitSpeed = boolean("Split Speed", false, isVisible = { mode == "Motion" })
     val speed = number("Speed", 8.0, 0.1, 20.0, 0.1, 1, isVisible = { mode == "Motion" && !splitSpeed.value })
@@ -144,7 +140,7 @@ object SpearKillModule : Module(
                 damageTarget = entity
                 damageExpiryTick = player.tickCount + 5
             }
-            if (packet.sourceType.`is`(DamageTypes.SPEAR)) {
+            if (packet.sourceType.`is`(DamageTypes.SPEAR) || packet.sourceType.`is`(DamageTypes.MACE_SMASH)) {
                 ownSpearDamage = true
             } else {
                 mixedDamage = true
@@ -160,7 +156,7 @@ object SpearKillModule : Module(
                 if (entity is LivingEntity && (entity.health <= 0 || entity.isDeadOrDying)) {
                     notifySpearKill()
                 }
-                clearDamageNotification()
+                if (killNotified) clearDamageNotification()
             }
         } else if (packet is ClientboundSetEntityDataPacket) {
             val entity = level.getEntity(packet.id) ?: return
@@ -174,7 +170,7 @@ object SpearKillModule : Module(
                     if (health <= 0) {
                         pendingDeath = true
                         notifySpearKill()
-                        clearDamageNotification()
+                        if (killNotified) clearDamageNotification()
                     }
                 }
             }
@@ -406,18 +402,13 @@ object SpearKillModule : Module(
         val player = mc.player ?: return false
         if (entity === player || entity === mc.cameraEntity || !targetPresent(entity)) return false
         if (!targets.isSelected(entity)) return false
-        if (player.distanceToSqr(entity) > range.value * range.value) return false
         if (FriendRepository.isFriend(entity)) return false
         if (entity is Player && (entity.isCreative || entity.isSpectator)) return false
         return true
     }
 
     private fun canSelect(entity: Entity): Boolean {
-        if (!validTarget(entity)) return false
-        val player = mc.player ?: return false
-        val direction = entity.boundingBox.center.subtract(player.eyePosition).normalize()
-        val cosine = Mth.clamp(player.getViewVector(1f).dot(direction), -1.0, 1.0)
-        return cosine >= cos(Math.toRadians(fov.value * 0.5))
+        return validTarget(entity)
     }
 
     private fun findTarget(): Entity? {
@@ -456,7 +447,7 @@ object SpearKillModule : Module(
         val reach = (minReach + maxReach) * 0.5
 
         val targetEntity = target ?: return null
-        val rayLength = range.value + box.xsize + box.ysize + box.zsize + 10.0
+        val rayLength = 512.0 + box.xsize + box.ysize + box.zsize
         val hit = box.clip(origin, origin.add(direction.scale(rayLength))).orElse(null)
         val eye = if (hit != null) hit.subtract(direction.scale(reach)) else center.subtract(direction.scale(reach + targetEntity.bbWidth * 0.5))
         return eye.add(0.0, -player.eyeHeight.toDouble(), 0.0)

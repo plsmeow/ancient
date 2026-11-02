@@ -23,6 +23,7 @@ class SettingBindingWindow(val setting: Setting<*>, private var x: Float, privat
     private val editor = SettingComponentFactory.create(valueSetting)
     private var key = setting.binding?.key ?: InputConstants.UNKNOWN.value
     private var mode = setting.binding?.mode ?: SettingBindMode.HOLD
+    private var visible = setting.binding?.visible ?: true
     private var dirty = false
     private var width = 280f
     private var height = 248f
@@ -36,9 +37,9 @@ class SettingBindingWindow(val setting: Setting<*>, private var x: Float, privat
         private set
     var closed = false
         private set
-    private val contentY get() = y + 161f
+    private val contentY get() = y + 183f
     private val contentWidth get() = (width - 28f).coerceAtLeast(1f)
-    private val contentHeightVisible get() = (height - 201f).coerceAtLeast(1f)
+    private val contentHeightVisible get() = (height - 223f).coerceAtLeast(1f)
 
     init {
         valueSetting.addListener { dirty = true }
@@ -51,7 +52,7 @@ class SettingBindingWindow(val setting: Setting<*>, private var x: Float, privat
         val screenW = mc.window.guiScaledWidth.toFloat()
         val screenH = mc.window.guiScaledHeight.toFloat()
         width = minOf(280f, (screenW - 16f).coerceAtLeast(80f))
-        height = minOf(201f + contentHeight.coerceAtLeast(30f), 380f, (screenH - 16f).coerceAtLeast(210f))
+        height = minOf(223f + contentHeight.coerceAtLeast(30f), 380f, (screenH - 16f).coerceAtLeast(210f))
         x = x.coerceIn(0f, (screenW - width).coerceAtLeast(0f))
         y = y.coerceIn(0f, (screenH - height).coerceAtLeast(0f))
         scroll = scroll.coerceIn(0f, maxScroll())
@@ -93,7 +94,16 @@ class SettingBindingWindow(val setting: Setting<*>, private var x: Float, privat
                 Fonts.google_sans_medium.drawCenteredString(matrix, option.displayName, mx + modeWidth * 0.5f, my + 6f, 9f, if (selected) palette.onPrimary else palette.onSurface, false, ClientRenderPipeline.POPUP_TEXT)
             }
         }
-        Fonts.google_sans_medium.drawString(matrix, "Active value", x + 14f, y + 146f, 9f, palette.onSurfaceVariant, false, ClientRenderPipeline.POPUP_TEXT)
+        Fonts.google_sans_medium.drawString(matrix, "Visible", x + 14f, y + 148f, 9f, palette.onSurfaceVariant, false, ClientRenderPipeline.POPUP_TEXT)
+        val visibleBoxX = x + width - 44f
+        val visibleBoxY = y + 144f
+        val visibleHovered = interactive && over(mouseX.toDouble(), mouseY.toDouble(), visibleBoxX, visibleBoxY, 26f, 20f)
+        RenderUtils.roundedRect(matrix, visibleBoxX, visibleBoxY, 26f, 20f, if (visibleHovered) palette.surfaceContainerHighest else palette.surfaceContainerHigh, 5f, ClientRenderPipeline.POPUP_RECT)
+        if (visible) {
+            RenderUtils.roundedRect(matrix, visibleBoxX + 2f, visibleBoxY + 2f, 22f, 16f, palette.primary, 4f, ClientRenderPipeline.POPUP_RECT)
+            Fonts.google_sans_medium.drawCenteredString(matrix, "✓", visibleBoxX + 13f, visibleBoxY + 2f, 11f, palette.onPrimary, false, ClientRenderPipeline.POPUP_TEXT)
+        }
+        Fonts.google_sans_medium.drawString(matrix, "Active value", x + 14f, y + 171f, 9f, palette.onSurfaceVariant, false, ClientRenderPipeline.POPUP_TEXT)
         RenderUtils.roundedRect(matrix, x + 10f, contentY - 3f, width - 20f, contentHeightVisible + 6f, palette.surfaceContainerLowest, 6f, ClientRenderPipeline.POPUP_RECT)
         RenderUtils.currentGraphics?.nextStratum()
         ScissorUtil.withScissor(x + 14f, contentY, contentWidth, contentHeightVisible) {
@@ -144,6 +154,13 @@ class SettingBindingWindow(val setting: Setting<*>, private var x: Float, privat
             SettingBindingManager.clear(setting)
             ConfigManager.saveConfig("default")
             closed = true
+            return
+        }
+        if (button == 0 && over(event.x(), event.y(), x + width - 44f, y + 144f, 26f, 20f)) {
+            releaseEditorInput()
+            visible = !visible
+            dirty = true
+            commit()
             return
         }
         if (button == 0) {
@@ -236,7 +253,7 @@ class SettingBindingWindow(val setting: Setting<*>, private var x: Float, privat
 
     fun commit() {
         if (!dirty) return
-        SettingBindingManager.configure(setting, SettingBinding(key, mode, valueSetting.serialize()))
+        SettingBindingManager.configure(setting, SettingBinding(key, mode, valueSetting.serialize(), visible))
         ConfigManager.saveConfig("default")
         dirty = false
     }

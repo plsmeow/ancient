@@ -12,5 +12,6 @@ enum class SettingBindMode(val displayName: String) {
 data class SettingBinding(
     val key: Int,
     val mode: SettingBindMode,
-    val value: JsonElement
+    val value: JsonElement,
+    val visible: Boolean = true
 )

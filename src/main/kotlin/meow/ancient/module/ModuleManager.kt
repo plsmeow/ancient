@@ -39,6 +39,7 @@ import meow.ancient.module.modules.other.AntiCheatModule
 import meow.ancient.module.modules.other.TestModule
 import meow.ancient.module.modules.other.FtHelperModule
 import meow.ancient.module.modules.other.HwHelperModule
+import meow.ancient.module.modules.other.NeuroRecordModule
 import meow.ancient.module.modules.player.ElytraHelperModule
 import meow.ancient.module.modules.player.NoDelayModule
 import meow.ancient.module.modules.player.AutoTpacceptModule
@@ -110,6 +111,7 @@ object ModuleManager : ILoadable {
             TestModule,
             FtHelperModule,
             HwHelperModule,
+            NeuroRecordModule,
             ClickGuiModule,
             HudModule,
             TagsModule,

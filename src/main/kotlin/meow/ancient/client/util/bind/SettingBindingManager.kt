@@ -5,8 +5,19 @@ import com.google.gson.JsonPrimitive
 import com.mojang.blaze3d.platform.InputConstants
 import meow.ancient.client.extensions.currentScreen
 import meow.ancient.client.extensions.mc
+import meow.ancient.client.gui.hud.HudNotificationCenter
+import meow.ancient.module.ModuleManager
+import meow.ancient.module.modules.render.ClientSoundsModule
 import meow.ancient.module.setting.*
 import org.lwjgl.sdl.SDLMouse
+
+data class BoundSettingEntry(
+    val moduleName: String,
+    val settingName: String,
+    val key: Int,
+    val active: Boolean,
+    val visible: Boolean
+)
 
 object SettingBindingManager {
     private class State(
@@ -42,7 +53,7 @@ object SettingBindingManager {
         if (index >= 0) states[index] = state else states.add(state)
         setting.storeBinding(definition)
         setting.clearOverride()
-        if (states.any { it === state }) refresh(setting, state, allowed)
+        if (states.any { it === state }) refresh(setting, state, allowed, notify = false)
     }
 
     fun clear(setting: Setting<*>) {
@@ -76,6 +87,16 @@ object SettingBindingManager {
         }
     }
 
+    fun entries(): List<BoundSettingEntry> {
+        val result = ArrayList<BoundSettingEntry>(states.size)
+        for (state in states) {
+            val module = ModuleManager.modules.firstOrNull { it.settings.any { setting -> setting === state.setting } }
+            if (module == null) continue
+            result += BoundSettingEntry(module.name, state.setting.name, state.binding.key, state.active, state.binding.visible)
+        }
+        return result
+    }
+
     fun update() {
         if (states.isEmpty()) return
         val allowed = inputAllowed()
@@ -106,7 +127,7 @@ object SettingBindingManager {
         state.down = true
     }
 
-    private fun refresh(setting: Setting<*>, state: State, allowed: Boolean) {
+    private fun refresh(setting: Setting<*>, state: State, allowed: Boolean, notify: Boolean = true) {
         val active = when (state.binding.mode) {
             SettingBindMode.HOLD -> validKey(state.binding.key) && allowed && state.down && !state.blocked
             SettingBindMode.TOGGLE -> validKey(state.binding.key) && state.toggled
@@ -116,6 +137,14 @@ object SettingBindingManager {
         if (state.active == active) return
         state.active = active
         if (active) applyOverride(setting, state.value) else setting.clearOverride()
+        if (notify) {
+            ClientSoundsModule.play(active)
+            if (state.binding.visible) {
+                val module = ModuleManager.modules.firstOrNull { it.settings.any { candidate -> candidate === setting } }
+                val name = if (module != null) "${module.name} ${setting.name}" else setting.name
+                HudNotificationCenter.settingToggled(name, active)
+            }
+        }
     }
 
     @Suppress("UNCHECKED_CAST")

@@ -8,7 +8,6 @@ import meow.ancient.client.util.combat.ExplosionDamageUtil
 import meow.ancient.client.util.friend.FriendRepository
 import meow.ancient.client.util.target.TargetRepository
 import meow.ancient.client.util.inventory.InventoryUtil
-import meow.ancient.client.util.inventory.SwapUtil
 import meow.ancient.client.util.rotation.MoveFixMode
 import meow.ancient.client.util.rotation.RotationManager
 import meow.ancient.client.util.rotation.RotationUtil
@@ -49,10 +48,10 @@ object AnchorAuraModule : Module(
 
     val rotations by boolean("Rotations", true)
     val silentSlots by boolean("Silent Slots", true)
+    val ignoreTerrain by boolean("Ignore Terrain", false, "Treats all blocks as indestructible when calculating explosion damage")
     val lethalOverride by boolean("Lethal Override", true)
 
     private var tickTimer = 0
-    private var originalSlot = -1
 
     private fun getMoveFixMode(): MoveFixMode = MoveFixMode.fromName(moveFix)
 
@@ -66,7 +65,6 @@ object AnchorAuraModule : Module(
 
         val target = findTarget(player)
         if (target == null) {
-            restoreSlot(player)
             return
         }
 
@@ -132,10 +130,10 @@ object AnchorAuraModule : Module(
                     val center = Vec3.atCenterOf(pos)
                     if (player.eyePosition.distanceToSqr(center) > maxReachSq) continue
 
-                    val selfDamage = ExplosionDamageUtil.anchorDamage(pos, player)
+                    val selfDamage = ExplosionDamageUtil.anchorDamage(pos, player, ignoreTerrain)
                     if (selfDamage > maxSelfDamage.toFloat()) continue
 
-                    val targetDamage = ExplosionDamageUtil.anchorDamage(pos, target)
+                    val targetDamage = ExplosionDamageUtil.anchorDamage(pos, target, ignoreTerrain)
                     val isLethal = lethalOverride && targetDamage >= targetHp
                     if (!isLethal && targetDamage < minDamage.toFloat()) continue
 
@@ -154,9 +152,15 @@ object AnchorAuraModule : Module(
 
         val nonGlowSlot = (0..8).firstOrNull { !player.inventory.getItem(it).`is`(Items.GLOWSTONE) }
         if (nonGlowSlot != null) {
-            switchToSlot(player, nonGlowSlot)
-            mc.gameMode?.useItemOn(player, InteractionHand.MAIN_HAND, hitResult)
-            player.swing(InteractionHand.MAIN_HAND, player.getItemInHand(InteractionHand.MAIN_HAND).attackAnimation, false)
+            if (silentSlots) {
+                InventoryUtil.withSilentSlot(nonGlowSlot) {
+                    InventoryUtil.useItemOnPacket(InteractionHand.MAIN_HAND, hitResult)
+                }
+            } else {
+                InventoryUtil.swapToSlot(nonGlowSlot)
+                mc.gameMode?.useItemOn(player, InteractionHand.MAIN_HAND, hitResult)
+                player.swing(InteractionHand.MAIN_HAND, player.getItemInHand(InteractionHand.MAIN_HAND).attackAnimation, false)
+            }
             return true
         }
         val hand = if (player.offhandItem.`is`(Items.GLOWSTONE)) InteractionHand.MAIN_HAND else InteractionHand.OFF_HAND
@@ -192,10 +196,10 @@ object AnchorAuraModule : Module(
                     val center = Vec3.atCenterOf(pos)
                     if (player.eyePosition.distanceToSqr(center) > maxReachSq) continue
 
-                    val selfDamage = ExplosionDamageUtil.anchorDamage(pos, player)
+                    val selfDamage = ExplosionDamageUtil.anchorDamage(pos, player, ignoreTerrain)
                     if (selfDamage > maxSelfDamage.toFloat()) continue
 
-                    val targetDamage = ExplosionDamageUtil.anchorDamage(pos, target)
+                    val targetDamage = ExplosionDamageUtil.anchorDamage(pos, target, ignoreTerrain)
                     val isLethal = lethalOverride && targetDamage >= targetHp
                     if (!isLethal && targetDamage < minDamage.toFloat()) continue
 
@@ -210,8 +214,7 @@ object AnchorAuraModule : Module(
         val anchorPos = bestPos ?: return false
         val hitResult = getAnchorHitResult(anchorPos, player)
 
-        val hotbarGlow = InventoryUtil.findHotbarSlot(Items.GLOWSTONE)
-        val glowSlot = if (hotbarGlow != -1) hotbarGlow else InventoryUtil.findInventorySlot(Items.GLOWSTONE)
+        val glowSlot = InventoryUtil.findHotbarSlot(Items.GLOWSTONE)
         if (glowSlot == -1 && !player.offhandItem.`is`(Items.GLOWSTONE)) return false
 
         rotate(player, hitResult.location)
@@ -223,16 +226,16 @@ object AnchorAuraModule : Module(
         }
 
         if (glowSlot in 0..8) {
-            switchToSlot(player, glowSlot)
-            mc.gameMode?.useItemOn(player, InteractionHand.MAIN_HAND, hitResult)
-            player.swing(InteractionHand.MAIN_HAND, player.getItemInHand(InteractionHand.MAIN_HAND).attackAnimation, false)
+            if (silentSlots) {
+                InventoryUtil.withSilentSlot(glowSlot) {
+                    InventoryUtil.useItemOnPacket(InteractionHand.MAIN_HAND, hitResult)
+                }
+            } else {
+                InventoryUtil.swapToSlot(glowSlot)
+                mc.gameMode?.useItemOn(player, InteractionHand.MAIN_HAND, hitResult)
+                player.swing(InteractionHand.MAIN_HAND, player.getItemInHand(InteractionHand.MAIN_HAND).attackAnimation, false)
+            }
             return true
-        }
-        SwapUtil.clickWithBypass {
-            InventoryUtil.swapSlots(glowSlot, player.inventory.selectedSlot, false)
-            mc.gameMode?.useItemOn(player, InteractionHand.MAIN_HAND, hitResult)
-            player.swing(InteractionHand.MAIN_HAND, player.getItemInHand(InteractionHand.MAIN_HAND).attackAnimation, false)
-            InventoryUtil.swapSlots(player.inventory.selectedSlot, glowSlot, true)
         }
         return true
     }
@@ -265,10 +268,10 @@ object AnchorAuraModule : Module(
                     val center = Vec3.atCenterOf(pos)
                     if (player.eyePosition.distanceToSqr(center) > maxReachSq) continue
 
-                    val selfDamage = ExplosionDamageUtil.anchorDamage(pos, player)
+                    val selfDamage = ExplosionDamageUtil.anchorDamage(pos, player, ignoreTerrain)
                     if (selfDamage > maxSelfDamage.toFloat()) continue
 
-                    val targetDamage = ExplosionDamageUtil.anchorDamage(pos, target)
+                    val targetDamage = ExplosionDamageUtil.anchorDamage(pos, target, ignoreTerrain)
                     val isLethal = lethalOverride && targetDamage >= targetHp
                     if (!isLethal && targetDamage < minDamage.toFloat()) continue
 
@@ -288,8 +291,7 @@ object AnchorAuraModule : Module(
 
         val hitResult = bestHit ?: return false
 
-        val hotbarAnchor = InventoryUtil.findHotbarSlot(Items.RESPAWN_ANCHOR)
-        val anchorSlot = if (hotbarAnchor != -1) hotbarAnchor else InventoryUtil.findInventorySlot(Items.RESPAWN_ANCHOR)
+        val anchorSlot = InventoryUtil.findHotbarSlot(Items.RESPAWN_ANCHOR)
         if (anchorSlot == -1 && !player.offhandItem.`is`(Items.RESPAWN_ANCHOR)) return false
 
         rotate(player, hitResult.location)
@@ -303,16 +305,16 @@ object AnchorAuraModule : Module(
         }
 
         if (anchorSlot in 0..8) {
-            switchToSlot(player, anchorSlot)
-            mc.gameMode?.useItemOn(player, InteractionHand.MAIN_HAND, hitResult)
-            player.swing(InteractionHand.MAIN_HAND, player.getItemInHand(InteractionHand.MAIN_HAND).attackAnimation, false)
+            if (silentSlots) {
+                InventoryUtil.withSilentSlot(anchorSlot) {
+                    InventoryUtil.useItemOnPacket(InteractionHand.MAIN_HAND, hitResult)
+                }
+            } else {
+                InventoryUtil.swapToSlot(anchorSlot)
+                mc.gameMode?.useItemOn(player, InteractionHand.MAIN_HAND, hitResult)
+                player.swing(InteractionHand.MAIN_HAND, player.getItemInHand(InteractionHand.MAIN_HAND).attackAnimation, false)
+            }
             return true
-        }
-        SwapUtil.clickWithBypass {
-            InventoryUtil.swapSlots(anchorSlot, player.inventory.selectedSlot, false)
-            mc.gameMode?.useItemOn(player, InteractionHand.MAIN_HAND, hitResult)
-            player.swing(InteractionHand.MAIN_HAND, player.getItemInHand(InteractionHand.MAIN_HAND).attackAnimation, false)
-            InventoryUtil.swapSlots(player.inventory.selectedSlot, anchorSlot, true)
         }
         return true
     }
@@ -419,27 +421,7 @@ object AnchorAuraModule : Module(
         }
     }
 
-    private fun switchToSlot(player: LocalPlayer, targetSlot: Int) {
-        if (originalSlot == -1) {
-            originalSlot = player.inventory.selectedSlot
-        }
-        if (player.inventory.selectedSlot != targetSlot) {
-            InventoryUtil.swapToSlot(targetSlot)
-        }
-    }
-
-    private fun restoreSlot(player: LocalPlayer) {
-        val slot = originalSlot
-        if (slot in 0..8) {
-            originalSlot = -1
-            if (player.inventory.selectedSlot != slot) {
-                InventoryUtil.swapToSlot(slot)
-            }
-        }
-    }
-
     override fun onDisable() {
         tickTimer = 0
-        mc.player?.let(::restoreSlot)
     }
 }

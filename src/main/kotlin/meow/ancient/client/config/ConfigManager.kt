@@ -54,6 +54,7 @@ object ConfigManager {
                     bindingObj.addProperty("key", binding.key)
                     bindingObj.addProperty("mode", binding.mode.name)
                     bindingObj.add("value", binding.value.deepCopy())
+                    bindingObj.addProperty("visible", binding.visible)
                     bindingsObj.add(setting.name, bindingObj)
                 }
                 modObj.add("settings", settingsObj)
@@ -136,8 +137,9 @@ object ConfigManager {
         if (!key.isJsonPrimitive || !key.asJsonPrimitive.isNumber || !key.asDouble.isFinite()) return
         if (!mode.isJsonPrimitive || !mode.asJsonPrimitive.isString) return
         val bindMode = SettingBindMode.entries.firstOrNull { it.name == mode.asString } ?: return
+        val visible = obj.get("visible")?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isBoolean }?.asBoolean ?: true
         try {
-            SettingBindingManager.configure(setting, SettingBinding(key.asInt, bindMode, value.deepCopy()))
+            SettingBindingManager.configure(setting, SettingBinding(key.asInt, bindMode, value.deepCopy(), visible))
         } catch (_: IllegalArgumentException) {
             SettingBindingManager.clear(setting)
         }

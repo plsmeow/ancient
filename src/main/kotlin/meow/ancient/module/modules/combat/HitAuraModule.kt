@@ -97,6 +97,7 @@ object HitAuraModule : Module(
     }
 
     enum class SprintResetMode(val displayName: String) {
+        LEGIT("Legit"),
         PACKET("Packet"),
         OFF("Off");
 

@@ -3,41 +3,52 @@ package meow.ancient.module.modules.combat.hitaura
 import meow.ancient.client.extensions.inGame
 import meow.ancient.client.extensions.mc
 import meow.ancient.module.modules.combat.HitAuraModule.SprintResetMode
+import net.minecraft.network.protocol.game.ServerboundPlayerCommandPacket
 
 class SprintResetProcessor {
-    private var suppressSprint = false
+    private var blocked = false
+    private var release = false
+    private var modeNow = SprintResetMode.OFF
 
-    fun isResettingSprint(): Boolean = suppressSprint
+    fun isResettingSprint(): Boolean = blocked
 
     fun reset() {
-        suppressSprint = false
+        blocked = false
+        release = false
+        modeNow = SprintResetMode.OFF
+    }
+
+    fun prepareAttack(mode: SprintResetMode) {
+        if (mode == SprintResetMode.OFF) {
+            reset()
+            return
+        }
+        blocked = true
+        release = false
+        modeNow = mode
+    }
+
+    fun onAttack() {
+        if (modeNow == SprintResetMode.LEGIT) release = true
     }
 
     fun onTick() {
-        suppressSprint = false
+        if (!inGame) {
+            reset()
+            return
+        }
+        val player = mc.player ?: run {
+            reset()
+            return
+        }
+        if (release && canSprint(player)) {
+            player.isSprinting = true
+            player.connection.send(ServerboundPlayerCommandPacket(player, ServerboundPlayerCommandPacket.Action.START_SPRINTING))
+            reset()
+        }
     }
 
-    fun prepareAttack(forceStopSprint: Boolean) {
-        suppressSprint = forceStopSprint
-        if (!suppressSprint || !inGame) return
-        val player = mc.player ?: return
-        player.isSprinting = false
-        mc.options.keySprint.isDown = false
-    }
-
-    fun preAttack(mode: SprintResetMode, forceStopSprint: Boolean = false): Boolean {
-        if (!inGame) return false
-        val player = mc.player ?: return false
-        return !forceStopSprint || !player.isSprinting
-    }
-
-    fun postAttack(mode: SprintResetMode, packetReset: Boolean = false) {
-    }
-
-    fun onSprintEvent() {
-    }
-
-    fun shouldAllowSprintWhenHungry(): Boolean = inGame && meow.ancient.client.util.anticheat.AnticheatManager.isPacketSprintReset
-
-    fun shouldPreserveAttackKnockback(): Boolean = inGame && meow.ancient.client.util.anticheat.AnticheatManager.isPacketSprintReset
+    private fun canSprint(player: net.minecraft.client.player.LocalPlayer): Boolean =
+        !player.isInWater && !player.isInLava && !player.isSwimming && !player.onClimbable()
+            && !player.abilities.flying && !player.isFallFlying && player.onGround()
 }
