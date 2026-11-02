@@ -125,7 +125,6 @@ object RotationManager : Listener() {
             (current.pitch + dPitch * stepFactor).coerceIn(-90.0f, 90.0f)
         )
         val finalRot = if (applyGcd) GCDUtil.applyGCD(stepped, current) else stepped
-
         if (finalRot.angleTo(cameraRot) <= 1.2f) {
             resetImmediate()
         } else {
@@ -145,6 +144,7 @@ object RotationManager : Listener() {
         if (activeMoveFix == MoveFixMode.OFF) return defaultYaw
         return currentRotation?.yaw ?: defaultYaw
     }
+
 
     fun onPreSendChanges(localPlayer: LocalPlayer) {
         val rot = currentRotation ?: return

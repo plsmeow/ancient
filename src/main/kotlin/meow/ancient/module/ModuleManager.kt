@@ -18,6 +18,7 @@ import meow.ancient.module.modules.combat.CrystalAuraModule
 import meow.ancient.module.modules.combat.AnchorAuraModule
 import meow.ancient.module.modules.combat.TpAuraModule
 import meow.ancient.module.modules.combat.CrystalOptimizerModule
+import meow.ancient.module.modules.combat.AimAssistModule
 import meow.ancient.module.modules.movement.StepModule
 import meow.ancient.module.modules.player.FastExpModule
 import meow.ancient.module.modules.movement.AirStuckModule
@@ -84,6 +85,7 @@ object ModuleManager : ILoadable {
             AnchorAuraModule,
             TpAuraModule,
             CrystalOptimizerModule,
+            AimAssistModule,
             AutoSprintModule,
             GroundSpoofModule,
             AirStuckModule,

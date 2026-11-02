@@ -182,7 +182,6 @@ object SettingBindingManager {
         is ColorSetting -> ColorSetting(setting.name, setting.value, setting.hasAlpha, setting.description)
         is KeybindSetting -> throw IllegalArgumentException("Keybind settings cannot have setting binds")
     }
-
     private fun <E : Enum<E>> cloneEnum(setting: EnumSetting<E>): EnumSetting<E> = EnumSetting(
         setting.name, setting.value, setting.entries, setting.description, setting.nameMapper
     )

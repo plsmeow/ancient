@@ -81,6 +81,7 @@ public class MixinLivingEntity {
         return instance.getLookAngle();
     }
 
+
     @Inject(method = "push(Lnet/minecraft/world/entity/Entity;)V", at = @At("HEAD"), cancellable = true)
     private void onPush(Entity entity, CallbackInfo ci) {
         if (NoPushModule.INSTANCE.shouldCancelEntityPush() && (Object) this == Minecraft.getInstance().player) {
