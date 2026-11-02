@@ -109,7 +109,7 @@ object HudSettingsPopup {
         }
     }
 
-    fun mouseClicked(x: Double, y: Double, button: Int): Boolean {
+    fun mouseClicked(x: Double, y: Double, button: Int, modifiers: Int): Boolean {
         if (!isOpen) return false
         if (button >= 4) {
             for (component in components) {
@@ -130,7 +130,7 @@ object HudSettingsPopup {
         captured = null
         if (overContent(x, y)) {
             for (component in components) {
-                if (component.mouseClicked(x, y, button)) {
+                if (component.mouseClicked(x, y, button, modifiers)) {
                     captured = component
                     break
                 }

@@ -18,6 +18,7 @@ import meow.ancient.module.modules.combat.CrystalAuraModule
 import meow.ancient.module.modules.combat.AnchorAuraModule
 import meow.ancient.module.modules.combat.TpAuraModule
 import meow.ancient.module.modules.combat.CrystalOptimizerModule
+import meow.ancient.module.modules.combat.AimAssistModule
 import meow.ancient.module.modules.movement.StepModule
 import meow.ancient.module.modules.player.FastExpModule
 import meow.ancient.module.modules.movement.AirStuckModule
@@ -37,6 +38,9 @@ import meow.ancient.module.modules.movement.SpeedModule
 import meow.ancient.module.modules.movement.NoWebModule
 import meow.ancient.module.modules.other.AntiCheatModule
 import meow.ancient.module.modules.other.TestModule
+import meow.ancient.module.modules.other.FtHelperModule
+import meow.ancient.module.modules.other.HwHelperModule
+import meow.ancient.module.modules.other.NeuroRecordModule
 import meow.ancient.module.modules.player.ElytraHelperModule
 import meow.ancient.module.modules.player.NoDelayModule
 import meow.ancient.module.modules.player.AutoTpacceptModule
@@ -58,6 +62,7 @@ import meow.ancient.module.modules.render.TagsModule
 import meow.ancient.module.modules.render.NoRenderModule
 import meow.ancient.module.modules.render.TargetEspModule
 import meow.ancient.module.modules.render.ViewModelModule
+import meow.ancient.module.modules.render.PredictionsModule
 
 object ModuleManager : ILoadable {
     val modules: MutableList<Module> = ArrayList()
@@ -80,6 +85,7 @@ object ModuleManager : ILoadable {
             AnchorAuraModule,
             TpAuraModule,
             CrystalOptimizerModule,
+            AimAssistModule,
             AutoSprintModule,
             GroundSpoofModule,
             AirStuckModule,
@@ -106,6 +112,9 @@ object ModuleManager : ILoadable {
             TpLootModule,
             AntiCheatModule,
             TestModule,
+            FtHelperModule,
+            HwHelperModule,
+            NeuroRecordModule,
             ClickGuiModule,
             HudModule,
             TagsModule,
@@ -120,6 +129,7 @@ object ModuleManager : ILoadable {
             ChamsModule,
             BlockEspModule,
             LightEspModule,
+            PredictionsModule,
         )
     }
 

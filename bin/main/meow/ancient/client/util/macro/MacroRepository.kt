@@ -15,7 +15,9 @@ import java.util.concurrent.CopyOnWriteArrayList
 data class Macro(val message: String, val key: Int)
 
 object MacroRepository {
-    private val file = File(".options/macros.json")
+    private val dir = File(mc.gameDirectory, "ancient")
+    private val file = File(dir, "macros.json")
+    private val legacyFile = File(".options/macros.json")
     private val gson = GsonBuilder().setPrettyPrinting().create()
 
     val macros: MutableList<Macro> = CopyOnWriteArrayList()
@@ -39,20 +41,27 @@ object MacroRepository {
 
     fun save() {
         try {
-            file.parentFile?.mkdirs()
+            dir.mkdirs()
             file.writeText(gson.toJson(macros))
         } catch (_: Exception) {
         }
     }
 
     fun load() {
-        if (!file.exists()) return
+        val targetFile = when {
+            file.exists() -> file
+            legacyFile.exists() -> legacyFile
+            else -> null
+        } ?: return
         try {
             val listType = object : TypeToken<ArrayList<Macro>>() {}.type
-            val loaded: List<Macro>? = gson.fromJson(file.readText(), listType)
+            val loaded: List<Macro>? = gson.fromJson(targetFile.readText(), listType)
             if (loaded != null) {
                 macros.clear()
                 macros.addAll(loaded)
+            }
+            if (targetFile === legacyFile && !file.exists()) {
+                save()
             }
         } catch (_: Exception) {
         }

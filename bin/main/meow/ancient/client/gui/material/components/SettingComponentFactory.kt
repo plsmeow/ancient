@@ -14,5 +14,6 @@ object SettingComponentFactory {
         is PickerSetting<*> -> PickerComponent(setting)
         is TextSetting -> TextComponent(setting)
         is TargetSetting -> TargetPickerComponent(setting)
+        else -> throw IllegalArgumentException("Unknown setting type: ${setting::class.simpleName}")
     }
 }

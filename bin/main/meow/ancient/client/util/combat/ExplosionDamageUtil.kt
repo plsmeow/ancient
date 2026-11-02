@@ -36,21 +36,16 @@ object ExplosionDamageUtil {
 
     fun interface RaycastFactory : BiFunction<ExposureRaycastContext, BlockPos, BlockHitResult?>
 
-    val HIT_FACTORY: RaycastFactory = RaycastFactory { context, blockPos ->
-        val level = mc.level ?: return@RaycastFactory null
-        val blockState = level.getBlockState(blockPos)
-        if (blockState.block.explosionResistance < 600f) return@RaycastFactory null
-        blockState.getCollisionShape(level, blockPos).clip(context.start, context.end, blockPos)
-    }
-
-    fun getOverridingHitFactory(overridePos: BlockPos, overrideState: BlockState): RaycastFactory {
+    fun getOverridingHitFactory(
+        overridePos: BlockPos?,
+        overrideState: BlockState?,
+        ignoreTerrain: Boolean = false
+    ): RaycastFactory {
         return RaycastFactory { context, blockPos ->
             val level = mc.level ?: return@RaycastFactory null
-            val blockState = if (blockPos == overridePos) overrideState else {
-                val state = level.getBlockState(blockPos)
-                if (state.block.explosionResistance < 600f) return@RaycastFactory null
-                state
-            }
+            val blockState = if (blockPos == overridePos && overrideState != null) overrideState else level.getBlockState(blockPos)
+            if (blockState.isAir) return@RaycastFactory null
+            if (!ignoreTerrain && blockPos != overridePos && blockState.block.explosionResistance < 600f) return@RaycastFactory null
             blockState.getCollisionShape(level, blockPos).clip(context.start, context.end, blockPos)
         }
     }
@@ -59,33 +54,39 @@ object ExplosionDamageUtil {
         target: LivingEntity,
         crystal: Vec3,
         predictMovement: Boolean = false,
-        obsidianPos: BlockPos? = null
+        obsidianPos: BlockPos? = null,
+        ignoreTerrain: Boolean = false
     ): Float {
-        val factory = if (obsidianPos != null) {
-            getOverridingHitFactory(obsidianPos, Blocks.OBSIDIAN.defaultBlockState())
-        } else {
-            HIT_FACTORY
-        }
+        val factory = getOverridingHitFactory(
+            obsidianPos,
+            if (obsidianPos != null) Blocks.OBSIDIAN.defaultBlockState() else null,
+            ignoreTerrain
+        )
         return explosionDamage(target, crystal, 12f, predictMovement, factory)
     }
 
-    fun crystalDamage(explosionPos: Vec3, target: LivingEntity, obsidianPos: BlockPos? = null): Float {
-        return crystalDamage(target, explosionPos, false, obsidianPos)
+    fun crystalDamage(
+        explosionPos: Vec3,
+        target: LivingEntity,
+        obsidianPos: BlockPos? = null,
+        ignoreTerrain: Boolean = false
+    ): Float {
+        return crystalDamage(target, explosionPos, false, obsidianPos, ignoreTerrain)
     }
 
-    fun anchorDamage(target: LivingEntity, anchorPos: BlockPos): Float {
+    fun anchorDamage(target: LivingEntity, anchorPos: BlockPos, ignoreTerrain: Boolean = false): Float {
         val anchorCenter = Vec3(anchorPos.x + 0.5, anchorPos.y + 1.0, anchorPos.z + 0.5)
         return explosionDamage(
             target,
             anchorCenter,
             10f,
             false,
-            getOverridingHitFactory(anchorPos, Blocks.AIR.defaultBlockState())
+            getOverridingHitFactory(anchorPos, Blocks.AIR.defaultBlockState(), ignoreTerrain)
         )
     }
 
-    fun anchorDamage(anchorPos: BlockPos, target: LivingEntity): Float {
-        return anchorDamage(target, anchorPos)
+    fun anchorDamage(anchorPos: BlockPos, target: LivingEntity, ignoreTerrain: Boolean = false): Float {
+        return anchorDamage(target, anchorPos, ignoreTerrain)
     }
 
     fun explosionDamage(

@@ -30,7 +30,8 @@ class AuraRotationProcessor {
         RotationMode.UNIVERSAL to UniversalRotation(),
         RotationMode.GRIM_1204 to Grim1204Rotation(),
         RotationMode.GRIM_FUN to GrimFunRotation(),
-        RotationMode.MLSAC to MlsacRotation()
+        RotationMode.MLSAC to MlsacRotation(),
+        RotationMode.NEURO to NeuroRotation()
     )
 
     fun getStrategy(mode: RotationMode): RotationStrategy {
@@ -40,6 +41,19 @@ class AuraRotationProcessor {
     fun reset() {
         tickCounter = 0
         strategies.values.forEach(RotationStrategy::reset)
+    }
+
+    fun returnNeuroRotation(moveFixMode: MoveFixMode, gcdEnabled: Boolean) {
+        val player = mc.player ?: return
+        if (!RotationManager.isActive()) return
+        val neuro = strategies.getValue(RotationMode.NEURO) as NeuroRotation
+        val result = neuro.stepReturn(RotationManager.getServerRotation(), Rotation(player.yRot, player.xRot))
+        if (result == null) {
+            neuro.reset()
+            RotationManager.resetImmediate()
+        } else {
+            RotationManager.setRotation(result, moveFixMode, gcdEnabled, keepTicks = 0)
+        }
     }
 
     fun processRotation(
@@ -72,6 +86,12 @@ class AuraRotationProcessor {
                 tickCounter = tickCounter
             )
             return currentRot
+        }
+
+        if (rotationMode == RotationMode.NEURO) {
+            val neuro = strategy as NeuroRotation
+            neuro.processNeuro(target, moveFixMode, gcdEnabled, overrideAimPoint)
+            return RotationManager.getServerRotation()
         }
 
         if (!strategy.shouldUpdateRotation(shouldSnapNow)) {

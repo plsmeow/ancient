@@ -8,8 +8,8 @@ import meow.ancient.client.util.combat.ExplosionDamageUtil
 import meow.ancient.client.util.friend.FriendRepository
 import meow.ancient.client.util.target.TargetRepository
 import meow.ancient.client.util.inventory.InventoryUtil
-import meow.ancient.client.util.inventory.SwapUtil
 import meow.ancient.client.util.rotation.MoveFixMode
+import meow.ancient.client.util.rotation.Rotation
 import meow.ancient.client.util.rotation.RotationManager
 import meow.ancient.client.util.rotation.RotationUtil
 import meow.ancient.event.events.PlayerUpdateEvent
@@ -48,12 +48,12 @@ object CrystalAuraModule : Module(
 
     val rotations by boolean("Rotations", true)
     val silentSlots by boolean("Silent Slots", true)
+    val ignoreTerrain by boolean("Ignore Terrain", false, "Treats all blocks as indestructible when calculating explosion damage")
     val basePlace by boolean("Base Place", true, "Places obsidian as base for crystals if none available")
     val lethalOverride by boolean("Lethal Override", true)
 
     private var placeTimer = 0
     private var breakTimer = 0
-    private var originalSlot = -1
     private fun getMoveFixMode(): MoveFixMode = MoveFixMode.fromName(moveFix)
 
     @Commando
@@ -64,7 +64,6 @@ object CrystalAuraModule : Module(
 
         val target = findTarget(player)
         if (target == null) {
-            restoreSlot(player)
             return
         }
 
@@ -126,10 +125,10 @@ object CrystalAuraModule : Module(
             if (distSq > maxReachSq) continue
 
             val crystalPos = entity.position()
-            val selfDamage = ExplosionDamageUtil.crystalDamage(crystalPos, player)
+            val selfDamage = ExplosionDamageUtil.crystalDamage(crystalPos, player, ignoreTerrain = ignoreTerrain)
             if (selfDamage > maxSelfDamage.toFloat()) continue
 
-            val targetDamage = ExplosionDamageUtil.crystalDamage(crystalPos, target)
+            val targetDamage = ExplosionDamageUtil.crystalDamage(crystalPos, target, ignoreTerrain = ignoreTerrain)
             val isLethal = lethalOverride && targetDamage >= targetHp
             if (!isLethal && targetDamage < minDamage.toFloat()) continue
 
@@ -191,10 +190,10 @@ object CrystalAuraModule : Module(
                     if (level.getEntities(null, box).any { it.isAlive }) continue
 
                     val explosionPos = Vec3(pos.x + 0.5, pos.y + 1.0, pos.z + 0.5)
-                    val selfDamage = ExplosionDamageUtil.crystalDamage(explosionPos, player)
+                    val selfDamage = ExplosionDamageUtil.crystalDamage(explosionPos, player, ignoreTerrain = ignoreTerrain)
                     if (selfDamage > maxSelfDamage.toFloat()) continue
 
-                    val targetDamage = ExplosionDamageUtil.crystalDamage(explosionPos, target)
+                    val targetDamage = ExplosionDamageUtil.crystalDamage(explosionPos, target, ignoreTerrain = ignoreTerrain)
                     val isLethal = lethalOverride && targetDamage >= targetHp
                     if (!isLethal && targetDamage < minDamage.toFloat()) continue
 
@@ -208,19 +207,18 @@ object CrystalAuraModule : Module(
 
         val placePos = bestPos ?: return false
 
-        val hotbarCrystal = InventoryUtil.findHotbarSlot(Items.END_CRYSTAL)
-        val crystalSlot = if (hotbarCrystal != -1) hotbarCrystal else InventoryUtil.findInventorySlot(Items.END_CRYSTAL)
+        val crystalSlot = InventoryUtil.findHotbarSlot(Items.END_CRYSTAL)
         if (crystalSlot == -1 && !player.offhandItem.`is`(Items.END_CRYSTAL)) return false
 
-        val hitResult = getPlaceInfo(placePos, player)
-
+        val aimRot = RotationUtil.getRotationToVec(Vec3.atCenterOf(placePos), player.eyePosition)
+        val rng = ThreadLocalRandom.current()
+        aimRot.yaw += rng.nextFloat(-0.04f, 0.04f)
+        aimRot.pitch += rng.nextFloat(-0.04f, 0.04f)
         if (rotations) {
-            val rot = RotationUtil.getRotationToVec(hitResult.location, player.eyePosition)
-            val rng = ThreadLocalRandom.current()
-            rot.yaw += rng.nextFloat(-0.04f, 0.04f)
-            rot.pitch += rng.nextFloat(-0.04f, 0.04f)
-            RotationManager.setRotation(rot, moveFix = getMoveFixMode())
+            RotationManager.setRotation(aimRot, moveFix = getMoveFixMode())
         }
+
+        val hitResult = gazeHit(placePos, player, aimRot) ?: getPlaceInfo(placePos, player)
 
         val hand = if (player.offhandItem.`is`(Items.END_CRYSTAL)) InteractionHand.OFF_HAND else InteractionHand.MAIN_HAND
 
@@ -231,17 +229,16 @@ object CrystalAuraModule : Module(
         }
 
         if (crystalSlot in 0..8) {
-            switchToSlot(player, crystalSlot)
-            mc.gameMode?.useItemOn(player, InteractionHand.MAIN_HAND, hitResult)
-            player.swing(InteractionHand.MAIN_HAND, player.getItemInHand(InteractionHand.MAIN_HAND).attackAnimation, false)
+            if (silentSlots) {
+                InventoryUtil.withSilentSlot(crystalSlot) {
+                    InventoryUtil.useItemOnPacket(InteractionHand.MAIN_HAND, hitResult)
+                }
+            } else {
+                InventoryUtil.swapToSlot(crystalSlot)
+                mc.gameMode?.useItemOn(player, InteractionHand.MAIN_HAND, hitResult)
+                player.swing(InteractionHand.MAIN_HAND, player.getItemInHand(InteractionHand.MAIN_HAND).attackAnimation, false)
+            }
             return true
-        }
-
-        SwapUtil.clickWithBypass {
-            InventoryUtil.swapSlots(crystalSlot, player.inventory.selectedSlot, false)
-            mc.gameMode?.useItemOn(player, InteractionHand.MAIN_HAND, hitResult)
-            player.swing(InteractionHand.MAIN_HAND, player.getItemInHand(InteractionHand.MAIN_HAND).attackAnimation, false)
-            InventoryUtil.swapSlots(player.inventory.selectedSlot, crystalSlot, true)
         }
         return true
     }
@@ -253,8 +250,7 @@ object CrystalAuraModule : Module(
         if (obsidianSlot == -1) return false
 
         val hasCrystal = player.offhandItem.`is`(Items.END_CRYSTAL) ||
-            InventoryUtil.findHotbarSlot(Items.END_CRYSTAL) != -1 ||
-            InventoryUtil.findInventorySlot(Items.END_CRYSTAL) != -1
+            InventoryUtil.findHotbarSlot(Items.END_CRYSTAL) != -1
         if (!hasCrystal) return false
 
         val pPos = player.blockPosition()
@@ -296,10 +292,10 @@ object CrystalAuraModule : Module(
                     val hit = findBasePlacementHit(pos, player) ?: continue
 
                     val explosionPos = Vec3(pos.x + 0.5, pos.y + 1.0, pos.z + 0.5)
-                    val selfDamage = ExplosionDamageUtil.crystalDamage(explosionPos, player, pos)
+                    val selfDamage = ExplosionDamageUtil.crystalDamage(explosionPos, player, pos, ignoreTerrain)
                     if (selfDamage > maxSelfDamage.toFloat()) continue
 
-                    val targetDamage = ExplosionDamageUtil.crystalDamage(explosionPos, target, pos)
+                    val targetDamage = ExplosionDamageUtil.crystalDamage(explosionPos, target, pos, ignoreTerrain)
                     if (targetDamage < requiredMinDamage) continue
 
                     if (targetDamage > bestDamage) {
@@ -320,9 +316,18 @@ object CrystalAuraModule : Module(
             RotationManager.setRotation(rot, moveFix = getMoveFixMode())
         }
 
-        switchToSlot(player, obsidianSlot)
-        mc.gameMode?.useItemOn(player, InteractionHand.MAIN_HAND, hitResult)
-        player.swing(InteractionHand.MAIN_HAND, player.getItemInHand(InteractionHand.MAIN_HAND).attackAnimation, false)
+        if (obsidianSlot in 0..8) {
+            if (silentSlots) {
+                InventoryUtil.withSilentSlot(obsidianSlot) {
+                    InventoryUtil.useItemOnPacket(InteractionHand.MAIN_HAND, hitResult)
+                }
+            } else {
+                InventoryUtil.swapToSlot(obsidianSlot)
+                mc.gameMode?.useItemOn(player, InteractionHand.MAIN_HAND, hitResult)
+                player.swing(InteractionHand.MAIN_HAND, player.getItemInHand(InteractionHand.MAIN_HAND).attackAnimation, false)
+            }
+            return true
+        }
         return true
     }
 
@@ -387,27 +392,18 @@ object CrystalAuraModule : Module(
         val hitY = if (side == Direction.UP) blockPos.y + 1.0 else blockPos.y.toDouble()
         return BlockHitResult(Vec3(blockPos.x + 0.5, hitY, blockPos.z + 0.5), side, blockPos, false)
     }
-    private fun switchToSlot(player: LocalPlayer, targetSlot: Int) {
-        if (originalSlot == -1) {
-            originalSlot = player.inventory.selectedSlot
-        }
-        if (player.inventory.selectedSlot != targetSlot) {
-            InventoryUtil.swapToSlot(targetSlot)
-        }
-    }
 
-    private fun restoreSlot(player: LocalPlayer) {
-        val slot = originalSlot
-        if (slot in 0..8) {
-            originalSlot = -1
-            if (player.inventory.selectedSlot != slot) {
-                InventoryUtil.swapToSlot(slot)
-            }
-        }
+    private fun gazeHit(blockPos: BlockPos, player: LocalPlayer, rot: Rotation): BlockHitResult? {
+        val level = mc.level ?: return null
+        val eyes = player.eyePosition
+        val far = eyes.add(rot.toDirectionVec().scale(7.0))
+        val clip = level.clip(ClipContext(eyes, far, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, player))
+        if (clip.type != HitResult.Type.BLOCK) return null
+        if (clip.blockPos != blockPos) return null
+        return clip
     }
     override fun onDisable() {
         placeTimer = 0
         breakTimer = 0
-        mc.player?.let(::restoreSlot)
     }
 }

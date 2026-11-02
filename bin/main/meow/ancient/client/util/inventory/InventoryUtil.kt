@@ -7,6 +7,7 @@ import net.minecraft.core.component.DataComponents
 import net.minecraft.core.registries.Registries
 import net.minecraft.network.protocol.game.ServerboundContainerClosePacket
 import net.minecraft.network.protocol.game.ServerboundSetCarriedItemPacket
+import net.minecraft.network.protocol.game.ServerboundUseItemOnPacket
 import net.minecraft.network.protocol.game.ServerboundUseItemPacket
 import net.minecraft.tags.ItemTags
 import net.minecraft.world.InteractionHand
@@ -18,6 +19,7 @@ import net.minecraft.world.item.Items
 import net.minecraft.world.item.component.SwingAnimation
 import net.minecraft.world.item.enchantment.EnchantmentHelper
 import net.minecraft.world.item.enchantment.Enchantments
+import net.minecraft.world.phys.BlockHitResult
 
 object InventoryUtil {
     private val Hotbar_rad = 0 until 9
@@ -26,10 +28,14 @@ object InventoryUtil {
 
     fun swapToOffhand(slot: Int, closeInvPacket: Boolean = true) {
         val player = mc.player ?: return
+        val gameMode = mc.gameMode ?: return
         val menu = player.containerMenu
-        if (!canModifyInventory(player) || slot !in menu.slots.indices) return
+        if (menu !== player.inventoryMenu || !canModifyInventory(player)) return
         SwapUtil.clickWithBypass(closeAfter = closeInvPacket) {
-            clickSlotDirect(slot, 40)
+            when (slot) {
+                in 0..8 -> gameMode.handleContainerInput(menu.containerId, 45, slot, ContainerInput.SWAP, player)
+                in 9..35 -> gameMode.handleContainerInput(menu.containerId, slot, 40, ContainerInput.SWAP, player)
+            }
         }
     }
 
@@ -46,6 +52,62 @@ object InventoryUtil {
         val slot = if (inventorySlot in Hotbar_rad) inventorySlot + 36 else inventorySlot
         SwapUtil.clickWithBypass(closeAfter = closeInvPacket) {
             clickSlotDirect(slot, swapSlot)
+        }
+    }
+
+    fun swapAndUse(item: Item, legit: Boolean = false) {
+        val player = mc.player ?: return
+        if (player.containerMenu !== player.inventoryMenu || !canModifyInventory(player)) return
+
+        if (player.mainHandItem.`is`(item)) {
+            if (player.cooldowns.isOnCooldown(player.mainHandItem)) return
+            if (legit) useItemLegit(InteractionHand.MAIN_HAND)
+            else useItem(InteractionHand.MAIN_HAND)
+            return
+        }
+
+        if (player.offhandItem.`is`(item)) {
+            if (player.cooldowns.isOnCooldown(player.offhandItem)) return
+            if (legit) useItemLegit(InteractionHand.OFF_HAND)
+            else useItem(InteractionHand.OFF_HAND)
+            return
+        }
+
+        val hotbarSlot = findHotbarSlot(item)
+        if (hotbarSlot != -1) {
+            if (player.cooldowns.isOnCooldown(player.inventory.getItem(hotbarSlot))) return
+            if (legit) {
+                useItemLegit(InteractionHand.MAIN_HAND, hotbarSlot)
+            } else {
+                withSilentSlot(hotbarSlot, Runnable {
+                    useItem(InteractionHand.MAIN_HAND)
+                })
+            }
+            return
+        }
+
+        val inventorySlot = findInventorySlot(item)
+        if (inventorySlot == -1 || player.cooldowns.isOnCooldown(player.inventory.getItem(inventorySlot))) return
+
+        val swapSlot = findBestSlotInHotBar().takeIf { it >= 0 } ?: 8
+        val menuSlot = inventorySlot
+        val bridgeSlot = player.inventoryMenu.getSlot(swapSlot + 36)
+        if (!bridgeSlot.mayPickup(player) || !bridgeSlot.mayPlace(player.inventory.getItem(inventorySlot))) return
+
+        if (clickSlot(menuSlot, swapSlot)) {
+            try {
+                if (legit) {
+                    useItemLegit(InteractionHand.MAIN_HAND, swapSlot)
+                } else {
+                    withSilentSlot(swapSlot, Runnable { useItem(InteractionHand.MAIN_HAND) })
+                }
+            } finally {
+                try {
+                    if (mc.player === player && player.containerMenu === player.inventoryMenu) clickSlot(menuSlot, swapSlot)
+                } finally {
+                    if (mc.player === player && player.containerMenu === player.inventoryMenu) closeInventory()
+                }
+            }
         }
     }
 
@@ -86,6 +148,18 @@ object InventoryUtil {
             if (!canModifyInventory(player)) return@Runnable
             player.connection.send(ServerboundContainerClosePacket(player.containerMenu.containerId))
         })
+    }
+
+    fun useItemOnPacket(hand: InteractionHand, hitResult: BlockHitResult): Boolean {
+        val player = mc.player ?: return false
+        val gameMode = mc.gameMode ?: return false
+        val level = mc.level ?: return false
+        if (!canModifyInventory(player)) return false
+        gameMode.startPrediction(level) { sequence ->
+            ServerboundUseItemOnPacket(hand, hitResult, sequence)
+        }
+        player.swing(hand, SwingAnimation.DEFAULT, false)
+        return true
     }
 
     fun useItem(hand: InteractionHand) {

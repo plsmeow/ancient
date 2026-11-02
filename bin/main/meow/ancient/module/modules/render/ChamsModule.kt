@@ -15,18 +15,19 @@ object ChamsModule : Module(
     category = RENDER,
     description = "Highlights entities with outlines"
 ) {
+    val mode by mode("Mode", "Glow Outline", listOf("Glow Outline", "Tinted Glow"))
     val players = boolean("Players", true)
-    val mobs = boolean("Mobs", true)
-    val color = color("Color", Color4b(255, 0, 0, 255))
-    val theme = boolean("Theme", false)
-
+    val mobs = boolean("Mobs", false)
+    val self by boolean("Self", false)
+    val color = color("Color", Color4b(255, 60, 60, 255))
+    val theme = boolean("Theme", true)
 
 
     @JvmStatic
     fun shouldRenderChams(entity: LivingEntity): Boolean {
         if (!isEnabled()) return false
         if (entity is Player) {
-            if (entity === mc.player && mc.options.cameraType.isFirstPerson) return false
+            if (entity === mc.player && (!self || mc.options.cameraType.isFirstPerson)) return false
             return players.value
         }
         if (entity is Mob) {
@@ -42,6 +43,11 @@ object ChamsModule : Module(
             return players.value
         }
         return mobs.value
+    }
+
+    @JvmStatic
+    fun shouldTint(): Boolean {
+        return isEnabled() && mode == "Tinted Glow"
     }
 
     @JvmStatic

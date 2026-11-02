@@ -61,15 +61,9 @@ object MoveFixProcessor {
         val rawDirection = DirectionalInput(input)
         hasForwardInput = rawDirection.forwards
 
-        val inWater = mc.player?.isInWater == true
         when (mode) {
             MoveFixMode.OFF, MoveFixMode.STRICT -> return
             MoveFixMode.SILENT -> {
-                if (inWater) {
-                    applyWaterMoveFix(input, rawDirection, serverYaw, cameraYaw)
-                    return
-                }
-
                 if (!rawDirection.isMoving) {
                     hasForwardInput = false
                     return
@@ -124,60 +118,6 @@ object MoveFixProcessor {
                 }
             }
         }
-    }
-
-    private fun applyWaterMoveFix(
-        input: ClientInput,
-        rawDirection: DirectionalInput,
-        serverYaw: Float,
-        cameraYaw: Float
-    ) {
-        val currentKeys = input.keyPresses
-        val wantsSprint = currentKeys.sprint() || MoveUtil.isKeyPressed(mc.options.keySprint)
-
-        if (!rawDirection.isMoving) {
-            hasForwardInput = false
-            if (!currentKeys.sprint()) return
-            input.keyPresses = Input(
-                currentKeys.forward(),
-                currentKeys.backward(),
-                currentKeys.left(),
-                currentKeys.right(),
-                currentKeys.jump(),
-                currentKeys.shift(),
-                false
-            )
-            return
-        }
-
-        val deltaRad = (cameraYaw - serverYaw) * Mth.DEG_TO_RAD
-        val cos = Mth.cos(deltaRad.toDouble())
-        val sin = Mth.sin(deltaRad.toDouble())
-
-        val z = calculateImpulse(rawDirection.forwards, rawDirection.backwards)
-        val x = calculateImpulse(rawDirection.left, rawDirection.right)
-
-        val newX = x * cos - z * sin
-        val newZ = z * cos + x * sin
-
-        input.moveVector = Vec2(newX, newZ).normalized()
-
-        val forward = newZ > 0.0f
-        val backward = newZ < 0.0f
-        val left = newX > 0.0f
-        val right = newX < 0.0f
-
-        hasForwardInput = forward
-
-        input.keyPresses = Input(
-            forward,
-            backward,
-            left,
-            right,
-            currentKeys.jump(),
-            currentKeys.shift(),
-            wantsSprint
-        )
     }
 
     fun getDirectionYaw(baseYaw: Float, forward: Float, sideways: Float): Float {

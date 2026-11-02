@@ -56,6 +56,17 @@ object TagsModule : Module(
         description = ""
     )
 
+    val itemSize by number(
+        name = "Item Size",
+        value = 1.0,
+        min = 0.5,
+        max = 2.5,
+        step = 0.05,
+        precision = 2,
+        description = "",
+        isVisible = { items }
+    )
+
     val entityTypes by picker("Entity Types", setOf("minecraft:player"), MinecraftPickerCatalogs.entities)
     private var cachedSelection: Set<String>? = null
     private val selectedTypes = HashSet<EntityType<*>>()
@@ -136,10 +147,10 @@ object TagsModule : Module(
             activeItemTags.sortWith(DEPTH_COMPARATOR)
 
             val tagScale = size.toFloat()
-            val itemScale = 0.7f * tagScale
+            val itemScale = itemSize.toFloat() * tagScale
             val rectH = 13.5f * tagScale
             val step = 14.0f * itemScale
-            val itemSize = 16.0f * itemScale
+            val renderedItemSize = 16.0f * itemScale
 
             val pose = graphics.pose()
 
@@ -158,10 +169,10 @@ object TagsModule : Module(
                 if (equipmentCache.isEmpty()) continue
 
                 val count = equipmentCache.size
-                val totalW = (count - 1) * step + itemSize
+                val totalW = (count - 1) * step + renderedItemSize
                 val startX = tag.screenX - totalW * 0.5f
                 val rectY = tag.screenY - rectH
-                val itemY = rectY - itemSize - 1.5f * tagScale
+                val itemY = rectY - renderedItemSize - 1.5f * tagScale
 
                 for (i in 0 until count) {
                     val stack = equipmentCache[i]

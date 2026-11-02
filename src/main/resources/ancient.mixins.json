@@ -13,6 +13,7 @@
         "MixinClientInput",
         "MixinEntity",
         "MixinLivingEntity",
+        "MixinPlayer",
         "MixinLivingEntityRenderer",
         "MixinGameRenderer",
         "MixinKeyboardHandler",

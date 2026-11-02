@@ -30,6 +30,8 @@ import net.minecraft.world.entity.projectile.throwableitemprojectile.Snowball
 import net.minecraft.world.item.ItemStack
 import net.minecraft.world.item.Items
 import net.minecraft.world.level.ClipContext
+import net.minecraft.world.level.block.Block
+import net.minecraft.world.level.block.Blocks
 import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.HitResult
 import net.minecraft.world.phys.Vec3
@@ -194,7 +196,7 @@ object PredictionsModule : Module(
         val point = when (entity) {
             is ItemEntity -> Point(entity.item, pos, ticks)
             is ThrowableItemProjectile -> Point(entity.item, pos, ticks)
-            is AbstractArrow -> entity.weaponItem?.let { Point(it, pos, ticks) } ?: return
+            is AbstractArrow -> entity.pickupItemStackOrigin.takeIf { !it.isEmpty }?.let { Point(it, pos, ticks) } ?: return
             else -> return
         }
         points.add(point)
@@ -202,8 +204,13 @@ object PredictionsModule : Module(
 
     private fun visible(entity: Entity): Boolean {
         val posChange = entity.x == entity.xo && entity.y == entity.yo && entity.z == entity.zo
-        val itemEntityCheck = entity is ItemEntity && (entity.onGround() || entity.isInWater)
+        val itemEntityCheck = entity is ItemEntity && (entity.onGround() || isBoxInBlock(entity.boundingBox.inflate(2.0), Blocks.WATER))
         return posChange || itemEntityCheck
+    }
+
+    private fun isBoxInBlock(box: AABB, block: Block): Boolean {
+        val level = mc.level ?: return false
+        return BlockPos.betweenClosed(box).any { level.getBlockState(it).block == block }
     }
 
     private fun isTargetEnabled(entity: Entity): Boolean = when (entity) {

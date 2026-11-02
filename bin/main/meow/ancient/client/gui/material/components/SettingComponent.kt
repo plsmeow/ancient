@@ -29,6 +29,7 @@ abstract class SettingComponent(val setting: Setting<*>) : GuiComponent {
     ): Float
 
     override fun mouseClicked(mouseX: Double, mouseY: Double, button: Int): Boolean = false
+    override fun mouseClicked(mouseX: Double, mouseY: Double, button: Int, modifiers: Int): Boolean = mouseClicked(mouseX, mouseY, button)
     override fun mouseReleased(mouseX: Double, mouseY: Double, button: Int) {}
     override fun mouseDragged(mouseX: Double, mouseY: Double, button: Int, deltaX: Double, deltaY: Double) {}
     override fun keyPressed(keyCode: Int, scanCode: Int, modifiers: Int): Boolean = false

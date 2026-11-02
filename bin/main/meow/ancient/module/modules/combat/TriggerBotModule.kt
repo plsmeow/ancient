@@ -1,226 +1,248 @@
 package meow.ancient.module.modules.combat
 
 import meow.ancient.client.extensions.COMBAT
-import meow.ancient.client.extensions.inGame
+import meow.ancient.client.extensions.currentScreen
 import meow.ancient.client.extensions.mc
-import meow.ancient.client.util.rotation.RayTraceUtil
-import meow.ancient.client.util.friend.FriendRepository
-import meow.ancient.client.util.rotation.RotationUtil
+import meow.ancient.client.util.anticheat.AnticheatManager
+import meow.ancient.event.events.ClientDisconnectEvent
+import meow.ancient.event.events.PlayerMovementSentEvent
 import meow.ancient.event.events.PlayerUpdateEvent
 import meow.ancient.module.Module
-import meow.ancient.module.modules.movement.GroundSpoofModule
-import meow.ancient.module.setting.MinecraftPickerCatalogs
-import net.minecraft.world.entity.EntityType
-import net.minecraft.network.protocol.game.ServerboundSetCarriedItemPacket
+import meow.ancient.module.modules.combat.HitAuraModule.ClickMode
+import meow.ancient.module.modules.combat.HitAuraModule.SprintResetMode
+import meow.ancient.module.modules.combat.hitaura.ClickerProcessor
+import meow.ancient.module.modules.combat.hitaura.CriticalProcessor
+import meow.ancient.module.modules.combat.hitaura.ShieldBreakProcessor
+import meow.ancient.module.modules.combat.hitaura.SprintResetProcessor
+import meow.ancient.module.modules.combat.hitaura.TargetSelector
+import net.minecraft.client.multiplayer.ClientLevel
+import net.minecraft.client.player.LocalPlayer
 import net.minecraft.world.InteractionHand
 import net.minecraft.world.entity.Entity
 import net.minecraft.world.entity.LivingEntity
-import net.minecraft.world.entity.ambient.AmbientCreature
-import net.minecraft.world.entity.animal.Animal
-import net.minecraft.world.entity.decoration.ArmorStand
-import net.minecraft.world.entity.monster.Monster
 import net.minecraft.world.entity.player.Player
-import net.minecraft.world.item.Item
-import net.minecraft.world.item.Items
-import net.minecraft.world.phys.AABB
+import net.minecraft.world.item.ItemUseAnimation
+import net.minecraft.world.level.ClipContext
 import net.minecraft.world.phys.HitResult
-import net.minecraft.world.phys.Vec3
 import sweetie.evaware.flora.api.Commando
 
 object TriggerBotModule : Module(
     name = "Trigger Bot",
     category = COMBAT,
-    description = "Automatically attacks entities in crosshairs"
+    description = "Attacks the nearest entity intersecting your view after movement without rotating"
 ) {
-    val distance = number("Distance", 3.0, 2.0, 6.0, 0.1, 1)
     val targets = targets("Targets", setOf("minecraft:player"))
-    val raycastCheck = boolean("Raycast Check", true)
-    val noWallHit = boolean("Through Walls", false)
-    val pauseEating = boolean("Pause Eating", true)
-    val onlyCriticals = boolean("Only Crits", true)
-    val onlySpace = boolean("Only With Space", false)
-    val breakShield = boolean("Break Shield", true)
-    val forceBreakShield = boolean("Force Break Shield", true, isVisible = { breakShield.value })
-
-    private val AXES: List<Item> = listOf(
-        Items.WOODEN_AXE, Items.STONE_AXE, Items.IRON_AXE,
-        Items.GOLDEN_AXE, Items.DIAMOND_AXE, Items.NETHERITE_AXE
+    val ignoreOn by multiMode("Ignore On", setOf("Gui"), listOf("Use", "Gui"))
+    val friendProtection by boolean("Friend Protection", true)
+    val attackRange by number("Attack Range", 3.0, 1.0, 6.0, 0.05, 2, unit = "m")
+    val throughWalls by boolean("Through Walls", false)
+    val breakShield by boolean("Break Shield", true)
+    val clickMode by enum("Click Mode", ClickMode.MODE_1_9, nameMapper = { it.displayName })
+    val cps by number("CPS", 12.0, 1.0, 20.0, 0.5, 1, isVisible = { clickMode == ClickMode.MODE_1_8 })
+    val cpsRandomization by boolean("Randomization", true, isVisible = { clickMode == ClickMode.MODE_1_8 })
+    val cpsSpread by number(
+        "Spread", 2.0, 0.5, 5.0, 0.5, 1,
+        isVisible = { clickMode == ClickMode.MODE_1_8 && cpsRandomization }
     )
+    val onlyCrits by boolean("Only Crits", true)
+    val smartCrits by boolean("Smart Crits", true, isVisible = { onlyCrits })
+
+    private val targetSelector = TargetSelector()
+    private val clickerProcessor = ClickerProcessor()
+    private val criticalProcessor = CriticalProcessor()
+    private val sprintResetProcessor = SprintResetProcessor()
+    private var pendingPlayer: LocalPlayer? = null
+    private var pendingLevel: ClientLevel? = null
+    private var pendingTick = -1
 
     var target: LivingEntity? = null
         private set
-    private var ticksToAttack = 0
 
-    override fun onDisable() {
-        ticksToAttack = 0
+    private fun clearPendingAttack() {
+        pendingPlayer = null
+        pendingLevel = null
+        pendingTick = -1
+    }
+
+    private fun reset() {
+        clearPendingAttack()
         target = null
+        targetSelector.reset()
+        clickerProcessor.reset()
+        sprintResetProcessor.reset()
+    }
+
+    override fun onEnable() = reset()
+
+    override fun onDisable() = reset()
+
+    @Commando
+    fun onDisconnect(event: ClientDisconnectEvent) = reset()
+
+    fun shouldPreventSprint(): Boolean =
+        isEnabled() && !HitAuraModule.isEnabled() && sprintResetProcessor.isResettingSprint()
+
+    private fun shouldIgnoreContext(player: LocalPlayer): Boolean =
+        "Gui" in ignoreOn && currentScreen != null
+            || "Use" in ignoreOn && player.isUsingItem && player.useItem.useAnimation != ItemUseAnimation.NONE
+
+    private fun canUseContext(player: LocalPlayer, level: ClientLevel): Boolean =
+        isEnabled() && !HitAuraModule.isEnabled() && mc.player === player && mc.level === level
+            && !player.isDeadOrDying && !player.isSpectator && player.connection.connection.isConnected
+            && player.connection.hasClientLoaded() && mc.gameMode != null && !shouldIgnoreContext(player)
+
+    private fun selectTarget(player: LocalPlayer, level: ClientLevel): LivingEntity? {
+        val start = player.eyePosition
+        val end = start.add(player.lookAngle.scale(attackRange))
+        val blockHit = if (throughWalls) null else level.clip(
+            ClipContext(start, end, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, player)
+        )
+        val blockDistanceSquared = if (blockHit != null && blockHit.type != HitResult.Type.MISS) {
+            start.distanceToSqr(blockHit.location)
+        } else Double.POSITIVE_INFINITY
+        var nearest: Entity? = null
+        var nearestDistanceSquared = attackRange * attackRange
+        for (entity in level.entitiesForRendering()) {
+            if (entity === player || entity.isRemoved || entity.isSpectator || !entity.isPickable) continue
+            if (player.isPassenger && entity.rootVehicle === player.rootVehicle) continue
+            val box = entity.boundingBox
+            val distanceSquared = if (box.contains(start)) {
+                0.0
+            } else {
+                val intersection = box.clip(start, end)
+                if (intersection.isEmpty) continue
+                start.distanceToSqr(intersection.get())
+            }
+            if (distanceSquared >= blockDistanceSquared || distanceSquared > nearestDistanceSquared) continue
+            if (nearest != null && distanceSquared == nearestDistanceSquared && entity.id > nearest.id) continue
+            nearest = entity
+            nearestDistanceSquared = distanceSquared
+        }
+        val selected = nearest as? LivingEntity ?: return null
+        if (selected is Player && selected.isCreative) return null
+        if (!targetSelector.isValidTarget(selected, attackRange, 180.0f, targets, true, friendProtection)) return null
+        return selected
+    }
+
+    private fun shouldUseAxe(target: LivingEntity): Boolean =
+        breakShield && ShieldBreakProcessor.isTargetBlocking(target) && ShieldBreakProcessor.findAxeInHotbar() != -1
+
+    private fun isReadyForAttack(target: LivingEntity): Boolean {
+        val useAxe = shouldUseAxe(target)
+        if (!useAxe && BreachSwapModule.isActive() && !BreachSwapModule.isVirtualCooldownReady()) return false
+        if ((useAxe || !AutoMaceModule.isForceReady(target))
+            && !clickerProcessor.isReadyToClick(clickMode, cps, cpsRandomization, cpsSpread)) return false
+        return criticalProcessor.isReadyForAttack(onlyCrits, smartCrits && !mc.options.keyJump.isDown)
     }
 
     @Commando
     fun onUpdate(event: PlayerUpdateEvent) {
-        if (!inGame) return
-        if (HitAuraModule.isEnabled()) return
-
-        if (ticksToAttack > 0) ticksToAttack--
-
-        updateTarget()
-
-        val currentTarget = target ?: return
-
+        clearPendingAttack()
+        target = null
+        sprintResetProcessor.onTick()
         val player = mc.player ?: return
-        if (canAttack(currentTarget)) {
-            val previousSlot = swapToAxe(currentTarget)
+        val level = mc.level ?: return
+        if (!canUseContext(player, level)) return
+        val selected = selectTarget(player, level) ?: return
+        target = selected
+        pendingPlayer = player
+        pendingLevel = level
+        pendingTick = player.tickCount
+    }
 
-            if (MaceKillModule.isEnabled()) {
-                MaceKillModule.doCrit()
+    @Commando
+    fun onMovementSent(event: PlayerMovementSentEvent) {
+        val expectedPlayer = pendingPlayer ?: return
+        val expectedLevel = pendingLevel ?: return
+        val expectedTarget = target
+        val expectedTick = pendingTick
+        clearPendingAttack()
+        try {
+            if (!canUseContext(expectedPlayer, expectedLevel)
+                || expectedPlayer.tickCount != expectedTick && expectedPlayer.tickCount != expectedTick + 1) {
+                target = null
+                return
             }
-            mc.gameMode?.attack(player, currentTarget)
-            player.swing(InteractionHand.MAIN_HAND, player.getItemInHand(InteractionHand.MAIN_HAND).attackAnimation, false)
+            val selected = selectTarget(expectedPlayer, expectedLevel)
+            target = selected
+            if (selected == null || selected !== expectedTarget || expectedLevel.getEntity(selected.id) !== selected) return
+            if (!isReadyForAttack(selected)) return
+            attack(expectedPlayer, expectedLevel, selected)
+        } finally {
+            sprintResetProcessor.reset()
+        }
+    }
 
-            if (previousSlot != -1) {
-                swapBack(previousSlot)
+    private fun attack(player: LocalPlayer, level: ClientLevel, target: LivingEntity) {
+        val gameMode = mc.gameMode ?: return
+        val mode = clickMode
+        val attackCps = cps
+        val randomize = cpsRandomization
+        val spread = cpsSpread
+        val sprintMode = SprintResetMode.fromName(AnticheatManager.sprintReset)
+        val useAxe = shouldUseAxe(target)
+        val forceMaceReady = !useAxe && AutoMaceModule.isForceReady(target)
+        val previouslyTriggered = CriticalsModule.killAuraTriggered
+        var previousAxeSlot = -1
+        var previousBreachSlot = -1
+        var executed = false
+        try {
+            val preparation = AutoMaceModule.beforeAttack()
+            if (preparation == AutoMaceModule.AttackPreparation.WAITING
+                || forceMaceReady && preparation != AutoMaceModule.AttackPreparation.READY) return
+            if (useAxe) {
+                previousAxeSlot = ShieldBreakProcessor.swapToAxe(target)
+                val axeSlot = ShieldBreakProcessor.findAxeInHotbar()
+                if (axeSlot == -1 || player.inventory.selectedSlot != axeSlot) return
+            } else if (BreachSwapModule.isActive()) {
+                previousBreachSlot = BreachSwapModule.swapToBreachMace()
             }
-
-            if (!AutoMaceModule.isForceReady(currentTarget) && !isForceBreakShieldReady(currentTarget)) {
-                ticksToAttack = 10
+            if (!canUseContext(player, level) || mc.gameMode !== gameMode
+                || level.getEntity(target.id) !== target || selectTarget(player, level) !== target) return
+            if (!criticalProcessor.isReadyForAttack(onlyCrits, smartCrits && !mc.options.keyJump.isDown)) return
+            if (!sprintResetProcessor.preAttack(sprintMode)) return
+            if (MaceKillModule.isEnabled()) MaceKillModule.doCrit()
+            if (CriticalsModule.isEnabled()) {
+                CriticalsModule.killAuraTriggered = true
+                CriticalsModule.doCrit()
             }
-        }
-    }
-
-    private fun updateTarget() {
-        val player = mc.player ?: run { target = null; return }
-        val level = mc.level ?: run { target = null; return }
-
-        var best: LivingEntity? = null
-        var bestDist = Double.MAX_VALUE
-        val eyePos = player.eyePosition
-        val lookVec = player.lookAngle
-        val reach = distance.value
-
-        val targeted = mc.crosshairPickEntity
-        if (targeted is LivingEntity && isValidEntity(targeted, reach)) {
-            val dist = eyePos.distanceTo(targeted.position())
-            if (dist <= reach && (noWallHit.value || player.hasLineOfSight(targeted))) {
-                best = targeted
-                bestDist = dist
+            if (!canUseContext(player, level) || mc.gameMode !== gameMode
+                || level.getEntity(target.id) !== target) return
+            val animation = player.getItemInHand(InteractionHand.MAIN_HAND).attackAnimation
+            if (mode == ClickMode.MODE_1_8) {
+                player.swing(InteractionHand.MAIN_HAND, animation, false)
+                gameMode.attack(player, target)
+                executed = true
+            } else {
+                gameMode.attack(player, target)
+                executed = true
+                player.swing(InteractionHand.MAIN_HAND, animation, false)
             }
-        }
-
-        for (entity in level.entitiesForRendering()) {
-            if (entity !is LivingEntity || !isValidEntity(entity, reach)) continue
-
-            val aimed = isRayTraceIntersecting(eyePos, lookVec, reach, entity.boundingBox.inflate(0.1))
-            if (!aimed && raycastCheck.value) continue
-
-            val dist = eyePos.distanceTo(entity.position())
-            if (dist <= reach && dist < bestDist) {
-                if (!noWallHit.value && !player.hasLineOfSight(entity)) continue
-                best = entity
-                bestDist = dist
+        } finally {
+            CriticalsModule.killAuraTriggered = previouslyTriggered
+            try {
+                if (executed) {
+                    clickerProcessor.onAttackExecuted(mode, attackCps, randomize, spread)
+                    sprintResetProcessor.postAttack(sprintMode)
+                    BreachSwapModule.onAttackExecuted()
+                }
+            } finally {
+                try {
+                    if (mc.player === player && previousBreachSlot != -1) {
+                        if (player.connection.connection.isConnected) {
+                            BreachSwapModule.swapBack(previousBreachSlot)
+                        } else {
+                            player.inventory.selectedSlot = previousBreachSlot
+                        }
+                    }
+                } finally {
+                    try {
+                        if (mc.player === player && previousAxeSlot != -1) ShieldBreakProcessor.swapBack(previousAxeSlot)
+                    } finally {
+                        AutoMaceModule.afterAttack(executed)
+                    }
+                }
             }
-        }
-
-        this.target = best
-    }
-
-    private fun isRayTraceIntersecting(start: Vec3, direction: Vec3, distance: Double, box: AABB): Boolean {
-        val end = start.add(direction.scale(distance))
-        return box.clip(start, end).isPresent
-    }
-
-    fun canAttack(target: LivingEntity): Boolean {
-        val player = mc.player ?: return false
-
-        val eating = player.isUsingItem && !player.useItem.`is`(Items.SHIELD)
-        if (eating && pauseEating.value) return false
-        if (!target.isAlive) return false
-
-        val dist = player.eyePosition.distanceTo(target.position())
-        if (dist > distance.value) return false
-
-        if (!noWallHit.value && !player.hasLineOfSight(target)) return false
-
-        if (raycastCheck.value && mc.crosshairPickEntity !== target) {
-            val eyePos = player.eyePosition
-            val lookVec = player.lookAngle
-            if (!isRayTraceIntersecting(eyePos, lookVec, distance.value, target.boundingBox.inflate(0.1))) {
-                return false
-            }
-        }
-
-        if (isForceBreakShieldReady(target)) return canCritical()
-
-        if (!AutoMaceModule.isForceReady(target)) {
-            if (player.getAttackStrengthScale(0.5f) < 0.98f) return false
-            if (ticksToAttack > 0) return false
-        }
-
-        return canCritical()
-    }
-
-    fun canCritical(): Boolean {
-        if (!onlyCriticals.value) return true
-
-        if (GroundSpoofModule.isEnabled() && GroundSpoofModule.mode == "False") return true
-        val targetEntity = target
-        if (targetEntity != null && AutoMaceModule.isForceReady(targetEntity)) return true
-
-        val player = mc.player ?: return false
-        if (onlySpace.value && !mc.options.keyJump.isDown) return false
-
-        return player.fallDistance > 0.0f && !player.onGround() && !player.onClimbable() && !player.isInWater
-    }
-
-    private fun isValidEntity(entity: LivingEntity, reach: Double): Boolean {
-        if (!entity.isAlive || entity === mc.player || entity is ArmorStand) return false
-        val player = mc.player ?: return false
-
-        if (!targets.isSelected(entity)) return false
-        if (entity is Player && (entity.isCreative || entity.isSpectator || FriendRepository.isFriend(entity))) return false
-        return player.eyePosition.distanceTo(entity.position()) <= reach
-    }
-
-    fun isTargetBlocking(target: LivingEntity?): Boolean {
-        if (target == null || !target.isUsingItem) return false
-        return target.useItem.`is`(Items.SHIELD)
-    }
-
-    fun isForceBreakShieldReady(target: LivingEntity): Boolean {
-        if (!breakShield.value || !forceBreakShield.value || !isTargetBlocking(target)) return false
-        return findAxeInHotbar() != -1
-    }
-
-    fun swapToAxe(target: LivingEntity): Int {
-        if (!breakShield.value || !isTargetBlocking(target)) return -1
-        val axeSlot = findAxeInHotbar()
-        val player = mc.player ?: return -1
-        if (axeSlot == -1 || player.inventory.selectedSlot == axeSlot) return -1
-
-        val previousSlot = player.inventory.selectedSlot
-        selectSlot(axeSlot)
-        return previousSlot
-    }
-
-    fun swapBack(previousSlot: Int) {
-        if (previousSlot in 0..8) {
-            selectSlot(previousSlot)
-        }
-    }
-
-    fun findAxeInHotbar(): Int {
-        val player = mc.player ?: return -1
-        for (i in 0..8) {
-            val stack = player.inventory.getItem(i)
-            if (AXES.any { stack.`is`(it) }) return i
-        }
-        return -1
-    }
-
-    private fun selectSlot(slot: Int) {
-        val player = mc.player ?: return
-        if (slot in 0..8) {
-            player.inventory.selectedSlot = slot
-            player.connection.send(ServerboundSetCarriedItemPacket(slot))
         }
     }
 }

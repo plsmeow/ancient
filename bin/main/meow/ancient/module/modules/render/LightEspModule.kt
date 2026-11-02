@@ -40,6 +40,7 @@ object LightEspModule : Module(
     val fill = boolean("Fill", true)
     val lineWidth = number("Line Width", 1.5, 0.5, 5.0, 0.5, 1)
     val allSources = boolean("All Light Sources", false)
+    val range = number("Range", 48.0, 16.0, 128.0, 4.0, 0)
 
     private const val TORCH_REACH = 14
     private val NO_SURFACES = LongArray(0)
@@ -106,14 +107,15 @@ object LightEspModule : Module(
                 val px = player.x
                 val py = player.y
                 val pz = player.z
-                val maxDistSq = 32.0 * 32.0
-                var count = 0
-                val maxBoxes = 512
+                val maxDist = range.value
+                val maxDistSq = maxDist * maxDist
+                val chunkDistMax = maxDist + 16.0
+                val chunkDistMaxSq = chunkDistMax * chunkDistMax
 
                 for (chunk in snapshot) {
                     val chunkDistX = (chunk.x shl 4) + 8 - px
                     val chunkDistZ = (chunk.z shl 4) + 8 - pz
-                    if (chunkDistX * chunkDistX + chunkDistZ * chunkDistZ > (48.0 * 48.0)) continue
+                    if (chunkDistX * chunkDistX + chunkDistZ * chunkDistZ > chunkDistMaxSq) continue
 
                     val positions = chunk.surfaces
                     if (positions.isEmpty()) continue
@@ -127,9 +129,7 @@ object LightEspModule : Module(
                         val dz = bz + 0.5 - pz
                         if (dx * dx + dy * dy + dz * dz > maxDistSq) continue
                         Gizmos.cuboid(BlockPos(bx, by, bz), style).setAlwaysOnTop()
-                        if (++count >= maxBoxes) break
                     }
-                    if (count >= maxBoxes) break
                 }
             }
             registered = true

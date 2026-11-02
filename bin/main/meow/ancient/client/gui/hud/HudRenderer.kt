@@ -1,6 +1,7 @@
 package meow.ancient.client.gui.hud
 
 import meow.ancient.client.util.anticheat.AnticheatManager
+import meow.ancient.client.util.bind.SettingBindingManager
 import com.mojang.blaze3d.platform.InputConstants
 import meow.ancient.client.extensions.mc
 import meow.ancient.client.gui.material.M3Theme
@@ -196,6 +197,15 @@ class HudRenderer(private val serverStats: HudServerStats) {
         val showArrayList = module.isElementEnabled(HudElement.ARRAY_LIST)
         fingerprint = fingerprint * 31L + if (showKeybinds) 1L else 0L
         fingerprint = fingerprint * 31L + if (showArrayList) 1L else 0L
+        val boundEntries = if (showKeybinds) SettingBindingManager.entries() else emptyList()
+        fingerprint = fingerprint * 31L + boundEntries.size.toLong()
+        for (bound in boundEntries) {
+            fingerprint = fingerprint * 31L + bound.moduleName.hashCode()
+            fingerprint = fingerprint * 31L + bound.settingName.hashCode()
+            fingerprint = fingerprint * 31L + bound.key.toLong()
+            fingerprint = fingerprint * 31L + if (bound.active) 1L else 0L
+            fingerprint = fingerprint * 31L + if (bound.visible) 1L else 0L
+        }
         if (fingerprint == moduleFingerprint) return
         moduleFingerprint = fingerprint
         keybinds.begin(showKeybinds)
@@ -206,6 +216,15 @@ class HudRenderer(private val serverStats: HudServerStats) {
             if (!entry.state || entry === ClickGuiModule) continue
             if (showArrayList) arrayList.add(entry.name)
             if (showKeybinds && entry.key != InputConstants.UNKNOWN.value) keybinds.add(entry.name, KeybindSetting.formatKey(entry.key))
+        }
+        if (showKeybinds) {
+            for (bound in boundEntries) {
+                if (!bound.visible || !bound.active) continue
+                val module = ModuleManager.getByName(bound.moduleName) ?: continue
+                if (!module.state) continue
+                val label = "${bound.moduleName} ${bound.settingName}"
+                keybinds.add(label, KeybindSetting.formatKey(bound.key), highlighted = true, key = "setting.$label")
+            }
         }
         if (arrayList.rowCount > 1) arrayList.rows.subList(0, arrayList.rowCount).sortWith(widthComparator)
     }
