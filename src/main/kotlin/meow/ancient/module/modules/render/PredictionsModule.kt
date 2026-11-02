@@ -194,7 +194,7 @@ object PredictionsModule : Module(
         val point = when (entity) {
             is ItemEntity -> Point(entity.item, pos, ticks)
             is ThrowableItemProjectile -> Point(entity.item, pos, ticks)
-            is AbstractArrow -> Point(entity.weaponItem, pos, ticks)
+            is AbstractArrow -> entity.weaponItem?.let { Point(it, pos, ticks) } ?: return
             else -> return
         }
         points.add(point)

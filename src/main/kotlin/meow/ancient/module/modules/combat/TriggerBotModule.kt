@@ -135,9 +135,6 @@ object TriggerBotModule : Module(
         return criticalProcessor.isReadyForAttack(onlyCrits, smartCrits && !mc.options.keyJump.isDown)
     }
 
-    private fun isCriticalAttack(): Boolean =
-        onlyCrits && (criticalProcessor.isFallingForCrit() || criticalProcessor.isGrimPacketReady())
-
     @Commando
     fun onUpdate(event: PlayerUpdateEvent) {
         clearPendingAttack()
@@ -151,7 +148,6 @@ object TriggerBotModule : Module(
         pendingPlayer = player
         pendingLevel = level
         pendingTick = player.tickCount
-        sprintResetProcessor.prepareAttack(isReadyForAttack(selected) && isCriticalAttack())
     }
 
     @Commando
@@ -183,7 +179,7 @@ object TriggerBotModule : Module(
         val attackCps = cps
         val randomize = cpsRandomization
         val spread = cpsSpread
-        val sprintMode = if (AnticheatManager.isPacketSprintReset) SprintResetMode.PACKET else SprintResetMode.OFF
+        val sprintMode = SprintResetMode.fromName(AnticheatManager.sprintReset)
         val useAxe = shouldUseAxe(target)
         val forceMaceReady = !useAxe && AutoMaceModule.isForceReady(target)
         val previouslyTriggered = CriticalsModule.killAuraTriggered
@@ -204,7 +200,7 @@ object TriggerBotModule : Module(
             if (!canUseContext(player, level) || mc.gameMode !== gameMode
                 || level.getEntity(target.id) !== target || selectTarget(player, level) !== target) return
             if (!criticalProcessor.isReadyForAttack(onlyCrits, smartCrits && !mc.options.keyJump.isDown)) return
-            if (!sprintResetProcessor.preAttack(sprintMode, forceStopSprint = isCriticalAttack())) return
+            if (!sprintResetProcessor.preAttack(sprintMode)) return
             if (MaceKillModule.isEnabled()) MaceKillModule.doCrit()
             if (CriticalsModule.isEnabled()) {
                 CriticalsModule.killAuraTriggered = true

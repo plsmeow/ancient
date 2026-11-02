@@ -11,7 +11,7 @@ object AntiCheatModule : Module(
     val sprintReset by mode(
         name = "Sprint Reset",
         value = "Packet",
-        modes = listOf("Packet", "Off"),
+        modes = listOf("Legit", "Packet"),
         description = "Global sprint reset mode after attack"
     )
 

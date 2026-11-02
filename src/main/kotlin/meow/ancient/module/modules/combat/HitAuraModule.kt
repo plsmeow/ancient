@@ -466,8 +466,6 @@ object HitAuraModule : Module(
             pendingPlayer = player
             pendingLevel = level
             pendingTick = player.tickCount
-            sprintResetProcessor.prepareAttack(onlyCrits && readyToAttackNow
-                && (criticalProcessor.isFallingForCrit() || criticalProcessor.isGrimPacketReady()))
         }
     }
 
@@ -489,7 +487,7 @@ object HitAuraModule : Module(
                 val maxReach = if (rotMode == RotationMode.GRIM_1204) attackRange.coerceAtMost(3.0) else attackRange
                 if (!targetSelector.isValidTarget(target, maxReach, fov.toFloat(), targets, throughWalls, friendProtection)) return@safeRun
                 val enforceRayTrace = rayTrace && !player.isFallFlying && rotMode != RotationMode.NO_ROT && rotMode != RotationMode.GRIM_1204
-                val sResetMode = if (AnticheatManager.isPacketSprintReset) SprintResetMode.PACKET else SprintResetMode.OFF
+                val sResetMode = SprintResetMode.fromName(AnticheatManager.sprintReset)
                 attackExecutor.tryAttack(
                     target = target,
                     attackRange = maxReach,

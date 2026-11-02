@@ -103,8 +103,7 @@ class AttackExecutor(
             if (previousAxeSlot == -1 && BreachSwapModule.isActive()) {
                 breachSwapSlot = BreachSwapModule.swapToBreachMace()
             }
-            val isCritAttack = onlyCrits && (criticalProcessor.isFallingForCrit() || criticalProcessor.isGrimPacketReady())
-            if (!sprintResetProcessor.preAttack(sprintResetMode, forceStopSprint = isCritAttack)) return false
+            if (!sprintResetProcessor.preAttack(sprintResetMode)) return false
             if (MaceKillModule.isEnabled()) {
                 MaceKillModule.doCrit()
             }
