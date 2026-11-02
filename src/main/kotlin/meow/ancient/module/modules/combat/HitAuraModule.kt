@@ -318,14 +318,12 @@ object HitAuraModule : Module(
     private var pendingPlayer: LocalPlayer? = null
     private var pendingLevel: ClientLevel? = null
     private var pendingTick = -1
-    private var pendingRequiresFall = false
 
     private fun clearPendingAttack() {
         pendingTarget = null
         pendingPlayer = null
         pendingLevel = null
         pendingTick = -1
-        pendingRequiresFall = false
     }
 
     val currentTarget: LivingEntity?
@@ -449,9 +447,8 @@ object HitAuraModule : Module(
             pendingPlayer = player
             pendingLevel = level
             pendingTick = player.tickCount
-            pendingRequiresFall = onlyCrits && criticalProcessor.isFallingForCrit()
             sprintResetProcessor.prepareAttack(onlyCrits && readyToAttackNow
-                && (pendingRequiresFall || CriticalsModule.canPrepareCrit()))
+                && (criticalProcessor.isFallingForCrit() || criticalProcessor.isGrimPacketReady()))
         }
     }
 
@@ -461,7 +458,6 @@ object HitAuraModule : Module(
         val expectedPlayer = pendingPlayer
         val expectedLevel = pendingLevel
         val expectedTick = pendingTick
-        val requiresFall = pendingRequiresFall
         clearPendingAttack()
         try {
             if (!isEnabled()) return
@@ -469,7 +465,6 @@ object HitAuraModule : Module(
                 if (player !== expectedPlayer || level !== expectedLevel || player.isDeadOrDying) return@safeRun
                 if (player.tickCount != expectedTick && player.tickCount != expectedTick + 1) return@safeRun
                 if (currentTarget !== target || level.getEntity(target.id) !== target || shouldIgnoreContext()) return@safeRun
-                if (requiresFall && !criticalProcessor.isFallingForCrit()) return@safeRun
 
                 val rotMode = rotationMode
                 val maxReach = if (rotMode == RotationMode.GRIM_1204) attackRange.coerceAtMost(3.0) else attackRange

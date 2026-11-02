@@ -33,6 +33,7 @@ dependencies {
 	implementation "net.fabricmc:fabric-language-kotlin:${project.fabric_kotlin_version}"
 
 	// flora
+	include "com.github.evaware-dev:Flora:${project.flora_version}"
 	implementation "com.github.evaware-dev:Flora:${project.flora_version}"
 
 	// lombok
