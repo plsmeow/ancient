@@ -1,3 +1,40 @@
-run
-build
+# Gradle
+.gradle/
+build/
+out/
+classes/
+
+# Kotlin
+.kotlin/
+
+# Eclipse
+.classpath
+.factorypath
+.project
+.settings/
+bin/
+*.launch
+
+# IntelliJ IDEA
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# VS Code
+.vscode/
+
+# Fabric / Minecraft dev runtime (миры, конфиги, аккаунты, крэш-репорты)
+run/
+
+# JVM crash logs
+hs_err_pid*.log
+replay_pid*.log
+crash-reports/
+
+# omp session artifacts
 omp-*
+
+# OS
+.DS_Store
+Thumbs.db
