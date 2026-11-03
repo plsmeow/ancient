@@ -30,7 +30,8 @@ object CommandManager : ILoadable {
             FriendCommand,
             TargetCommand,
             StaffCommand,
-            NeuroCommand
+            NeuroCommand,
+            GpsCommand
         )
         EventManager.register(this)
     }

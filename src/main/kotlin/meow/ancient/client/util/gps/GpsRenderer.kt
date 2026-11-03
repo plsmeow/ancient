@@ -2,9 +2,11 @@ package meow.ancient.client.util.gps
 
 import meow.ancient.client.extensions.mc
 import meow.ancient.client.gui.material.M3Theme
+import meow.ancient.client.util.other.color.Color4b
+import meow.ancient.client.util.render.RenderUtils
+import meow.ancient.client.util.render.engine.controls.ClientRenderPipeline
 import meow.ancient.client.util.render.engine.controls.MatrixControl
 import meow.ancient.client.util.render.font.Fonts
-import meow.ancient.client.util.render.RenderUtils
 import net.minecraft.client.renderer.RenderPipelines
 import net.minecraft.resources.Identifier
 import net.minecraft.util.Mth
@@ -74,15 +76,14 @@ object GpsRenderer {
         )
         pose.popMatrix()
 
-        val matrix = MatrixControl.matrix4fStack
         Fonts.google_sans_medium.drawCenteredString(
-            matrix,
+            MatrixControl.matrix4fStack,
             "${distance}m",
             centerX,
             ANCHOR_Y + 4f,
             7f,
-            meow.ancient.client.util.other.color.Color4b.WHITE,
-            pipeline = meow.ancient.client.util.render.engine.controls.ClientRenderPipeline.HUD_TEXT
+            Color4b.WHITE,
+            pipeline = ClientRenderPipeline.HUD_TEXT
         )
     }
 }

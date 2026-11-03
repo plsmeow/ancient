@@ -24,7 +24,7 @@ object Ancient : ClientModInitializer {
 		ThemeManager.load()
 		VulkanFontPipelines.init()
 		VulkanShapePipelines.init()
-		EventManager.register(SlownessManager)
+        EventManager.register(SlownessManager)
 		ClientTickEvents.END_CLIENT_TICK.register {
 			SlownessManager.update()
 			AutoSaveManager.onTick()

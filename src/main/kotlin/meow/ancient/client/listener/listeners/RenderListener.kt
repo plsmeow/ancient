@@ -21,6 +21,7 @@ import meow.ancient.client.util.render.engine.controls.ClientRenderPipeline
 import meow.ancient.client.util.render.engine.controls.LayerControl
 import meow.ancient.client.util.render.engine.controls.MatrixControl
 import meow.ancient.client.util.render.engine.dispatcher.RenderMetrics
+import meow.ancient.client.util.gps.GpsRenderer
 import meow.ancient.client.util.render.font.Fonts
 import meow.ancient.client.util.render.font.MsdfTextRenderer
 import meow.ancient.client.util.render.rect.RectRenderer
@@ -81,6 +82,7 @@ object RenderListener : Listener() {
             if (TagsModule.isEnabled()) {
                 TagsModule.renderItems(guiGraphics, partialTicks)
             }
+            GpsRenderer.render(partialTicks)
             if (isOpenGLActive()) {
                 if (HudModule.isEnabled()) HudModule.onOverlay(event)
             } else {
