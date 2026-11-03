@@ -422,6 +422,7 @@ object HitAuraModule : Module(
                 throughWalls = throughWalls,
                 ignoreFriends = friendProtection
             ) ?: run {
+                sprintResetProcessor.reset()
                 if (rotMode == RotationMode.NEURO) rotationProcessor.returnNeuroRotation(moveFix, gcdFix)
                 return@safeRun
             }

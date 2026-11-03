@@ -150,8 +150,15 @@ object TriggerBotModule : Module(
         sprintResetProcessor.prepareAttack(sprintMode, false)
         val player = mc.player ?: return
         val level = mc.level ?: return
-        if (!canUseContext(player, level)) return
-        val selected = selectTarget(player, level) ?: return
+        if (!canUseContext(player, level)) {
+            sprintResetProcessor.reset()
+            return
+        }
+        val selected = selectTarget(player, level)
+        if (selected == null) {
+            sprintResetProcessor.reset()
+            return
+        }
         target = selected
         sprintResetProcessor.prepareAttack(sprintMode, isReadyForAttack(selected, 1))
         pendingPlayer = player

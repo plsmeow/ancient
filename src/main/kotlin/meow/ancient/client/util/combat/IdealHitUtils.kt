@@ -11,7 +11,7 @@ import net.minecraft.world.effect.MobEffects
 import net.minecraft.client.player.LocalPlayer
 
 object IdealHitUtils {
-    private const val MIN_CRITICAL_FALL_DISTANCE = 0.08
+    private const val MIN_CRITICAL_FALL_DISTANCE = 0.05
 
     fun canAttack(smartCrits: Boolean, sentOnGround: Boolean, sentFallDistance: Double, hasSentMovement: Boolean): Boolean {
         val player = mc.player ?: return false

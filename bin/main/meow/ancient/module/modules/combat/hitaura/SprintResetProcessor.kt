@@ -28,6 +28,7 @@ class SprintResetProcessor {
             && !player.isSwimming && !player.isUnderWater && !player.isInLava && !player.isFallFlying
         if (!canReset || !readyNextMovement) {
             releaseAfterMovement = stoppedSprint
+            if (releaseAfterMovement) reset()
             return
         }
         if (!stoppedSprint) {
@@ -61,6 +62,7 @@ class SprintResetProcessor {
             player.connection.send(ServerboundPlayerCommandPacket(player, ServerboundPlayerCommandPacket.Action.STOP_SPRINTING))
             player.wasSprinting = false
         }
+        releaseAfterMovement = true
     }
 
     fun onMovementSent() {
