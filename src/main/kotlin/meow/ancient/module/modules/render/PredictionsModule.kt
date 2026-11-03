@@ -163,7 +163,7 @@ object PredictionsModule : Module(
             val alpha = (Mth.clamp(ticks / 25.0f, 0f, 1f) * 255).toInt()
             val color = palette.primary.alpha(alpha)
 
-            Gizmos.line(prevPos, pos, color.argb, 2f)
+            Gizmos.line(prevPos, pos, color.argb, 2f).setAlwaysOnTop()
 
             val inEntity = level.getEntities(entity, AABB(prevPos, pos).inflate(0.25)) { ent ->
                 ent is LivingEntity && ent != mc.player && ent.isAlive
