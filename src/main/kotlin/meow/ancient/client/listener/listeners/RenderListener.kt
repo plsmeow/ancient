@@ -29,6 +29,7 @@ import meow.ancient.event.EventManager
 import meow.ancient.event.events.OverlayRenderEvent
 import meow.ancient.module.modules.render.HudModule
 import meow.ancient.module.modules.render.TagsModule
+import meow.ancient.module.modules.other.TestModule
 import net.minecraft.client.DeltaTracker
 import net.minecraft.client.gui.GuiGraphicsExtractor
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents
@@ -88,17 +89,19 @@ object RenderListener : Listener() {
             } else {
                 EventManager.post(event)
             }
+            TestModule.renderShapesShowcase(guiGraphics, partialTicks)
         } finally {
             RenderUtils.currentGraphics = null
         }
     }
 
     fun renderChatHud(guiGraphics: GuiGraphicsExtractor) {
-        if (!inGame || !HudModule.isEnabled()) return
+        if (!inGame) return
         val previousGraphics = RenderUtils.currentGraphics
         RenderUtils.currentGraphics = guiGraphics
         try {
-            HudModule.renderChatOverlay()
+            if (HudModule.isEnabled()) HudModule.renderChatOverlay()
+            TestModule.renderShapesShowcase(guiGraphics, 0f)
         } finally {
             RenderUtils.currentGraphics = previousGraphics
         }

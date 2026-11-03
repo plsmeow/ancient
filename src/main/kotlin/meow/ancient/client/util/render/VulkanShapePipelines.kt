@@ -84,10 +84,22 @@ object VulkanShapePipelines {
         pipeline
     }
 
+    val M3_SHAPE_SDF: RenderPipeline by lazy {
+        val pipeline = RenderPipeline.builder(RenderPipelines.GUI_SNIPPET)
+            .withLocation(Identifier.fromNamespaceAndPath("ancient", "pipeline/m3_shape_sdf"))
+            .withVertexShader(Identifier.fromNamespaceAndPath("ancient", "core/m3_shape_sdf"))
+            .withFragmentShader(Identifier.fromNamespaceAndPath("ancient", "core/m3_shape_sdf"))
+            .withVertexBinding(0, RECT_SDF_FORMAT)
+            .build()
+        RenderPipelines.register(pipeline)
+        pipeline
+    }
+
     fun init() {
         RECT_SDF
         BLUR_RECT_SDF
         CORNER_SDF
+        M3_SHAPE_SDF
         KAWASE_BLUR
     }
 }
