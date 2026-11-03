@@ -6,6 +6,7 @@ import meow.ancient.client.extensions.mc
 import meow.ancient.client.util.anticheat.AnticheatManager
 import meow.ancient.client.gui.material.components.CustomTextField
 import meow.ancient.client.util.inventory.InventoryActionSource
+import meow.ancient.client.util.inventory.SlownessManager
 import meow.ancient.client.util.movement.MoveUtil
 import meow.ancient.event.EventManager
 import meow.ancient.event.events.ClientDisconnectEvent
@@ -24,12 +25,15 @@ import net.minecraft.client.gui.screens.inventory.AnvilScreen
 import net.minecraft.client.gui.screens.inventory.BookEditScreen
 import net.minecraft.client.gui.screens.inventory.StructureBlockEditScreen
 import net.minecraft.client.multiplayer.ClientPacketListener
+import net.minecraft.client.multiplayer.ClientLevel
 import net.minecraft.client.player.ClientInput
 import net.minecraft.client.player.LocalPlayer
 import net.minecraft.network.protocol.Packet
 import net.minecraft.network.protocol.game.ServerboundContainerButtonClickPacket
 import net.minecraft.network.protocol.game.ServerboundContainerClickPacket
 import net.minecraft.network.protocol.game.ServerboundContainerSlotStateChangedPacket
+import net.minecraft.network.protocol.game.ServerboundPlayerCommandPacket
+import net.minecraft.network.protocol.game.ServerboundPlayerInputPacket
 import net.minecraft.network.protocol.game.ServerboundSetCreativeModeSlotPacket
 import net.minecraft.world.entity.player.Input
 import net.minecraft.world.inventory.AbstractContainerMenu
@@ -45,19 +49,22 @@ object InventoryMoveModule : Module(
 ) {
     val sneak by boolean("Sneak", false, "")
 
-    private const val PAUSE_NANOS = 100_000_000L
+    private val pauseNanos: Long
+        get() = if (AnticheatManager.isSwapBypassGrimFast) 50_000_000L else 100_000_000L
     private val packetQueue = ArrayDeque<Packet<*>>()
     private class PendingAction(val action: Runnable, val actionOwner: Any?)
     private val actionQueue = ArrayDeque<PendingAction>()
     private var owner: LocalPlayer? = null
+    private var world: ClientLevel? = null
     private var connection: ClientPacketListener? = null
     private var menu: AbstractContainerMenu? = null
     private var pauseUntil = 0L
     private var lastPreparationRequest = 0L
     private var preparing = false
     private val transactions = ArrayDeque<InventoryActionSource>()
-    private var movementPaused = false
     private var flushing = false
+    private var movementPaused = false
+    private var movementSyncPending = false
     private var closingScreen: AbstractContainerScreen<*>? = null
 
     private object DisconnectListener {
@@ -108,7 +115,7 @@ object InventoryMoveModule : Module(
         check(transactions.removeLast() == source)
         if (transactions.isEmpty() && source == InventoryActionSource.INVENTORY) {
             preparing = false
-            pauseUntil = if (slownessActive()) System.nanoTime() + PAUSE_NANOS else 0L
+            pauseUntil = if (slownessActive()) System.nanoTime() + pauseNanos else 0L
             if (slownessActive()) pauseMovement() else restoreMovement()
         }
     }
@@ -117,9 +124,10 @@ object InventoryMoveModule : Module(
         if (!mc.isSameThread) {
             val player = mc.player ?: return
             val listener = player.connection
+            val level = mc.level ?: return
             val inventoryOwner = player.containerMenu
             mc.execute {
-                if (mc.player === player && player.connection === listener
+                if (mc.player === player && mc.level === level && player.connection === listener
                     && player.containerMenu === inventoryOwner && listener.connection.isConnected) {
                     runInventoryAction(source, action, actionOwner)
                 }
@@ -163,7 +171,7 @@ object InventoryMoveModule : Module(
         restoreMovement()
     }
 
-    fun isInventoryActionSlowed(): Boolean = slownessActive()
+    fun isInventoryActionSlowed(): Boolean = SlownessManager.isSlowed() || slownessActive()
         && (transactions.peekFirst() == InventoryActionSource.INVENTORY || System.nanoTime() < pauseUntil)
 
     fun applySlownessInput(input: ClientInput) {
@@ -171,6 +179,14 @@ object InventoryMoveModule : Module(
         pauseMovement()
         input.keyPresses = Input.EMPTY
         input.moveVector = Vec2.ZERO
+    }
+
+    fun processBeforeMovement() {
+        processPending()
+    }
+
+    fun onMovementSent() {
+        if (movementSyncPending) movementSyncPending = false
     }
 
     @Commando
@@ -184,7 +200,7 @@ object InventoryMoveModule : Module(
         val screen = currentScreen ?: return
         if (!canMoveInScreen(screen)) return
         MoveUtil.updateMovementKeys(includeSneak = sneak)
-        if (AutoSprintModule.isEnabled() && MoveUtil.isMoving()) {
+        if (AutoSprintModule.shouldSprint() && MoveUtil.isMoving()) {
             owner?.isSprinting = true
         }
     }
@@ -197,7 +213,8 @@ object InventoryMoveModule : Module(
             return
         }
         val packet = event.packet
-        if (!isContainerActionPacket(packet) || currentScreen !is AbstractContainerScreen<*>) return
+        if (!isContainerActionPacket(packet) || SlownessManager.isExecutingPreparedAction()
+            || currentScreen !is AbstractContainerScreen<*>) return
         if (packet is ServerboundContainerClickPacket && packet.containerInput() == ContainerInput.SWAP) {
             val player = owner ?: return
             val inventoryMenu = menu ?: return
@@ -205,6 +222,9 @@ object InventoryMoveModule : Module(
                 && InventoryActionSource.fromMenuSlot(player, inventoryMenu, packet.slotNum().toInt(),
                     packet.buttonNum().toInt()) == InventoryActionSource.HOTBAR) {
                 if (packetQueue.isNotEmpty()) flushPackets()
+                movementSyncPending = true
+                pauseUntil = System.nanoTime() + pauseNanos
+                pauseMovement()
                 return
             }
         }
@@ -214,7 +234,8 @@ object InventoryMoveModule : Module(
         event.cancel = true
         preparing = true
         lastPreparationRequest = System.nanoTime()
-        pauseUntil = lastPreparationRequest + PAUSE_NANOS
+        movementSyncPending = true
+        pauseUntil = lastPreparationRequest + pauseNanos
         pauseMovement()
     }
 
@@ -231,8 +252,7 @@ object InventoryMoveModule : Module(
         if (closingScreen != null) return
         closingScreen = screen
         preparing = true
-        lastPreparationRequest = System.nanoTime()
-        pauseUntil = lastPreparationRequest + PAUSE_NANOS
+        movementSyncPending = true
         pauseMovement()
     }
 
@@ -246,7 +266,8 @@ object InventoryMoveModule : Module(
         if (slownessActive()) {
             val now = System.nanoTime()
             lastPreparationRequest = now
-            if (pauseUntil == 0L) pauseUntil = now + PAUSE_NANOS
+            if (movementSyncPending) return false
+            if (pauseUntil == 0L) pauseUntil = now + pauseNanos
             preparing = true
             pauseMovement()
             if (now < pauseUntil) return false
@@ -273,14 +294,15 @@ object InventoryMoveModule : Module(
             pauseUntil = 0L
             preparing = false
         }
-        if (packetQueue.isNotEmpty() && (!slownessActive() || now >= pauseUntil)) {
+        if (packetQueue.isNotEmpty() && (!slownessActive() || now >= pauseUntil)
+            && !movementSyncPending) {
             flushPackets()
             finishClose()
             preparing = false
-            pauseUntil = if (slownessActive()) System.nanoTime() + PAUSE_NANOS else 0L
+            pauseUntil = if (slownessActive()) System.nanoTime() + pauseNanos else 0L
             if (!validateOwner()) return
         }
-        while (actionQueue.isNotEmpty()) {
+        while (!movementSyncPending && System.nanoTime() >= pauseUntil && actionQueue.isNotEmpty()) {
             if (!beginTransaction()) break
             val action = actionQueue.removeFirst().action
             try {
@@ -292,7 +314,7 @@ object InventoryMoveModule : Module(
         }
         if (slownessActive() && actionQueue.isEmpty() && packetQueue.isEmpty()
             && transactions.isEmpty() && System.nanoTime() >= pauseUntil
-            && (!preparing || System.nanoTime() - lastPreparationRequest >= PAUSE_NANOS)) {
+            && (!preparing || System.nanoTime() - lastPreparationRequest >= pauseNanos)) {
             preparing = false
             pauseUntil = 0L
         }
@@ -301,9 +323,14 @@ object InventoryMoveModule : Module(
     }
 
     private fun pauseMovement() {
+        val player = mc.player
         movementPaused = true
         MoveUtil.resetMovementKeys()
-        mc.player?.isSprinting = false
+        player?.isSprinting = false
+        player?.input?.let {
+            it.keyPresses = Input.EMPTY
+            it.moveVector = Vec2.ZERO
+        }
     }
 
     private fun restoreMovement() {
@@ -324,9 +351,10 @@ object InventoryMoveModule : Module(
             clearPending()
             return false
         }
-        if (owner !== player || connection !== player.connection || menu !== player.containerMenu) {
+        if (owner !== player || world !== mc.level || connection !== player.connection || menu !== player.containerMenu) {
             clearPending()
             owner = player
+            world = mc.level
             connection = player.connection
             menu = player.containerMenu
         }
@@ -365,9 +393,11 @@ object InventoryMoveModule : Module(
         actionQueue.clear()
         transactions.clear()
         owner = null
+        world = null
         connection = null
         menu = null
         pauseUntil = 0L
+        movementSyncPending = false
         lastPreparationRequest = 0L
         preparing = false
         closingScreen = null

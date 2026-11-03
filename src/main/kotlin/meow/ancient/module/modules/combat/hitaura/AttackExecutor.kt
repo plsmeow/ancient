@@ -2,7 +2,6 @@ package meow.ancient.module.modules.combat.hitaura
 
 import meow.ancient.client.extensions.inGame
 import meow.ancient.client.extensions.mc
-import meow.ancient.client.extensions.sendPacket
 import meow.ancient.client.util.rotation.RayTraceUtil
 import meow.ancient.client.util.rotation.RotationManager
 import meow.ancient.client.util.rotation.RotationUtil
@@ -31,14 +30,16 @@ class AttackExecutor(
         randomizeCps: Boolean,
         cpsSpread: Double,
         onlyCrits: Boolean,
-        smartCrits: Boolean
+        smartCrits: Boolean,
+        ticksAhead: Int = 0
     ): Boolean {
         if (!inGame || HitAuraModule.shouldIgnoreContext()) return false
         if (RotationUtil.getDistanceToBox(target) > attackRange) return false
-        if (BreachSwapModule.isActive() && !BreachSwapModule.isVirtualCooldownReady()) return false
+        if (BreachSwapModule.isActive() && !BreachSwapModule.isVirtualCooldownReady(ticksAhead)) return false
         if (!AutoMaceModule.isForceReady(target)
-            && !clickerProcessor.isReadyToClick(clickMode, cps, randomizeCps, cpsSpread)) return false
-        return criticalProcessor.isReadyForAttack(onlyCrits, smartCrits)
+            && !clickerProcessor.isReadyToClick(clickMode, cps, randomizeCps, cpsSpread, ticksAhead > 0)) return false
+        return if (ticksAhead > 0) criticalProcessor.shouldPrepareAttack(onlyCrits, smartCrits)
+            else criticalProcessor.isReadyForAttack(onlyCrits, smartCrits)
     }
 
     fun tryAttack(
@@ -52,8 +53,7 @@ class AttackExecutor(
         smartCrits: Boolean,
         sprintResetMode: SprintResetMode,
         rayTrace: Boolean,
-        throughWalls: Boolean,
-        checkAimAngle: Boolean
+        throughWalls: Boolean
     ): Boolean {
         if (!shouldPrepareAttack(target, attackRange, clickMode, cps, randomizeCps, cpsSpread, onlyCrits, smartCrits)) {
             return false
@@ -87,6 +87,7 @@ class AttackExecutor(
                 return false
             }
         }
+        if (!sprintResetProcessor.preAttack(sprintResetMode)) return false
 
         val forceMaceReady = AutoMaceModule.isForceReady(target)
         var previousAxeSlot = -1
@@ -103,51 +104,40 @@ class AttackExecutor(
             if (previousAxeSlot == -1 && BreachSwapModule.isActive()) {
                 breachSwapSlot = BreachSwapModule.swapToBreachMace()
             }
-            if (!sprintResetProcessor.preAttack(sprintResetMode)) return false
             if (MaceKillModule.isEnabled()) {
                 MaceKillModule.doCrit()
             }
 
-            val grim = if (HitAuraModule.rotationMode == HitAuraModule.RotationMode.GRIM_1204) {
-                rotationProcessor.getStrategy(HitAuraModule.RotationMode.GRIM_1204) as? meow.ancient.module.modules.combat.hitaura.rotation.impl.Grim1204Rotation
-            } else null
-            grim?.sendRotationPacket(localPlayer)
-            if (CriticalsModule.isEnabled()) {
-                CriticalsModule.killAuraTriggered = true
-                CriticalsModule.doCrit()
-            }
 
             val swingAnimation = localPlayer.getItemInHand(InteractionHand.MAIN_HAND).attackAnimation
-            if (clickMode == ClickMode.MODE_1_8) {
-                localPlayer.swing(InteractionHand.MAIN_HAND, swingAnimation, false)
-                currentGameMode.attack(localPlayer, target)
-                executed = true
-            } else {
-                currentGameMode.attack(localPlayer, target)
-                executed = true
-                localPlayer.swing(InteractionHand.MAIN_HAND, swingAnimation, false)
-            }
+            currentGameMode.attack(localPlayer, target)
+            executed = true
+            localPlayer.swing(InteractionHand.MAIN_HAND, swingAnimation, false)
             if (HitAuraModule.rotationMode == HitAuraModule.RotationMode.NEURO) {
                 (rotationProcessor.getStrategy(HitAuraModule.RotationMode.NEURO) as NeuroRotation).notifyAttack()
             }
-            grim?.sendResetPacket(localPlayer)
             return true
         } finally {
-            CriticalsModule.killAuraTriggered = false
             try {
                 if (executed) clickerProcessor.onAttackExecuted(clickMode, cps, randomizeCps, cpsSpread)
-                if (executed) sprintResetProcessor.postAttack(sprintResetMode)
             } finally {
-                if (breachSwapSlot != -1) {
-                    BreachSwapModule.swapBack(breachSwapSlot)
+                try {
+                    if (breachSwapSlot != -1) {
+                        BreachSwapModule.swapBack(breachSwapSlot)
+                    }
+                    if (previousAxeSlot != -1) {
+                        ShieldBreakProcessor.swapBack(previousAxeSlot)
+                    }
+                    if (executed) {
+                        BreachSwapModule.onAttackExecuted()
+                    }
+                } finally {
+                    try {
+                        AutoMaceModule.afterAttack(executed)
+                    } finally {
+                        sprintResetProcessor.postAttack(executed)
+                    }
                 }
-                if (previousAxeSlot != -1) {
-                    ShieldBreakProcessor.swapBack(previousAxeSlot)
-                }
-                if (executed) {
-                    BreachSwapModule.onAttackExecuted()
-                }
-                AutoMaceModule.afterAttack(executed)
             }
         }
     }

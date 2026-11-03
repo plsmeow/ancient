@@ -1,6 +1,8 @@
 package meow.ancient.mixin;
 
 import meow.ancient.event.EventManager;
+import meow.ancient.client.util.inventory.SlownessManager;
+import meow.ancient.module.modules.combat.hitaura.CriticalProcessor;
 import meow.ancient.network.SilentPacketQueue;
 import meow.ancient.event.events.PacketReceiveEvent;
 import meow.ancient.event.events.PacketSendEvent;
@@ -8,6 +10,7 @@ import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.ChannelHandlerContext;
 import net.minecraft.network.Connection;
 import net.minecraft.network.protocol.Packet;
+import net.minecraft.network.protocol.game.ServerboundContainerClosePacket;
 import net.minecraft.network.protocol.game.ServerboundSetCarriedItemPacket;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
@@ -33,8 +36,12 @@ public class MixinConnection {
             }
             lastServerSlot = slot;
         }
+        if (packet instanceof ServerboundContainerClosePacket) {
+            SlownessManager.onContainerClose((Connection) (Object) this);
+        }
         if (SilentPacketQueue.consume(packet)) return;
         PacketSendEvent event = new PacketSendEvent(packet);
+        CriticalProcessor.onPacketSend(event);
         EventManager.INSTANCE.post(event);
         if (event.getCancel()) {
             ci.cancel();

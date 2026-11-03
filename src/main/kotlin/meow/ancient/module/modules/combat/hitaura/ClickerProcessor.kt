@@ -20,18 +20,20 @@ class ClickerProcessor {
         clickMode: ClickMode,
         cps: Double,
         randomize: Boolean,
-        randomSpread: Double
+        randomSpread: Double,
+        preparingNextAttack: Boolean = false
     ): Boolean {
         if (!inGame) return false
         val localPlayer = mc.player ?: return false
+        val lookaheadMs = if (preparingNextAttack) 50L else 0L
 
         return when (clickMode) {
             ClickMode.MODE_1_9 -> {
-                val cooldownReady = localPlayer.getAttackStrengthScale(0.0f) >= 0.95f
-                cooldownReady && clickTimer.isComplete(45L)
+                val cooldownReady = localPlayer.getAttackStrengthScale(if (preparingNextAttack) 2.0f else 0.0f) >= 0.95f
+                cooldownReady && clickTimer.isComplete((45L - lookaheadMs).coerceAtLeast(0L))
             }
             ClickMode.MODE_1_8 -> {
-                clickTimer.isComplete(nextDelayMs)
+                clickTimer.isComplete((nextDelayMs - lookaheadMs).coerceAtLeast(0L))
             }
         }
     }

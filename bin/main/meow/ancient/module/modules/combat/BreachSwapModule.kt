@@ -33,9 +33,9 @@ object BreachSwapModule : Module(
     fun isActive(): Boolean =
         isEnabled() && mc.player != null && mc.level != null && findBreachMaceSlot() != -1
 
-    fun isVirtualCooldownReady(): Boolean {
+    fun isVirtualCooldownReady(ticksAhead: Int = 0): Boolean {
         val fullChargeTicks = 20.0f / MACE_ATTACK_SPEED
-        val progress = Mth.clamp((ticksSinceAttack + 0.5f) / fullChargeTicks, 0.0f, 1.0f)
+        val progress = Mth.clamp((ticksSinceAttack + ticksAhead + 0.5f) / fullChargeTicks, 0.0f, 1.0f)
         return progress >= 0.98f
     }
 

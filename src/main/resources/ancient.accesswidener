@@ -19,6 +19,7 @@ mutable field net/minecraft/world/entity/LivingEntity noJumpDelay I
 accessible field net/minecraft/client/Minecraft rightClickDelay I
 mutable field net/minecraft/client/Minecraft rightClickDelay I
 accessible method net/minecraft/client/multiplayer/MultiPlayerGameMode startPrediction (Lnet/minecraft/client/multiplayer/ClientLevel;Lnet/minecraft/client/multiplayer/prediction/PredictiveAction;)V
+accessible method net/minecraft/world/entity/Entity collide (Lnet/minecraft/world/phys/Vec3;)Lnet/minecraft/world/phys/Vec3;
 
 # Input
 accessible field net/minecraft/client/KeyMapping key Lcom/mojang/blaze3d/platform/InputConstants$Key;

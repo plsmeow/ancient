@@ -4,10 +4,12 @@ import meow.ancient.client.util.rotation.RotationManager;
 import meow.ancient.event.EventManager;
 import meow.ancient.event.events.PlayerTickEndEvent;
 import meow.ancient.event.events.PlayerUpdateEvent;
+import meow.ancient.event.events.PlayerPreMovementEvent;
 import meow.ancient.event.events.PlayerMovementSentEvent;
 import meow.ancient.module.modules.combat.HitAuraModule;
 import meow.ancient.module.modules.combat.SpearKillModule;
 import meow.ancient.module.modules.combat.TriggerBotModule;
+import meow.ancient.module.modules.combat.hitaura.CriticalProcessor;
 import meow.ancient.module.modules.movement.InventoryMoveModule;
 import meow.ancient.module.modules.movement.NoSlowModule;
 import net.minecraft.client.player.LocalPlayer;
@@ -38,6 +40,12 @@ public class MixinLocalPlayer {
     @Inject(method = "sendChanges", at = @At("HEAD"))
     private void onPreSendChanges(CallbackInfo ci) {
         RotationManager.INSTANCE.onPreSendChanges((LocalPlayer) (Object) this);
+        LocalPlayer player = (LocalPlayer) (Object) this;
+        if (player == net.minecraft.client.Minecraft.getInstance().player && player.connection.hasClientLoaded()) {
+            InventoryMoveModule.INSTANCE.processBeforeMovement();
+            EventManager.INSTANCE.post(PlayerPreMovementEvent.INSTANCE);
+            CriticalProcessor.onBeginMovementObservation();
+        }
     }
 
     @Inject(method = "sendChanges", at = @At("RETURN"))
@@ -45,13 +53,16 @@ public class MixinLocalPlayer {
         RotationManager.INSTANCE.onPostSendChanges((LocalPlayer) (Object) this);
         LocalPlayer player = (LocalPlayer) (Object) this;
         if (player == net.minecraft.client.Minecraft.getInstance().player && player.connection.hasClientLoaded()) {
+            CriticalProcessor.onMovementSent();
+            InventoryMoveModule.INSTANCE.onMovementSent();
             EventManager.INSTANCE.post(PlayerMovementSentEvent.INSTANCE);
         }
     }
 
     @Inject(method = "canStartSprinting", at = @At("HEAD"), cancellable = true)
     private void preventSprintBeforeCriticalMovement(CallbackInfoReturnable<Boolean> cir) {
-        if (HitAuraModule.INSTANCE.shouldPreventSprint() || TriggerBotModule.INSTANCE.shouldPreventSprint()) {
+        if (HitAuraModule.INSTANCE.shouldPreventSprint() || TriggerBotModule.INSTANCE.shouldPreventSprint()
+            || InventoryMoveModule.INSTANCE.shouldPreventSprint()) {
             cir.setReturnValue(false);
         }
     }

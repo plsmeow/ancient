@@ -27,7 +27,8 @@ object AutoSprintModule : Module(
 
     override fun onDisable() {
         if (inGame) {
-            mc.options.keySprint.isDown = MoveUtil.isKeyPressed(mc.options.keySprint)
+            mc.options.keySprint.isDown = !InventoryMoveModule.shouldPreventSprint()
+                && MoveUtil.isKeyPressed(mc.options.keySprint)
         }
     }
 
@@ -36,6 +37,7 @@ object AutoSprintModule : Module(
         safeRun {
             if (HitAuraModule.shouldPreventSprint() || TriggerBotModule.shouldPreventSprint() || InventoryMoveModule.shouldPreventSprint()) {
                 player.isSprinting = false
+                mc.options.keySprint.isDown = false
                 return@safeRun
             }
 

@@ -2,11 +2,7 @@ package meow.ancient.client.util.inventory
 
 import meow.ancient.client.extensions.mc
 import meow.ancient.client.util.anticheat.AnticheatManager
-import meow.ancient.module.modules.movement.InventoryMoveModule
 import net.minecraft.network.protocol.game.ServerboundContainerClosePacket
-import net.minecraft.network.protocol.game.ServerboundPlayerCommandPacket
-import net.minecraft.network.protocol.game.ServerboundPlayerInputPacket
-import net.minecraft.world.entity.player.Input
 
 object SwapUtil {
     fun isSlownessActive(): Boolean =
@@ -19,6 +15,17 @@ object SwapUtil {
     ) {
         val player = mc.player ?: return
         val connection = player.connection
+        val menu = player.containerMenu
+        val world = mc.level
+        if (!mc.isSameThread) {
+            mc.execute {
+                if (mc.player === player && mc.level === world && player.connection === connection
+                    && player.containerMenu === menu && connection.connection.isConnected) {
+                    clickWithBypass(closeAfter, durationMs, action)
+                }
+            }
+            return
+        }
 
         if (!AnticheatManager.isSwapBypassActive) {
             action()
@@ -28,22 +35,31 @@ object SwapUtil {
             return
         }
 
-        SlownessManager.addTask(durationMs) {
-            val wasSprinting = player.isSprinting || mc.options.keySprint.isDown
-            if (wasSprinting) {
-                mc.options.keySprint.isDown = false
-                player.isSprinting = false
-                connection.send(
-                    ServerboundPlayerCommandPacket(player, ServerboundPlayerCommandPacket.Action.STOP_SPRINTING)
-                )
-            }
-
-            connection.send(ServerboundPlayerInputPacket(Input.EMPTY))
-
+        if (AnticheatManager.isSwapBypassGrimFast) {
+            clickGrimFast(closeAfter, action)
+            return
+        }
+        SlownessManager.addImmediateTask(durationMs) {
             action()
+            if (closeAfter && mc.player === player && mc.level === world
+                && player.connection === connection && player.containerMenu === menu
+                && connection.connection.isConnected) {
+                connection.send(ServerboundContainerClosePacket(menu.containerId))
+            }
+        }
+    }
+    private fun clickGrimFast(closeAfter: Boolean, action: () -> Unit) {
+        val player = mc.player ?: return
+        val world = mc.level ?: return
+        val connection = player.connection
+        val menu = player.containerMenu
 
-            if (closeAfter) {
-                connection.send(ServerboundContainerClosePacket(0))
+        SlownessManager.addTask(50L) {
+            action()
+            if (closeAfter && mc.player === player && mc.level === world
+                && player.connection === connection && player.containerMenu === menu
+                && connection.connection.isConnected) {
+                connection.send(ServerboundContainerClosePacket(menu.containerId))
             }
         }
     }

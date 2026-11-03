@@ -12,14 +12,14 @@ object AntiCheatModule : Module(
         name = "Sprint Reset",
         value = "Packet",
         modes = listOf("Legit", "Packet"),
-        description = "Global sprint reset mode after attack"
+        description = "Legit stops sprint before movement and resumes naturally; Packet stops before attack and restarts after"
     )
 
     val swapBypass by mode(
         name = "Swap Bypass",
         value = "Grim",
-        modes = listOf("Off", "Grim"),
-        description = "Inventory swap bypass mode"
+        modes = listOf("Off", "Grim", "GrimFast"),
+        description = "GrimFast pauses input for 50 ms before swaps and 60 ms on inventory or container close"
     )
 
     val healthSource by mode(

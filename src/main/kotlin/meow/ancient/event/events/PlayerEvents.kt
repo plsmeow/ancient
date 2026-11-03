@@ -15,3 +15,10 @@ class PlayerMovementSentEvent : Event() {
         val INSTANCE = PlayerMovementSentEvent()
     }
 }
+
+class PlayerPreMovementEvent : Event() {
+    companion object {
+        @JvmField
+        val INSTANCE = PlayerPreMovementEvent()
+    }
+}

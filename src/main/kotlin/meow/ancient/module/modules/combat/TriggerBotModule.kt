@@ -6,6 +6,8 @@ import meow.ancient.client.extensions.mc
 import meow.ancient.client.util.anticheat.AnticheatManager
 import meow.ancient.event.events.ClientDisconnectEvent
 import meow.ancient.event.events.PlayerMovementSentEvent
+import meow.ancient.event.events.PlayerPreMovementEvent
+import meow.ancient.event.events.PacketSendEvent
 import meow.ancient.event.events.PlayerUpdateEvent
 import meow.ancient.module.Module
 import meow.ancient.module.modules.combat.HitAuraModule.ClickMode
@@ -29,7 +31,7 @@ import sweetie.evaware.flora.api.Commando
 object TriggerBotModule : Module(
     name = "Trigger Bot",
     category = COMBAT,
-    description = "Attacks the nearest entity intersecting your view after movement without rotating"
+    description = "Attacks the nearest entity intersecting your view before movement without rotating"
 ) {
     val targets = targets("Targets", setOf("minecraft:player"))
     val ignoreOn by multiMode("Ignore On", setOf("Gui"), listOf("Use", "Gui"))
@@ -44,8 +46,11 @@ object TriggerBotModule : Module(
         "Spread", 2.0, 0.5, 5.0, 0.5, 1,
         isVisible = { clickMode == ClickMode.MODE_1_8 && cpsRandomization }
     )
-    val onlyCrits by boolean("Only Crits", true)
-    val smartCrits by boolean("Smart Crits", true, isVisible = { onlyCrits })
+    val onlyCrits by boolean("Only Crits", true,
+        description = "Wait for at least 0.08 blocks of descent or ready packet crits; allow attacks when crits are impossible")
+    val smartCrits by boolean("Smart Crits", true,
+        description = "Allow ground attacks without holding jump; disabling waits for a real fall when crits are possible",
+        isVisible = { onlyCrits })
 
     private val targetSelector = TargetSelector()
     private val clickerProcessor = ClickerProcessor()
@@ -69,6 +74,7 @@ object TriggerBotModule : Module(
         target = null
         targetSelector.reset()
         clickerProcessor.reset()
+        criticalProcessor.reset()
         sprintResetProcessor.reset()
     }
 
@@ -127,37 +133,41 @@ object TriggerBotModule : Module(
     private fun shouldUseAxe(target: LivingEntity): Boolean =
         breakShield && ShieldBreakProcessor.isTargetBlocking(target) && ShieldBreakProcessor.findAxeInHotbar() != -1
 
-    private fun isReadyForAttack(target: LivingEntity): Boolean {
+    private fun isReadyForAttack(target: LivingEntity, ticksAhead: Int = 0): Boolean {
         val useAxe = shouldUseAxe(target)
-        if (!useAxe && BreachSwapModule.isActive() && !BreachSwapModule.isVirtualCooldownReady()) return false
+        if (!useAxe && BreachSwapModule.isActive() && !BreachSwapModule.isVirtualCooldownReady(ticksAhead)) return false
         if ((useAxe || !AutoMaceModule.isForceReady(target))
-            && !clickerProcessor.isReadyToClick(clickMode, cps, cpsRandomization, cpsSpread)) return false
-        return criticalProcessor.isReadyForAttack(onlyCrits, smartCrits && !mc.options.keyJump.isDown)
+            && !clickerProcessor.isReadyToClick(clickMode, cps, cpsRandomization, cpsSpread, ticksAhead > 0)) return false
+        return if (ticksAhead > 0) criticalProcessor.shouldPrepareAttack(onlyCrits, smartCrits)
+            else criticalProcessor.isReadyForAttack(onlyCrits, smartCrits)
     }
 
     @Commando
     fun onUpdate(event: PlayerUpdateEvent) {
         clearPendingAttack()
         target = null
-        sprintResetProcessor.onTick()
+        val sprintMode = SprintResetMode.fromName(AnticheatManager.sprintReset)
+        sprintResetProcessor.prepareAttack(sprintMode, false)
         val player = mc.player ?: return
         val level = mc.level ?: return
         if (!canUseContext(player, level)) return
         val selected = selectTarget(player, level) ?: return
         target = selected
+        sprintResetProcessor.prepareAttack(sprintMode, isReadyForAttack(selected, 1))
         pendingPlayer = player
         pendingLevel = level
         pendingTick = player.tickCount
     }
 
     @Commando
-    fun onMovementSent(event: PlayerMovementSentEvent) {
-        val expectedPlayer = pendingPlayer ?: return
-        val expectedLevel = pendingLevel ?: return
+    fun onPreMovement(event: PlayerPreMovementEvent) {
+        val expectedPlayer = pendingPlayer
+        val expectedLevel = pendingLevel
         val expectedTarget = target
         val expectedTick = pendingTick
         clearPendingAttack()
         try {
+            if (expectedPlayer == null || expectedLevel == null) return
             if (!canUseContext(expectedPlayer, expectedLevel)
                 || expectedPlayer.tickCount != expectedTick && expectedPlayer.tickCount != expectedTick + 1) {
                 target = null
@@ -169,9 +179,12 @@ object TriggerBotModule : Module(
             if (!isReadyForAttack(selected)) return
             attack(expectedPlayer, expectedLevel, selected)
         } finally {
-            sprintResetProcessor.reset()
+            if (HitAuraModule.isEnabled()) sprintResetProcessor.reset()
+            else sprintResetProcessor.onPreMovement()
+            CriticalProcessor.onBeginMovementObservation()
         }
     }
+
 
     private fun attack(player: LocalPlayer, level: ClientLevel, target: LivingEntity) {
         val gameMode = mc.gameMode ?: return
@@ -182,7 +195,7 @@ object TriggerBotModule : Module(
         val sprintMode = SprintResetMode.fromName(AnticheatManager.sprintReset)
         val useAxe = shouldUseAxe(target)
         val forceMaceReady = !useAxe && AutoMaceModule.isForceReady(target)
-        val previouslyTriggered = CriticalsModule.killAuraTriggered
+        if (!sprintResetProcessor.preAttack(sprintMode)) return
         var previousAxeSlot = -1
         var previousBreachSlot = -1
         var executed = false
@@ -199,13 +212,9 @@ object TriggerBotModule : Module(
             }
             if (!canUseContext(player, level) || mc.gameMode !== gameMode
                 || level.getEntity(target.id) !== target || selectTarget(player, level) !== target) return
-            if (!criticalProcessor.isReadyForAttack(onlyCrits, smartCrits && !mc.options.keyJump.isDown)) return
-            if (!sprintResetProcessor.preAttack(sprintMode)) return
+            if (!criticalProcessor.isReadyForAttack(onlyCrits, smartCrits)) return
             if (MaceKillModule.isEnabled()) MaceKillModule.doCrit()
-            if (CriticalsModule.isEnabled()) {
-                CriticalsModule.killAuraTriggered = true
-                CriticalsModule.doCrit()
-            }
+
             if (!canUseContext(player, level) || mc.gameMode !== gameMode
                 || level.getEntity(target.id) !== target) return
             val animation = player.getItemInHand(InteractionHand.MAIN_HAND).attackAnimation
@@ -219,11 +228,9 @@ object TriggerBotModule : Module(
                 player.swing(InteractionHand.MAIN_HAND, animation, false)
             }
         } finally {
-            CriticalsModule.killAuraTriggered = previouslyTriggered
             try {
                 if (executed) {
                     clickerProcessor.onAttackExecuted(mode, attackCps, randomize, spread)
-                    sprintResetProcessor.postAttack(sprintMode)
                     BreachSwapModule.onAttackExecuted()
                 }
             } finally {
@@ -239,7 +246,11 @@ object TriggerBotModule : Module(
                     try {
                         if (mc.player === player && previousAxeSlot != -1) ShieldBreakProcessor.swapBack(previousAxeSlot)
                     } finally {
-                        AutoMaceModule.afterAttack(executed)
+                        try {
+                            AutoMaceModule.afterAttack(executed)
+                        } finally {
+                            sprintResetProcessor.postAttack(executed)
+                        }
                     }
                 }
             }

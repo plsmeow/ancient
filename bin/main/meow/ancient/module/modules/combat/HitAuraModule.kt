@@ -9,6 +9,8 @@ import meow.ancient.client.util.rotation.RotationManager
 import meow.ancient.event.events.PlayerUpdateEvent
 import meow.ancient.event.events.ClientDisconnectEvent
 import meow.ancient.event.events.PlayerMovementSentEvent
+import meow.ancient.event.events.PlayerPreMovementEvent
+import meow.ancient.event.events.PacketSendEvent
 import net.minecraft.client.player.LocalPlayer
 import net.minecraft.client.multiplayer.ClientLevel
 import meow.ancient.module.Module
@@ -21,7 +23,7 @@ import sweetie.evaware.flora.api.Commando
 object HitAuraModule : Module(
     name = "HitAura",
     category = COMBAT,
-    description = "Aim before movement and recheck attacks after movement; 1.9 cooldown threshold is 95%"
+    description = "Aim and recheck attacks before movement; 1.9 cooldown threshold is 95%"
 ) {
     enum class TargetPriority(val displayName: String) {
         DISTANCE("Distance"),
@@ -307,12 +309,12 @@ object HitAuraModule : Module(
     val onlyCrits by boolean(
         name = "Only Crits",
         value = true,
-        description = "Recheck critical timing after movement; hold jump to wait for descent above water"
+        description = "Wait for at least 0.08 blocks of descent or ready packet crits; allow attacks when crits are impossible"
     )
     val smartCrits by boolean(
         name = "Smart Crits",
         value = true,
-        description = "Allow grounded attacks without jumping; coordinate with ready Criticals modes",
+        description = "Allow ground attacks without holding jump; disabling waits for a real fall when crits are possible",
         isVisible = { onlyCrits }
     )
 
@@ -362,6 +364,7 @@ object HitAuraModule : Module(
         targetSelector.reset()
         rotationProcessor.reset()
         clickerProcessor.reset()
+        criticalProcessor.reset()
         sprintResetProcessor.reset()
         RotationManager.resetImmediate()
     }
@@ -371,6 +374,7 @@ object HitAuraModule : Module(
         targetSelector.reset()
         rotationProcessor.reset()
         clickerProcessor.reset()
+        criticalProcessor.reset()
         sprintResetProcessor.reset()
     }
 
@@ -379,6 +383,7 @@ object HitAuraModule : Module(
         targetSelector.reset()
         rotationProcessor.reset()
         clickerProcessor.reset()
+        criticalProcessor.reset()
         sprintResetProcessor.reset()
         RotationManager.resetImmediate()
     }
@@ -386,7 +391,8 @@ object HitAuraModule : Module(
     @Commando
     fun onUpdate(event: PlayerUpdateEvent) {
         clearPendingAttack()
-        sprintResetProcessor.onTick()
+        val sprintMode = SprintResetMode.fromName(AnticheatManager.sprintReset)
+        sprintResetProcessor.prepareAttack(sprintMode, false)
         safeRun {
             if (player.isDeadOrDying) {
                 targetSelector.reset()
@@ -396,7 +402,6 @@ object HitAuraModule : Module(
             if (shouldIgnoreContext()) {
                 targetSelector.reset()
                 rotationProcessor.reset()
-                sprintResetProcessor.reset()
                 RotationManager.resetImmediate()
                 return@safeRun
             }
@@ -425,7 +430,7 @@ object HitAuraModule : Module(
             val moveFixMode = moveFix
             val cMode = clickMode
 
-            val readyToAttackNow = attackExecutor.shouldPrepareAttack(
+            val readyNextAttack = attackExecutor.shouldPrepareAttack(
                 target = target,
                 attackRange = maxReach,
                 clickMode = cMode,
@@ -433,8 +438,10 @@ object HitAuraModule : Module(
                 randomizeCps = cpsRandomization,
                 cpsSpread = cpsSpread,
                 onlyCrits = onlyCrits,
-                smartCrits = smartCrits
+                smartCrits = smartCrits,
+                ticksAhead = 1
             )
+            sprintResetProcessor.prepareAttack(sprintMode, readyNextAttack)
             val overrideAimPoint = if (elytraTarget && player.isFallFlying && elytraPredict) {
                 val targetVel = target.deltaMovement
                 target.position().add(
@@ -458,7 +465,7 @@ object HitAuraModule : Module(
                 rotationSpeed = rotationSpeed.toFloat(),
                 gcdEnabled = gcdFix,
                 moveFixMode = moveFixMode,
-                shouldSnapNow = readyToAttackNow,
+                shouldSnapNow = readyNextAttack,
                 overrideAimPoint = overrideAimPoint
             )
 
@@ -470,13 +477,14 @@ object HitAuraModule : Module(
     }
 
     @Commando
-    fun onMovementSent(event: PlayerMovementSentEvent) {
-        val target = pendingTarget ?: return
+    fun onPreMovement(event: PlayerPreMovementEvent) {
+        val target = pendingTarget
         val expectedPlayer = pendingPlayer
         val expectedLevel = pendingLevel
         val expectedTick = pendingTick
         clearPendingAttack()
         try {
+            if (target == null) return
             if (!isEnabled()) return
             safeRun {
                 if (player !== expectedPlayer || level !== expectedLevel || player.isDeadOrDying) return@safeRun
@@ -499,12 +507,14 @@ object HitAuraModule : Module(
                     smartCrits = smartCrits,
                     sprintResetMode = sResetMode,
                     rayTrace = enforceRayTrace,
-                    throughWalls = throughWalls,
-                    checkAimAngle = false
+                    throughWalls = throughWalls
                 )
             }
         } finally {
-            sprintResetProcessor.reset()
+            sprintResetProcessor.onPreMovement()
+            CriticalProcessor.onBeginMovementObservation()
         }
     }
+
+
 }

@@ -9,6 +9,7 @@ import meow.ancient.client.sound.ModSounds
 import meow.ancient.client.util.inventory.SlownessManager
 import meow.ancient.client.util.render.VulkanShapePipelines
 import meow.ancient.client.util.render.font.VulkanFontPipelines
+import meow.ancient.event.EventManager
 import meow.ancient.module.ModuleManager
 import meow.ancient.module.modules.combat.HitAuraModule
 import meow.ancient.module.modules.combat.hitaura.rotation.impl.NeuroRotation
@@ -23,14 +24,17 @@ object Ancient : ClientModInitializer {
 		ThemeManager.load()
 		VulkanFontPipelines.init()
 		VulkanShapePipelines.init()
+		EventManager.register(SlownessManager)
 		ClientTickEvents.END_CLIENT_TICK.register {
 			SlownessManager.update()
 			AutoSaveManager.onTick()
 		}
 		ClientLevelEvents.AFTER_CLIENT_LEVEL_CHANGE.register { _, _ ->
+			SlownessManager.clear()
 			AutoSaveManager.saveAll()
 		}
 		ClientLifecycleEvents.CLIENT_STOPPING.register {
+			SlownessManager.clear()
 			stopNeuroRecording()
 			AutoSaveManager.saveAll()
 		}

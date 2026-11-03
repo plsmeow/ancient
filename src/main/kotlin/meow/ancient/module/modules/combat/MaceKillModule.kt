@@ -36,8 +36,6 @@ object MaceKillModule : Module(
 
     @JvmField
     var cancelCrit = false
-    @JvmField
-    var killAuraTriggered = false
 
     private var funskyWaitingSmash = false
     private var funskyFirstSmash = false
