@@ -11,6 +11,7 @@ object SwapUtil {
     fun clickWithBypass(
         closeAfter: Boolean = true,
         durationMs: Long = 75L,
+        forceGrim: Boolean = false,
         action: () -> Unit
     ) {
         val player = mc.player ?: return
@@ -21,7 +22,7 @@ object SwapUtil {
             mc.execute {
                 if (mc.player === player && mc.level === world && player.connection === connection
                     && player.containerMenu === menu && connection.connection.isConnected) {
-                    clickWithBypass(closeAfter, durationMs, action)
+                    clickWithBypass(closeAfter, durationMs, forceGrim, action)
                 }
             }
             return
@@ -35,7 +36,7 @@ object SwapUtil {
             return
         }
 
-        if (AnticheatManager.isSwapBypassGrimFast) {
+        if (AnticheatManager.isSwapBypassGrimFast && !forceGrim) {
             clickGrimFast(closeAfter, action)
             return
         }

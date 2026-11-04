@@ -160,7 +160,13 @@ object TriggerBotModule : Module(
             return
         }
         target = selected
-        sprintResetProcessor.prepareAttack(sprintMode, isReadyForAttack(selected, 1))
+        sprintResetProcessor.prepareAttack(
+            sprintMode,
+            criticalProcessor.shouldStopSprinting(
+                onlyCrits,
+                clickerProcessor.isReadyToClick(clickMode, cps, cpsRandomization, cpsSpread, true)
+            )
+        )
         pendingPlayer = player
         pendingLevel = level
         pendingTick = player.tickCount
@@ -188,7 +194,6 @@ object TriggerBotModule : Module(
         } finally {
             if (HitAuraModule.isEnabled()) sprintResetProcessor.reset()
             else sprintResetProcessor.onPreMovement()
-            CriticalProcessor.onBeginMovementObservation()
         }
     }
 

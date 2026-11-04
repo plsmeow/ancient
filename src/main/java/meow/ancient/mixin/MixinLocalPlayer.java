@@ -9,7 +9,6 @@ import meow.ancient.event.events.PlayerMovementSentEvent;
 import meow.ancient.module.modules.combat.HitAuraModule;
 import meow.ancient.module.modules.combat.SpearKillModule;
 import meow.ancient.module.modules.combat.TriggerBotModule;
-import meow.ancient.module.modules.combat.hitaura.CriticalProcessor;
 import meow.ancient.module.modules.movement.InventoryMoveModule;
 import meow.ancient.module.modules.movement.NoSlowModule;
 import net.minecraft.client.player.LocalPlayer;
@@ -44,7 +43,6 @@ public class MixinLocalPlayer {
         if (player == net.minecraft.client.Minecraft.getInstance().player && player.connection.hasClientLoaded()) {
             InventoryMoveModule.INSTANCE.processBeforeMovement();
             EventManager.INSTANCE.post(PlayerPreMovementEvent.INSTANCE);
-            CriticalProcessor.onBeginMovementObservation();
         }
     }
 
@@ -53,7 +51,6 @@ public class MixinLocalPlayer {
         RotationManager.INSTANCE.onPostSendChanges((LocalPlayer) (Object) this);
         LocalPlayer player = (LocalPlayer) (Object) this;
         if (player == net.minecraft.client.Minecraft.getInstance().player && player.connection.hasClientLoaded()) {
-            CriticalProcessor.onMovementSent();
             InventoryMoveModule.INSTANCE.onMovementSent();
             EventManager.INSTANCE.post(PlayerMovementSentEvent.INSTANCE);
         }

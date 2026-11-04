@@ -2,7 +2,6 @@ package meow.ancient.mixin;
 
 import meow.ancient.event.EventManager;
 import meow.ancient.client.util.inventory.SlownessManager;
-import meow.ancient.module.modules.combat.hitaura.CriticalProcessor;
 import meow.ancient.network.SilentPacketQueue;
 import meow.ancient.event.events.PacketReceiveEvent;
 import meow.ancient.event.events.PacketSendEvent;
@@ -41,7 +40,6 @@ public class MixinConnection {
         }
         if (SilentPacketQueue.consume(packet)) return;
         PacketSendEvent event = new PacketSendEvent(packet);
-        CriticalProcessor.onPacketSend(event);
         EventManager.INSTANCE.post(event);
         if (event.getCancel()) {
             ci.cancel();

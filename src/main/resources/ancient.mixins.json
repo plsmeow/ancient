@@ -9,6 +9,8 @@
         "MixinMinecraft",
         "ServerboundMovePlayerPacketAccessor",
         "MixinLocalPlayer",
+        "LivingEntityAccessor",
+        "EntityCollisionContextAccessor",
         "MixinKeyboardInput",
         "MixinClientInput",
         "MixinEntity",

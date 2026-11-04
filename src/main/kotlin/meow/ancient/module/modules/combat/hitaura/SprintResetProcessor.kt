@@ -36,15 +36,24 @@ class SprintResetProcessor {
         }
         stoppedSprint = true
         releaseAfterMovement = false
+        if (player.wasSprinting) {
+            player.connection.send(ServerboundPlayerCommandPacket(player, ServerboundPlayerCommandPacket.Action.STOP_SPRINTING))
+            player.wasSprinting = false
+        }
         player.isSprinting = false
     }
 
     fun preAttack(mode: SprintResetMode): Boolean {
         if (!inGame) return false
         if (mode == SprintResetMode.OFF) return true
+        this.mode = mode
         val player = mc.player ?: return false
         if (player.isSwimming || player.isUnderWater || player.isInLava || player.isFallFlying) return true
-        if (player.isSprinting || player.wasSprinting) return false
+        if (player.isSprinting || player.wasSprinting) {
+            player.connection.send(ServerboundPlayerCommandPacket(player, ServerboundPlayerCommandPacket.Action.STOP_SPRINTING))
+        }
+        player.isSprinting = false
+        player.wasSprinting = false
         stoppedSprint = true
         releaseAfterMovement = false
         return true
@@ -58,18 +67,15 @@ class SprintResetProcessor {
         if (!stoppedSprint) return
         val player = mc.player ?: return
         player.isSprinting = false
-        if (mode == SprintResetMode.PACKET && player.wasSprinting) {
-            player.connection.send(ServerboundPlayerCommandPacket(player, ServerboundPlayerCommandPacket.Action.STOP_SPRINTING))
-            player.wasSprinting = false
-        }
         releaseAfterMovement = true
     }
 
     fun onMovementSent() {
         if (!releaseAfterMovement) return
         val restoreSprint = restorePacketSprint
+        val currentMode = mode
         reset()
-        if (!restoreSprint || InventoryMoveModule.shouldPreventSprint()) return
+        if (currentMode == SprintResetMode.LB || !restoreSprint || InventoryMoveModule.shouldPreventSprint()) return
         val player = mc.player ?: return
         if (player.connection.connection.isConnected) player.isSprinting = true
     }

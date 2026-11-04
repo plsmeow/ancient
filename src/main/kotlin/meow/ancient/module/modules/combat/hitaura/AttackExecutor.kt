@@ -42,6 +42,21 @@ class AttackExecutor(
             else criticalProcessor.isReadyForAttack(onlyCrits, smartCrits)
     }
 
+    fun willClickNextTick(
+        target: LivingEntity,
+        attackRange: Double,
+        clickMode: ClickMode,
+        cps: Double,
+        randomizeCps: Boolean,
+        cpsSpread: Double
+    ): Boolean {
+        if (!inGame || HitAuraModule.shouldIgnoreContext()) return false
+        if (RotationUtil.getDistanceToBox(target) > attackRange) return false
+        if (!AutoMaceModule.isForceReady(target)
+            && !clickerProcessor.isReadyToClick(clickMode, cps, randomizeCps, cpsSpread, true)) return false
+        return true
+    }
+
     fun tryAttack(
         target: LivingEntity,
         attackRange: Double,

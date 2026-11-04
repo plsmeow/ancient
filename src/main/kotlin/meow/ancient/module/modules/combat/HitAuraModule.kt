@@ -101,6 +101,7 @@ object HitAuraModule : Module(
     enum class SprintResetMode(val displayName: String) {
         LEGIT("Legit"),
         PACKET("Packet"),
+        LB("LB"),
         OFF("Off");
 
         companion object {
@@ -442,7 +443,13 @@ object HitAuraModule : Module(
                 smartCrits = smartCrits,
                 ticksAhead = 1
             )
-            sprintResetProcessor.prepareAttack(sprintMode, readyNextAttack)
+            sprintResetProcessor.prepareAttack(
+                sprintMode,
+                criticalProcessor.shouldStopSprinting(
+                    onlyCrits,
+                    attackExecutor.willClickNextTick(target, maxReach, cMode, cps, cpsRandomization, cpsSpread)
+                )
+            )
             val overrideAimPoint = if (elytraTarget && player.isFallFlying && elytraPredict) {
                 val targetVel = target.deltaMovement
                 target.position().add(
@@ -513,7 +520,6 @@ object HitAuraModule : Module(
             }
         } finally {
             sprintResetProcessor.onPreMovement()
-            CriticalProcessor.onBeginMovementObservation()
         }
     }
 

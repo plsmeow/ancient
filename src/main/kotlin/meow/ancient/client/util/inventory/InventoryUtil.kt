@@ -26,12 +26,12 @@ object InventoryUtil {
     private val invent_rad = 9 until 36
     private val allslots = 0 until 36
 
-    fun swapToOffhand(slot: Int, closeInvPacket: Boolean = true) {
+    fun swapToOffhand(slot: Int, closeInvPacket: Boolean = true, forceGrim: Boolean = false) {
         val player = mc.player ?: return
         val gameMode = mc.gameMode ?: return
         val menu = player.containerMenu
         if (menu !== player.inventoryMenu || !canModifyInventory(player)) return
-        SwapUtil.clickWithBypass(closeAfter = closeInvPacket) {
+        SwapUtil.clickWithBypass(closeAfter = closeInvPacket, forceGrim = forceGrim) {
             when (slot) {
                 in 0..8 -> gameMode.handleContainerInput(menu.containerId, 45, slot, ContainerInput.SWAP, player)
                 in 9..35 -> gameMode.handleContainerInput(menu.containerId, slot, 40, ContainerInput.SWAP, player)

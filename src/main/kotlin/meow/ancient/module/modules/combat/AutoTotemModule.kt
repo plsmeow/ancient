@@ -121,7 +121,7 @@ object AutoTotemModule : Module(
                 swapBackItem = offhand.item
             }
 
-            InventoryUtil.swapToOffhand(totemSlot)
+            InventoryUtil.swapToOffhand(totemSlot, forceGrim = true)
             timer.reset()
         } else if (swapBack && swapBackSlot != -1 && popCooldown == 0) {
             if (!timer.isComplete(delay.toLong())) return
@@ -129,7 +129,7 @@ object AutoTotemModule : Module(
             val slot = swapBackSlot
             val expected = swapBackItem
             if (slot in 0..35 && expected != null && player.inventory.getItem(slot).`is`(expected)) {
-                InventoryUtil.swapToOffhand(slot)
+                InventoryUtil.swapToOffhand(slot, forceGrim = true)
             }
             swapBackSlot = -1
             swapBackItem = null
