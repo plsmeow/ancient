@@ -18,6 +18,7 @@ import meow.ancient.module.modules.combat.hitaura.*
 import meow.ancient.module.setting.MinecraftPickerCatalogs
 import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.item.ItemUseAnimation
+import net.minecraft.world.phys.Vec3
 import sweetie.evaware.flora.api.Commando
 
 object HitAuraModule : Module(
@@ -338,6 +339,9 @@ object HitAuraModule : Module(
     private var pendingLevel: ClientLevel? = null
     private var pendingTick = -1
 
+    var predictedAimPoint: Vec3? = null
+        private set
+
     private fun clearPendingAttack() {
         pendingTarget = null
         pendingPlayer = null
@@ -367,6 +371,7 @@ object HitAuraModule : Module(
         clickerProcessor.reset()
         criticalProcessor.reset()
         sprintResetProcessor.reset()
+        predictedAimPoint = null
         RotationManager.resetImmediate()
     }
 
@@ -386,12 +391,14 @@ object HitAuraModule : Module(
         clickerProcessor.reset()
         criticalProcessor.reset()
         sprintResetProcessor.reset()
+        predictedAimPoint = null
         RotationManager.resetImmediate()
     }
 
     @Commando
     fun onUpdate(event: PlayerUpdateEvent) {
         clearPendingAttack()
+        predictedAimPoint = null
         val sprintMode = SprintResetMode.fromName(AnticheatManager.sprintReset)
         sprintResetProcessor.prepareAttack(sprintMode, false)
         safeRun {
@@ -458,6 +465,7 @@ object HitAuraModule : Module(
                     targetVel.z * elytraPredictTicks
                 )
             } else null
+            predictedAimPoint = overrideAimPoint
 
             if (elytraTarget && elytraFreeze && player.isFallFlying) {
                 val distToTarget = player.position().distanceTo(target.position())

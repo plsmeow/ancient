@@ -9,7 +9,6 @@ import meow.ancient.module.modules.combat.AutoMaceModule
 import meow.ancient.module.modules.combat.BreachSwapModule
 import meow.ancient.module.modules.combat.HitAuraModule
 import meow.ancient.module.modules.combat.MaceKillModule
-import meow.ancient.module.modules.combat.CriticalsModule
 import meow.ancient.module.modules.combat.hitaura.rotation.impl.NeuroRotation
 import meow.ancient.module.modules.combat.HitAuraModule.ClickMode
 import meow.ancient.module.modules.combat.HitAuraModule.SprintResetMode
@@ -31,7 +30,8 @@ class AttackExecutor(
         cpsSpread: Double,
         onlyCrits: Boolean,
         smartCrits: Boolean,
-        ticksAhead: Int = 0
+        ticksAhead: Int = 0,
+        sprintResetMode: SprintResetMode = SprintResetMode.OFF
     ): Boolean {
         if (!inGame || HitAuraModule.shouldIgnoreContext()) return false
         if (RotationUtil.getDistanceToBox(target) > attackRange) return false
@@ -39,7 +39,7 @@ class AttackExecutor(
         if (!AutoMaceModule.isForceReady(target)
             && !clickerProcessor.isReadyToClick(clickMode, cps, randomizeCps, cpsSpread, ticksAhead > 0)) return false
         return if (ticksAhead > 0) criticalProcessor.shouldPrepareAttack(onlyCrits, smartCrits)
-            else criticalProcessor.isReadyForAttack(onlyCrits, smartCrits)
+            else criticalProcessor.isReadyForAttack(onlyCrits, smartCrits, sprintResetMode)
     }
 
     fun willClickNextTick(
@@ -70,7 +70,7 @@ class AttackExecutor(
         rayTrace: Boolean,
         throughWalls: Boolean
     ): Boolean {
-        if (!shouldPrepareAttack(target, attackRange, clickMode, cps, randomizeCps, cpsSpread, onlyCrits, smartCrits)) {
+        if (!shouldPrepareAttack(target, attackRange, clickMode, cps, randomizeCps, cpsSpread, onlyCrits, smartCrits, 0, sprintResetMode)) {
             return false
         }
         if (HitAuraModule.rotationMode == HitAuraModule.RotationMode.NEURO &&

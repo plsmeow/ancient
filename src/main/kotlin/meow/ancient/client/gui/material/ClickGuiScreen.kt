@@ -252,6 +252,7 @@ object ClickGuiScreen : Screen(Component.literal("Ancient ClickGUI")), IRenderab
         }
         activePicker?.render(matrix, mouseX, mouseY, dt)
         activeTargetPicker?.render(matrix, mouseX, mouseY, dt)
+
     }
 
     override fun extractRenderState(guiGraphics: GuiGraphicsExtractor, mouseX: Int, mouseY: Int, partialTick: Float) {
@@ -616,4 +617,5 @@ object ClickGuiScreen : Screen(Component.literal("Ancient ClickGUI")), IRenderab
             mc.gui.setScreen(parent)
         }
     }
+
 }

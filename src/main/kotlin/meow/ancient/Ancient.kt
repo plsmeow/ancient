@@ -6,6 +6,7 @@ import meow.ancient.client.config.ConfigManager
 import meow.ancient.client.gui.material.ThemeManager
 import meow.ancient.client.listener.ListenerManager
 import meow.ancient.client.sound.ModSounds
+import meow.ancient.client.util.combat.ServerCritState
 import meow.ancient.client.util.inventory.SlownessManager
 import meow.ancient.client.util.render.VulkanShapePipelines
 import meow.ancient.client.util.render.font.VulkanFontPipelines
@@ -25,6 +26,7 @@ object Ancient : ClientModInitializer {
 		VulkanFontPipelines.init()
 		VulkanShapePipelines.init()
         EventManager.register(SlownessManager)
+		EventManager.register(ServerCritState)
 		ClientTickEvents.END_CLIENT_TICK.register {
 			SlownessManager.update()
 			AutoSaveManager.onTick()

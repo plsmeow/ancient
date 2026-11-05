@@ -33,7 +33,8 @@ object SettingBindingManager {
 
     private val states = ArrayList<State>()
 
-    fun supports(setting: Setting<*>): Boolean = setting !is KeybindSetting
+    fun supports(setting: Setting<*>): Boolean =
+        setting !is KeybindSetting && setting !is CurveSetting && setting !is HitboxPointsSetting && setting !is ActionSetting
 
     fun configure(setting: Setting<*>, binding: SettingBinding?) {
         val index = states.indexOfFirst { it.setting === setting }
@@ -181,6 +182,9 @@ object SettingBindingManager {
         is TextSetting -> TextSetting(setting.name, setting.value, setting.maxLength, setting.description)
         is ColorSetting -> ColorSetting(setting.name, setting.value, setting.hasAlpha, setting.description)
         is KeybindSetting -> throw IllegalArgumentException("Keybind settings cannot have setting binds")
+        is CurveSetting -> throw IllegalArgumentException("Curve settings cannot have setting binds")
+        is HitboxPointsSetting -> throw IllegalArgumentException("Hitbox point settings cannot have setting binds")
+        is ActionSetting -> throw IllegalArgumentException("Action settings cannot have setting binds")
     }
     private fun <E : Enum<E>> cloneEnum(setting: EnumSetting<E>): EnumSetting<E> = EnumSetting(
         setting.name, setting.value, setting.entries, setting.description, setting.nameMapper
@@ -220,6 +224,9 @@ object SettingBindingManager {
                 }
             }
             is KeybindSetting -> throw IllegalArgumentException("Keybind settings cannot have setting binds")
+            is CurveSetting -> throw IllegalArgumentException("Curve settings cannot have setting binds")
+            is HitboxPointsSetting -> throw IllegalArgumentException("Hitbox point settings cannot have setting binds")
+            is ActionSetting -> throw IllegalArgumentException("Action settings cannot have setting binds")
         }
         setting.deserialize(element)
     }

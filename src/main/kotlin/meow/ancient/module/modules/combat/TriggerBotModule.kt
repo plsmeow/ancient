@@ -139,7 +139,7 @@ object TriggerBotModule : Module(
         if ((useAxe || !AutoMaceModule.isForceReady(target))
             && !clickerProcessor.isReadyToClick(clickMode, cps, cpsRandomization, cpsSpread, ticksAhead > 0)) return false
         return if (ticksAhead > 0) criticalProcessor.shouldPrepareAttack(onlyCrits, smartCrits)
-            else criticalProcessor.isReadyForAttack(onlyCrits, smartCrits)
+            else criticalProcessor.isReadyForAttack(onlyCrits, smartCrits, SprintResetMode.fromName(AnticheatManager.sprintReset))
     }
 
     @Commando
@@ -224,7 +224,7 @@ object TriggerBotModule : Module(
             }
             if (!canUseContext(player, level) || mc.gameMode !== gameMode
                 || level.getEntity(target.id) !== target || selectTarget(player, level) !== target) return
-            if (!criticalProcessor.isReadyForAttack(onlyCrits, smartCrits)) return
+            if (!criticalProcessor.isReadyForAttack(onlyCrits, smartCrits, sprintMode)) return
             if (MaceKillModule.isEnabled()) MaceKillModule.doCrit()
 
             if (!canUseContext(player, level) || mc.gameMode !== gameMode

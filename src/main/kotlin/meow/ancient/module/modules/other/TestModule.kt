@@ -5,6 +5,7 @@ import meow.ancient.client.gui.material.MaterialYouShapesRenderer
 import meow.ancient.client.util.other.color.Color4b
 import meow.ancient.module.Module
 import meow.ancient.module.setting.MinecraftPickerCatalogs
+import meow.ancient.module.setting.Curve
 import net.minecraft.client.gui.GuiGraphicsExtractor
 
 object TestModule : Module(
@@ -19,6 +20,11 @@ object TestModule : Module(
     val select by multiMode("Select", setOf("Sel 1", "Sel 3", "Sel 4"), listOf("Sel 1", "Sel 2", "Sel 3", "Sel 4"))
     val modes by multiMode("Modes", setOf("Default", "Aggressive"), listOf("Default", "Aggressive", "Legit"))
     val group by mode("Group", "Gp 3", listOf("Gp 1", "Gp 2", "Gp 3"))
+    val curveDemo = curve(
+        "Curve Editor", Curve.EASE_IN_OUT,
+        xLabel = "Progress", yLabel = "Value",
+        description = "Left click empty space to add a point, drag to move, right click a point to remove, chips apply presets"
+    )
     val items by picker("Items", linkedSetOf("minecraft:diamond_sword", "minecraft:totem_of_undying", "minecraft:elytra"), MinecraftPickerCatalogs.items)
     val entities by picker("Entities", linkedSetOf("minecraft:player", "minecraft:zombie", "minecraft:cat"), MinecraftPickerCatalogs.entities)
     val blocks by picker("Blocks", linkedSetOf("minecraft:grass_block", "minecraft:obsidian", "minecraft:chest"), MinecraftPickerCatalogs.blocks)

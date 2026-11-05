@@ -284,4 +284,24 @@ open class Module(
         description: String = "",
         isVisible: () -> Boolean = { true }
     ) = keybind(name, value, description, isVisible)
+
+    fun curve(
+        name: String,
+        value: Curve,
+        xLabel: String = "Input",
+        yLabel: String = "Output",
+        maxPoints: Int = 12,
+        description: String = "",
+        isVisible: () -> Boolean = { true }
+    ) = register(CurveSetting(name, value, xLabel, yLabel, maxPoints, description, isVisible))
+
+    fun curveSetting(
+        name: String,
+        value: Curve,
+        xLabel: String = "Input",
+        yLabel: String = "Output",
+        maxPoints: Int = 12,
+        description: String = "",
+        isVisible: () -> Boolean = { true }
+    ) = curve(name, value, xLabel, yLabel, maxPoints, description, isVisible)
 }

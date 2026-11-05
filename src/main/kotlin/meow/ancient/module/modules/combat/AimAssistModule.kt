@@ -8,9 +8,10 @@ import meow.ancient.module.modules.combat.HitAuraModule.TargetMode
 import meow.ancient.module.modules.combat.HitAuraModule.TargetPriority
 import meow.ancient.module.modules.combat.hitaura.TargetSelector
 import meow.ancient.module.modules.combat.hitaura.rotation.impl.NeuroRotation
+import meow.ancient.module.setting.Curve
+import meow.ancient.module.setting.TargetSetting
 import meow.ancient.client.util.rotation.Rotation
 import meow.ancient.client.util.rotation.RotationUtil
-import meow.ancient.module.setting.TargetSetting
 import net.minecraft.util.Mth
 import net.minecraft.world.entity.LivingEntity
 import sweetie.evaware.flora.api.Commando
@@ -51,8 +52,19 @@ object AimAssistModule : Module(
     private val jitterAmplitudeSetting = number("Jitter", 0.3, 0.0, 2.0, 0.05, 2, isVisible = { mode == "Humanize" })
     private val jitterAmplitude by jitterAmplitudeSetting
 
-    private val smoothnessSetting = number("Smoothness", 3.0, 1.0, 10.0, 0.5, 1, isVisible = { mode == "Humanize" }, description = "Higher = smoother acceleration curve")
-    private val smoothness by smoothnessSetting
+    private val speedCurveSetting = curve(
+        "Speed Curve", Curve.HUMAN,
+        xLabel = "Closeness", yLabel = "Speed",
+        isVisible = { mode == "Humanize" },
+        description = "Step speed multiplier vs how close the crosshair already is"
+    )
+
+    private val jitterCurveSetting = curve(
+        "Jitter Curve", Curve.EASE_OUT,
+        xLabel = "Closeness", yLabel = "Jitter",
+        isVisible = { mode == "Humanize" && jitterAmplitude > 0.0 },
+        description = "Jitter amplitude scaling vs crosshair closeness"
+    )
 
     private val neuroSpeedSetting = number("Neuro Speed", 0.6, 0.1, 2.0, 0.05, 2, isVisible = { mode == "Neuro" })
     private val neuroSpeed by neuroSpeedSetting
@@ -142,13 +154,14 @@ object AimAssistModule : Module(
             velocityY *= scale
         }
 
-        val t = (1.0 - dist / 180.0).coerceIn(0.0, 1.0)
-        val curveMultiplier = Math.pow(t, 1.0 / smoothness)
+        val closeness = (1.0 - dist / 180.0).coerceIn(0.0, 1.0).toFloat()
+        val curveMultiplier = speedCurveSetting.evaluate(closeness).toDouble()
         val stepX = velocityX * curveMultiplier * 0.12
         val stepY = velocityY * curveMultiplier * 0.12
 
-        val jitterX = (Random.nextDouble(-1.0, 1.0) * jitterAmplitude).toFloat()
-        val jitterY = (Random.nextDouble(-1.0, 1.0) * jitterAmplitude).toFloat()
+        val jitterScale = jitterCurveSetting.evaluate(closeness).toDouble()
+        val jitterX = (Random.nextDouble(-1.0, 1.0) * jitterAmplitude * jitterScale).toFloat()
+        val jitterY = (Random.nextDouble(-1.0, 1.0) * jitterAmplitude * jitterScale).toFloat()
 
         velocityX *= 0.92
         velocityY *= 0.92

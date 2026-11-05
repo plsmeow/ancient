@@ -7,17 +7,18 @@ import meow.ancient.client.util.anticheat.AnticheatManager
 import meow.ancient.client.util.combat.ExplosionDamageUtil
 import meow.ancient.client.util.friend.FriendRepository
 import meow.ancient.client.util.target.TargetRepository
+import meow.ancient.client.util.inventory.InventoryActionSource
 import meow.ancient.client.util.inventory.InventoryUtil
 import meow.ancient.client.util.rotation.MoveFixMode
 import meow.ancient.client.util.rotation.RotationManager
 import meow.ancient.client.util.rotation.RotationUtil
+import meow.ancient.event.events.ClientDisconnectEvent
 import meow.ancient.event.events.PlayerUpdateEvent
 import meow.ancient.module.Module
+import meow.ancient.module.modules.movement.InventoryMoveModule
 import net.minecraft.client.player.LocalPlayer
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
-import net.minecraft.network.protocol.game.ServerboundMovePlayerPacket
-import net.minecraft.network.protocol.game.ServerboundSetCarriedItemPacket
 import java.util.concurrent.ThreadLocalRandom
 import net.minecraft.world.InteractionHand
 import net.minecraft.world.entity.player.Player
@@ -51,35 +52,74 @@ object AnchorAuraModule : Module(
     val ignoreTerrain by boolean("Ignore Terrain", false, "Treats all blocks as indestructible when calculating explosion damage")
     val lethalOverride by boolean("Lethal Override", true)
 
+    private enum class SequenceStage {
+        PLACE_SENT,
+        CHARGE_SENT,
+        DETONATE_SENT
+    }
+
+    private data class AnchorSequence(val pos: BlockPos, var stage: SequenceStage)
+
     private var tickTimer = 0
+    private var sequence: AnchorSequence? = null
+    private var sequencePlayer: LocalPlayer? = null
+    private var sequenceLevel: Level? = null
+
+    private fun reset() {
+        tickTimer = 0
+        sequence = null
+        sequencePlayer = null
+        sequenceLevel = null
+    }
+
+    private fun reconcileSequence(level: Level) {
+        val current = sequence ?: return
+        val state = level.getBlockState(current.pos)
+        if (state.`is`(Blocks.RESPAWN_ANCHOR)) return
+        if (current.stage != SequenceStage.PLACE_SENT || !state.canBeReplaced()) {
+            sequence = null
+        }
+    }
 
     private fun getMoveFixMode(): MoveFixMode = MoveFixMode.fromName(moveFix)
 
     @Commando
     fun onUpdate(event: PlayerUpdateEvent) {
-        if (!inGame) return
-        val player = mc.player ?: return
-        val level = mc.level ?: return
-
+        val player = mc.player
+        val level = mc.level
+        if (!inGame || player == null || level == null || !player.connection.connection.isConnected) {
+            reset()
+            return
+        }
+        if (sequencePlayer !== player || sequenceLevel !== level) {
+            reset()
+            sequencePlayer = player
+            sequenceLevel = level
+        }
         if (level.dimension() == Level.NETHER) return
+
+        reconcileSequence(level)
 
         val target = findTarget(player)
         if (target == null) {
+            tickTimer = 0
             return
         }
 
         tickTimer++
-        if (tickTimer < delay.toInt()) return
+        if (tickTimer <= delay.toInt()) return
 
         val targetHp = AnticheatManager.getHealth(target)
-
-        val executed = explodeChargedAnchor(player, target, targetHp)
-            || chargeExistingAnchor(player, target, targetHp)
-            || placeNewAnchor(player, target, targetHp)
-
-        if (executed) {
-            tickTimer = 0
+        val current = sequence
+        val executed = if (current != null) {
+            advanceSequence(player, target, targetHp, current)
+        } else {
+            explodeChargedAnchor(player, target, targetHp)
+                || chargeExistingAnchor(player, target, targetHp)
+                || placeNewAnchor(player, target, targetHp)
         }
+
+        if (executed) tickTimer = 0
     }
 
     private fun findTarget(player: Player): Player? {
@@ -101,6 +141,107 @@ object AnchorAuraModule : Module(
             }
         }
         return best
+    }
+
+    private fun advanceSequence(player: LocalPlayer, target: Player, targetHp: Float, current: AnchorSequence): Boolean {
+        val level = mc.level ?: return false
+        if (current.stage == SequenceStage.DETONATE_SENT) return false
+        val state = level.getBlockState(current.pos)
+        if (!state.`is`(Blocks.RESPAWN_ANCHOR)) return false
+        if (player.eyePosition.distanceToSqr(Vec3.atCenterOf(current.pos)) > range * range) return false
+        if (ExplosionDamageUtil.anchorDamage(current.pos, player, ignoreTerrain) > maxSelfDamage.toFloat()) return false
+        val targetDamage = ExplosionDamageUtil.anchorDamage(current.pos, target, ignoreTerrain)
+        val isLethal = lethalOverride && targetDamage >= targetHp
+        if (!isLethal && targetDamage < minDamage.toFloat()) return false
+
+        val hitResult = getAnchorHitResult(current.pos, player)
+        if (state.getValue(RespawnAnchorBlock.CHARGE) > 0) {
+            if (!detonateAnchor(player, hitResult)) return false
+            current.stage = SequenceStage.DETONATE_SENT
+            return true
+        }
+        if (current.stage != SequenceStage.PLACE_SENT || !chargeAnchor(player, hitResult)) return false
+        current.stage = SequenceStage.CHARGE_SENT
+        return true
+    }
+
+    private fun interact(player: LocalPlayer, hand: InteractionHand, hitResult: BlockHitResult, slot: Int? = null): Boolean {
+        val gameMode = mc.gameMode ?: return false
+        if (!mc.isSameThread || mc.player !== player || mc.level !== sequenceLevel
+            || !player.connection.connection.isConnected || !player.containerMenu.carried.isEmpty
+            || player.isSpectator || slot != null && slot !in 0..8) return false
+
+        if (hand == InteractionHand.MAIN_HAND && silentSlots) {
+            val selected = slot ?: player.inventory.selectedSlot
+            var executed = false
+            InventoryUtil.withSilentSlot(selected) {
+                if (mc.player === player && mc.level === sequenceLevel && mc.gameMode === gameMode) {
+                    rotate(player, hitResult.location)
+                    executed = InventoryUtil.useItemOnPacket(hand, hitResult)
+                }
+            }
+            return executed
+        }
+
+        if (slot != null) {
+            InventoryUtil.swapToSlot(slot)
+            if (player.inventory.selectedSlot != slot) return false
+        }
+        rotate(player, hitResult.location)
+        val result = gameMode.useItemOn(player, hand, hitResult)
+        if (!result.consumesAction()) return false
+        player.swing(hand, player.getItemInHand(hand).attackAnimation, false)
+        return true
+    }
+
+    private fun chargeAnchor(player: LocalPlayer, hitResult: BlockHitResult): Boolean {
+        if (player.isSecondaryUseActive) return false
+        if (player.offhandItem.`is`(Items.GLOWSTONE)) {
+            return interact(player, InteractionHand.OFF_HAND, hitResult)
+        }
+        val slot = InventoryUtil.findHotbarSlot(Items.GLOWSTONE)
+        if (slot !in 0..8) return false
+        return interact(player, InteractionHand.MAIN_HAND, hitResult, slot)
+    }
+
+    private fun detonateAnchor(player: LocalPlayer, hitResult: BlockHitResult): Boolean {
+        val selected = player.inventory.selectedSlot
+        val slot = selected.takeIf {
+            it in 0..8 && !player.inventory.getItem(it).isEmpty && !player.inventory.getItem(it).`is`(Items.GLOWSTONE)
+        }
+            ?: (0..8).firstOrNull { !player.inventory.getItem(it).isEmpty && !player.inventory.getItem(it).`is`(Items.GLOWSTONE) }
+            ?: (0..8).firstOrNull { !player.inventory.getItem(it).`is`(Items.GLOWSTONE) }
+            ?: return false
+        if (player.isSecondaryUseActive && (!player.inventory.getItem(slot).isEmpty || !player.offhandItem.isEmpty)) return false
+        if (!player.offhandItem.`is`(Items.GLOWSTONE)) {
+            return interact(player, InteractionHand.MAIN_HAND, hitResult, slot)
+        }
+
+        val menu = player.containerMenu
+        if (menu !== player.inventoryMenu || !menu.carried.isEmpty || mc.gameMode == null) return false
+        val offhandSlot = menu.getSlot(45)
+        val swapSlot = (0..35).firstOrNull {
+            if (it == slot || player.inventory.getItem(it).`is`(Items.GLOWSTONE)) return@firstOrNull false
+            val candidate = menu.getSlot(if (it in 0..8) it + 36 else it)
+            candidate.mayPickup(player) && candidate.mayPlace(player.offhandItem)
+                && offhandSlot.mayPickup(player) && offhandSlot.mayPlace(candidate.item)
+        } ?: return false
+        val menuSlot = if (swapSlot in 0..8) swapSlot + 36 else swapSlot
+        if (!InventoryMoveModule.beginInventoryAction(InventoryActionSource.INVENTORY)) return false
+        try {
+            if (mc.player !== player || player.containerMenu !== menu || !InventoryUtil.clickSlotDirect(menuSlot, 40)) return false
+            try {
+                if (player.offhandItem.`is`(Items.GLOWSTONE)) return false
+                return interact(player, InteractionHand.MAIN_HAND, hitResult, slot)
+            } finally {
+                if (mc.player === player && mc.level === sequenceLevel && player.containerMenu === menu
+                    && player.connection.connection.isConnected) {
+                    InventoryUtil.clickSlotDirect(menuSlot, 40)
+                }
+            }
+        } finally {
+            InventoryMoveModule.endInventoryAction(InventoryActionSource.INVENTORY)
+        }
     }
 
     private fun explodeChargedAnchor(player: LocalPlayer, target: Player, targetHp: Float): Boolean {
@@ -146,26 +287,8 @@ object AnchorAuraModule : Module(
         }
 
         val anchorPos = bestPos ?: return false
-        val hitResult = getAnchorHitResult(anchorPos, player)
-
-        rotate(player, hitResult.location)
-
-        val nonGlowSlot = (0..8).firstOrNull { !player.inventory.getItem(it).`is`(Items.GLOWSTONE) }
-        if (nonGlowSlot != null) {
-            if (silentSlots) {
-                InventoryUtil.withSilentSlot(nonGlowSlot) {
-                    InventoryUtil.useItemOnPacket(InteractionHand.MAIN_HAND, hitResult)
-                }
-            } else {
-                InventoryUtil.swapToSlot(nonGlowSlot)
-                mc.gameMode?.useItemOn(player, InteractionHand.MAIN_HAND, hitResult)
-                player.swing(InteractionHand.MAIN_HAND, player.getItemInHand(InteractionHand.MAIN_HAND).attackAnimation, false)
-            }
-            return true
-        }
-        val hand = if (player.offhandItem.`is`(Items.GLOWSTONE)) InteractionHand.MAIN_HAND else InteractionHand.OFF_HAND
-        mc.gameMode?.useItemOn(player, hand, hitResult)
-        player.swing(hand, player.getItemInHand(hand).attackAnimation, false)
+        if (!detonateAnchor(player, getAnchorHitResult(anchorPos, player))) return false
+        sequence = AnchorSequence(anchorPos, SequenceStage.DETONATE_SENT)
         return true
     }
 
@@ -212,31 +335,8 @@ object AnchorAuraModule : Module(
         }
 
         val anchorPos = bestPos ?: return false
-        val hitResult = getAnchorHitResult(anchorPos, player)
-
-        val glowSlot = InventoryUtil.findHotbarSlot(Items.GLOWSTONE)
-        if (glowSlot == -1 && !player.offhandItem.`is`(Items.GLOWSTONE)) return false
-
-        rotate(player, hitResult.location)
-
-        if (player.offhandItem.`is`(Items.GLOWSTONE)) {
-            mc.gameMode?.useItemOn(player, InteractionHand.OFF_HAND, hitResult)
-            player.swing(InteractionHand.OFF_HAND, player.getItemInHand(InteractionHand.OFF_HAND).attackAnimation, false)
-            return true
-        }
-
-        if (glowSlot in 0..8) {
-            if (silentSlots) {
-                InventoryUtil.withSilentSlot(glowSlot) {
-                    InventoryUtil.useItemOnPacket(InteractionHand.MAIN_HAND, hitResult)
-                }
-            } else {
-                InventoryUtil.swapToSlot(glowSlot)
-                mc.gameMode?.useItemOn(player, InteractionHand.MAIN_HAND, hitResult)
-                player.swing(InteractionHand.MAIN_HAND, player.getItemInHand(InteractionHand.MAIN_HAND).attackAnimation, false)
-            }
-            return true
-        }
+        if (!chargeAnchor(player, getAnchorHitResult(anchorPos, player))) return false
+        sequence = AnchorSequence(anchorPos, SequenceStage.CHARGE_SENT)
         return true
     }
 
@@ -289,33 +389,17 @@ object AnchorAuraModule : Module(
             }
         }
 
+        val anchorPos = bestPos ?: return false
         val hitResult = bestHit ?: return false
-
-        val anchorSlot = InventoryUtil.findHotbarSlot(Items.RESPAWN_ANCHOR)
-        if (anchorSlot == -1 && !player.offhandItem.`is`(Items.RESPAWN_ANCHOR)) return false
-
-        rotate(player, hitResult.location)
-
-        val hand = if (player.offhandItem.`is`(Items.RESPAWN_ANCHOR)) InteractionHand.OFF_HAND else InteractionHand.MAIN_HAND
-
-        if (hand == InteractionHand.OFF_HAND) {
-            mc.gameMode?.useItemOn(player, hand, hitResult)
-            player.swing(hand, player.getItemInHand(hand).attackAnimation, false)
-            return true
+        val executed = if (player.offhandItem.`is`(Items.RESPAWN_ANCHOR)) {
+            interact(player, InteractionHand.OFF_HAND, hitResult)
+        } else {
+            val slot = InventoryUtil.findHotbarSlot(Items.RESPAWN_ANCHOR)
+            if (slot !in 0..8) return false
+            interact(player, InteractionHand.MAIN_HAND, hitResult, slot)
         }
-
-        if (anchorSlot in 0..8) {
-            if (silentSlots) {
-                InventoryUtil.withSilentSlot(anchorSlot) {
-                    InventoryUtil.useItemOnPacket(InteractionHand.MAIN_HAND, hitResult)
-                }
-            } else {
-                InventoryUtil.swapToSlot(anchorSlot)
-                mc.gameMode?.useItemOn(player, InteractionHand.MAIN_HAND, hitResult)
-                player.swing(InteractionHand.MAIN_HAND, player.getItemInHand(InteractionHand.MAIN_HAND).attackAnimation, false)
-            }
-            return true
-        }
+        if (!executed) return false
+        sequence = AnchorSequence(anchorPos, SequenceStage.PLACE_SENT)
         return true
     }
 
@@ -421,7 +505,10 @@ object AnchorAuraModule : Module(
         }
     }
 
-    override fun onDisable() {
-        tickTimer = 0
-    }
+    override fun onEnable() = reset()
+
+    override fun onDisable() = reset()
+
+    @Commando
+    fun onDisconnect(event: ClientDisconnectEvent) = reset()
 }

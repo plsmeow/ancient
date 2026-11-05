@@ -3,6 +3,7 @@ package meow.ancient.module.modules.render
 import meow.ancient.client.extensions.RENDER
 import meow.ancient.client.extensions.inGame
 import meow.ancient.client.extensions.mc
+import meow.ancient.client.gui.material.M3Palette
 import meow.ancient.client.gui.material.M3Theme
 import meow.ancient.module.Module
 import meow.ancient.module.modules.combat.HitAuraModule
@@ -29,6 +30,9 @@ object TargetEspModule : Module(
     private var lastTarget: LivingEntity? = null
     private var alpha = 0.0f
     private var lastFrameTime = 0L
+    private var predictBox: AABB? = null
+    private var predictAlpha = 0.0f
+
     override fun onEnable() {
         if (!registered) {
             LevelRenderEvents.BEFORE_GIZMOS.register { _ ->
@@ -96,6 +100,8 @@ object TargetEspModule : Module(
                 } else {
                     Gizmos.cuboid(box, style)
                 }
+
+                renderPredictedBox(activeTarget, dt, palette)
             }
             registered = true
         }
@@ -110,6 +116,8 @@ object TargetEspModule : Module(
         lastTarget = null
         alpha = 0f
         lastFrameTime = 0L
+        predictBox = null
+        predictAlpha = 0f
     }
 
     private fun lerp(a: Double, b: Double, t: Double): Double = a + (b - a) * t
@@ -123,5 +131,32 @@ object TargetEspModule : Module(
             lerp(a.maxY, b.maxY, t),
             lerp(a.maxZ, b.maxZ, t)
         )
+    }
+
+    private fun renderPredictedBox(target: LivingEntity?, dt: Float, palette: M3Palette) {
+        val aimPoint = HitAuraModule.predictedAimPoint
+        if (aimPoint != null && target != null) {
+            predictAlpha = (predictAlpha + dt * 10f).coerceAtMost(1f)
+            val pBox = target.boundingBox.move(aimPoint.subtract(target.position()))
+            val prev = predictBox
+            predictBox = if (prev == null || !smooth.value) pBox
+            else lerpBox(prev, pBox, (1.0 - exp((-dt * speed.value))).coerceIn(0.0, 1.0))
+        } else {
+            predictAlpha = (predictAlpha - dt * 8f).coerceAtLeast(0f)
+            if (predictAlpha <= 0.01f) {
+                predictBox = null
+                return
+            }
+        }
+        val pBox = predictBox ?: return
+        if (predictAlpha <= 0.01f) return
+        val strokeAlpha = (110 * predictAlpha).toInt().coerceIn(0, 255)
+        val strokeColor = palette.secondary.alpha(strokeAlpha)
+        val style = GizmoStyle.stroke(strokeColor.argb, (lineWidth.value.toFloat() * 0.7f).coerceAtLeast(0.5f))
+        if (throughWalls.value) {
+            Gizmos.cuboid(pBox, style).setAlwaysOnTop()
+        } else {
+            Gizmos.cuboid(pBox, style)
+        }
     }
 }
