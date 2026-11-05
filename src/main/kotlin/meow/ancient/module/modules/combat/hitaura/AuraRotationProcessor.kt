@@ -6,6 +6,7 @@ import meow.ancient.client.util.rotation.*
 import meow.ancient.module.modules.combat.HitAuraModule.AimPointMode
 import meow.ancient.module.modules.combat.HitAuraModule.RotationMode
 import meow.ancient.module.modules.combat.hitaura.rotation.RotationStrategy
+import meow.ancient.module.modules.combat.hitaura.rotation.AdvancedRotationSettings
 import meow.ancient.module.modules.combat.hitaura.rotation.impl.*
 import net.minecraft.util.Mth
 import net.minecraft.world.entity.LivingEntity
@@ -13,8 +14,9 @@ import net.minecraft.world.phys.Vec3
 import kotlin.math.abs
 import kotlin.math.hypot
 
-class AuraRotationProcessor {
+class AuraRotationProcessor(advancedSettings: AdvancedRotationSettings) {
     private var tickCounter: Int = 0
+    private var previousMode: RotationMode? = null
 
     private val strategies: Map<RotationMode, RotationStrategy> = mapOf(
         RotationMode.VANILLA to VanillaRotation(),
@@ -31,7 +33,8 @@ class AuraRotationProcessor {
         RotationMode.GRIM_1204 to Grim1204Rotation(),
         RotationMode.GRIM_FUN to GrimFunRotation(),
         RotationMode.MLSAC to MlsacRotation(),
-        RotationMode.NEURO to NeuroRotation()
+        RotationMode.NEURO to NeuroRotation(),
+        RotationMode.ADVANCED to AdvancedRotation(advancedSettings)
     )
 
     fun getStrategy(mode: RotationMode): RotationStrategy {
@@ -40,6 +43,7 @@ class AuraRotationProcessor {
 
     fun reset() {
         tickCounter = 0
+        previousMode = null
         strategies.values.forEach(RotationStrategy::reset)
     }
 
@@ -67,6 +71,12 @@ class AuraRotationProcessor {
         overrideAimPoint: Vec3? = null
     ): Rotation {
         tickCounter++
+        if (previousMode != rotationMode) {
+            if (previousMode == RotationMode.ADVANCED || rotationMode == RotationMode.ADVANCED) {
+                getStrategy(RotationMode.ADVANCED).reset()
+            }
+            previousMode = rotationMode
+        }
 
         val strategy = getStrategy(rotationMode)
         val currentRot = RotationManager.getServerRotation()
@@ -94,17 +104,19 @@ class AuraRotationProcessor {
             return RotationManager.getServerRotation()
         }
 
+        val advanced = strategy as? AdvancedRotation
+        val advancedAimPoint = advanced?.resolveAimPoint(target, overrideAimPoint)
         if (!strategy.shouldUpdateRotation(shouldSnapNow)) {
             return currentRot
         }
-        val aimPoint = overrideAimPoint ?: calculateAimPoint(target, aimPointMode)
+        val aimPoint = advancedAimPoint ?: overrideAimPoint ?: calculateAimPoint(target, aimPointMode)
         val idealRotation = RotationUtil.getRotationToVec(aimPoint).normalizeTo(currentRot)
 
         val dYaw = Mth.wrapDegrees(idealRotation.yaw - currentRot.yaw)
         val dPitch = idealRotation.pitch - currentRot.pitch
         val totalAngle = hypot(dYaw, dPitch)
 
-        if (totalAngle <= 0.01f) {
+        if (advanced == null && totalAngle <= 0.01f) {
             RotationManager.setRotation(
                 rotation = currentRot,
                 moveFix = moveFixMode,
@@ -130,7 +142,8 @@ class AuraRotationProcessor {
             moveFix = moveFixMode,
             gcd = gcdEnabled,
             keepTicks = strategy.keepTicks,
-            returnSpeed = rotationSpeed.coerceAtLeast(40.0f)
+            returnSpeed = advanced?.returnSpeed ?: rotationSpeed.coerceAtLeast(40.0f),
+            clientLook = advanced?.visibleRotation == true
         )
 
         return RotationManager.getServerRotation()

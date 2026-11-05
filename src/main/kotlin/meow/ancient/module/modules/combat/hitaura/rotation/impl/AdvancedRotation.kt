@@ -250,6 +250,7 @@ class AdvancedRotation(private val settings: AdvancedRotationSettings) : Rotatio
     fun resolveAimPoint(target: LivingEntity, overrideAimPoint: Vec3? = null): Vec3 {
         if (!syncClock()) return overrideAimPoint ?: target.box.center
         ensureTarget(target)
+        eyePosition()
         if (overrideAimPoint != null) {
             overrideActive = true
             predictionInitialized = false
@@ -696,12 +697,13 @@ class AdvancedRotation(private val settings: AdvancedRotationSettings) : Rotatio
         if (!syncClock()) return false
         val target = targetIdentity ?: return false
         val point = resolvedPoint ?: return false
-        if (!target.isAlive || lastResolvedTick != now || lastCalculatedTick != now || movementPending || now < reactionUntil || now < postAttackUntil || now < afterAttackRecoveryUntil) return false
+        val sampleTick = lastCalculatedTick
+        if (!target.isAlive || lastResolvedTick != sampleTick || now - sampleTick !in 0..1 || movementPending || sampleTick < reactionUntil || sampleTick < postAttackUntil || sampleTick < afterAttackRecoveryUntil) return false
         if (settings.policy.value == AdvancedRotationPolicy.SNAP && !snapWindow()) return false
-        if (now - movementStart + 1 < movementDuration) return false
-        if (settings.overshootEnabled.value && now < recoveryUntil) return false
+        if (sampleTick - movementStart + 1 < movementDuration) return false
+        if (settings.overshootEnabled.value && sampleTick < recoveryUntil) return false
         if (settledTicks < settings.settleTicks.getInt() || settings.requireVisible.value && !pointVisible) return false
-        val eye = eyePosition()
+        val eye = cachedEye ?: return false
         val dx = point.x - eye.x
         val dy = point.y - eye.y
         val dz = point.z - eye.z

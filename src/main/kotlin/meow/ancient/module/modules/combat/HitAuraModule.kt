@@ -3,6 +3,8 @@ package meow.ancient.module.modules.combat
 import meow.ancient.client.extensions.COMBAT
 import meow.ancient.client.extensions.currentScreen
 import meow.ancient.client.extensions.mc
+import meow.ancient.client.gui.material.ClickGuiScreen
+import meow.ancient.client.gui.material.components.AdvancedSettingsWindow
 import meow.ancient.client.util.anticheat.AnticheatManager
 import meow.ancient.client.util.rotation.MoveFixMode
 import meow.ancient.client.util.rotation.RotationManager
@@ -15,6 +17,9 @@ import net.minecraft.client.player.LocalPlayer
 import net.minecraft.client.multiplayer.ClientLevel
 import meow.ancient.module.Module
 import meow.ancient.module.modules.combat.hitaura.*
+import meow.ancient.module.modules.combat.hitaura.rotation.AdvancedRotationSettings
+import meow.ancient.module.modules.combat.hitaura.rotation.impl.AdvancedRotation
+import meow.ancient.module.setting.ActionSetting
 import meow.ancient.module.setting.MinecraftPickerCatalogs
 import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.item.ItemUseAnimation
@@ -66,7 +71,8 @@ object HitAuraModule : Module(
         GRIM_1204("Grim 1.20.4"),
         GRIM_FUN("GrimFun"),
         MLSAC("MlsAC"),
-        NEURO("Neuro");
+        NEURO("Neuro"),
+        ADVANCED("Advanced");
 
         companion object {
             val names: List<String> = entries.map { it.displayName }
@@ -319,11 +325,18 @@ object HitAuraModule : Module(
         description = "Allow ground attacks without holding jump; disabling waits for a real fall when crits are possible",
         isVisible = { onlyCrits }
     )
+    val advancedSettings = AdvancedRotationSettings(this)
+    private val advancedSettingsButton = register(ActionSetting(
+        "Настройка Advanced",
+        action = { ClickGuiScreen.openEditor(AdvancedSettingsWindow(advancedSettings)) },
+        description = "Configure Advanced rotation, curves and manual hitbox points",
+        isVisible = { rotationMode == RotationMode.ADVANCED }
+    ))
 
 
     // Modular processors
     val targetSelector = TargetSelector()
-    val rotationProcessor = AuraRotationProcessor()
+    val rotationProcessor = AuraRotationProcessor(advancedSettings)
     val criticalProcessor = CriticalProcessor()
     val clickerProcessor = ClickerProcessor()
     val sprintResetProcessor = SprintResetProcessor()
@@ -431,6 +444,9 @@ object HitAuraModule : Module(
                 ignoreFriends = friendProtection
             ) ?: run {
                 sprintResetProcessor.reset()
+                if (rotMode == RotationMode.ADVANCED) {
+                    (rotationProcessor.getStrategy(rotMode) as AdvancedRotation).onTargetLost()
+                }
                 if (rotMode == RotationMode.NEURO) rotationProcessor.returnNeuroRotation(moveFix, gcdFix)
                 return@safeRun
             }
@@ -439,7 +455,9 @@ object HitAuraModule : Module(
             val moveFixMode = moveFix
             val cMode = clickMode
 
-            val readyNextAttack = attackExecutor.shouldPrepareAttack(
+            val readyNextAttack = if (rotMode == RotationMode.ADVANCED) {
+                attackExecutor.willClickNextTick(target, maxReach, cMode, cps, cpsRandomization, cpsSpread)
+            } else attackExecutor.shouldPrepareAttack(
                 target = target,
                 attackRange = maxReach,
                 clickMode = cMode,

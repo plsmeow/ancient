@@ -20,8 +20,12 @@ class HitboxPointsSetting(
     override fun set(newValue: List<HitboxPoint>) = super.set(normalize(newValue, maxPoints))
 
     fun addPoint(point: HitboxPoint): Int {
+        if (!point.x.isFinite() || !point.y.isFinite() || !point.z.isFinite()) return -1
+        val normalized = HitboxPoint(point.x.coerceIn(0.0, 1.0), point.y.coerceIn(0.0, 1.0), point.z.coerceIn(0.0, 1.0))
+        val existing = value.indexOf(normalized)
+        if (existing >= 0) return existing
         if (value.size >= maxPoints) return -1
-        set(value + point)
+        set(value + normalized)
         return value.lastIndex
     }
 

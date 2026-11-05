@@ -10,6 +10,7 @@ import meow.ancient.module.modules.combat.BreachSwapModule
 import meow.ancient.module.modules.combat.HitAuraModule
 import meow.ancient.module.modules.combat.MaceKillModule
 import meow.ancient.module.modules.combat.hitaura.rotation.impl.NeuroRotation
+import meow.ancient.module.modules.combat.hitaura.rotation.impl.AdvancedRotation
 import meow.ancient.module.modules.combat.HitAuraModule.ClickMode
 import meow.ancient.module.modules.combat.HitAuraModule.SprintResetMode
 import net.minecraft.world.InteractionHand
@@ -75,6 +76,8 @@ class AttackExecutor(
         }
         if (HitAuraModule.rotationMode == HitAuraModule.RotationMode.NEURO &&
             !(rotationProcessor.getStrategy(HitAuraModule.RotationMode.NEURO) as NeuroRotation).isAttackReady()) return false
+        if (HitAuraModule.rotationMode == HitAuraModule.RotationMode.ADVANCED &&
+            !(rotationProcessor.getStrategy(HitAuraModule.RotationMode.ADVANCED) as AdvancedRotation).isAttackReady()) return false
 
         val localPlayer = mc.player ?: return false
         val currentGameMode = mc.gameMode ?: return false
@@ -122,6 +125,8 @@ class AttackExecutor(
             if (MaceKillModule.isEnabled()) {
                 MaceKillModule.doCrit()
             }
+            if (HitAuraModule.rotationMode == HitAuraModule.RotationMode.ADVANCED &&
+                !(rotationProcessor.getStrategy(HitAuraModule.RotationMode.ADVANCED) as AdvancedRotation).isAttackReady()) return false
 
 
             val swingAnimation = localPlayer.getItemInHand(InteractionHand.MAIN_HAND).attackAnimation
@@ -130,6 +135,9 @@ class AttackExecutor(
             localPlayer.swing(InteractionHand.MAIN_HAND, swingAnimation, false)
             if (HitAuraModule.rotationMode == HitAuraModule.RotationMode.NEURO) {
                 (rotationProcessor.getStrategy(HitAuraModule.RotationMode.NEURO) as NeuroRotation).notifyAttack()
+            }
+            if (HitAuraModule.rotationMode == HitAuraModule.RotationMode.ADVANCED) {
+                (rotationProcessor.getStrategy(HitAuraModule.RotationMode.ADVANCED) as AdvancedRotation).notifyAttack()
             }
             return true
         } finally {

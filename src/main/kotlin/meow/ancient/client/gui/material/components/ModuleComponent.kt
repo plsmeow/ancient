@@ -12,6 +12,7 @@ import meow.ancient.client.util.render.ScissorUtil
 import meow.ancient.client.util.render.engine.controls.ClientRenderPipeline
 import meow.ancient.client.util.render.font.Fonts
 import meow.ancient.module.Module
+import meow.ancient.module.modules.combat.HitAuraModule
 import meow.ancient.module.setting.KeybindSetting
 import meow.ancient.client.util.bind.SettingBindingManager
 import net.minecraft.client.input.CharacterEvent
@@ -43,6 +44,7 @@ class ModuleComponent(val module: Module) : GuiComponent {
 
     init {
         for (setting in module.settings) {
+            if (module === HitAuraModule && setting in HitAuraModule.advancedSettings.allSettings) continue
             settingComponents.add(SettingComponentFactory.create(setting))
         }
     }
