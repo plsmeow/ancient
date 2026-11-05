@@ -83,25 +83,14 @@ class AttackExecutor(
         val currentGameMode = mc.gameMode ?: return false
 
         if (rayTrace && !localPlayer.isFallFlying) {
-            val currentRot = RotationManager.getServerRotation()
-            val hitsCurrentHitbox = RayTraceUtil.isLookingAtEntity(
+            val outgoingRotation = RotationManager.getServerRotation()
+            val hitsHitbox = RayTraceUtil.isLookingAtEntity(
                 target = target,
-                rotation = currentRot,
+                rotation = outgoingRotation,
                 range = attackRange,
                 throughWalls = throughWalls
             )
-            if (!hitsCurrentHitbox) {
-                return false
-            }
-
-            val previousRot = RotationManager.getPreviousServerRotation()
-            val hitsServerHitbox = RayTraceUtil.isLookingAtEntity(
-                target = target,
-                rotation = previousRot,
-                range = attackRange,
-                throughWalls = throughWalls
-            )
-            if (!hitsServerHitbox) {
+            if (!hitsHitbox) {
                 return false
             }
         }

@@ -2,8 +2,10 @@ package meow.ancient.module.modules.combat.hitaura.rotation.impl
 
 import meow.ancient.client.extensions.box
 import meow.ancient.client.extensions.mc
+import meow.ancient.client.util.rotation.RayTraceUtil
 import meow.ancient.client.util.rotation.Rotation
 import meow.ancient.client.util.rotation.RotationManager
+import meow.ancient.client.util.rotation.RotationUtil
 import meow.ancient.module.modules.combat.hitaura.rotation.AdvancedAutomaticPoint
 import meow.ancient.module.modules.combat.hitaura.rotation.AdvancedManualSelection
 import meow.ancient.module.modules.combat.hitaura.rotation.AdvancedPointSource
@@ -23,6 +25,8 @@ import kotlin.math.hypot
 import kotlin.math.sign
 import kotlin.math.sin
 import kotlin.math.sqrt
+
+private const val ATTACK_TRACE_RANGE = 999.0
 
 class AdvancedRotation(private val settings: AdvancedRotationSettings) : RotationStrategy("Advanced") {
     override val keepTicks: Int
@@ -52,11 +56,6 @@ class AdvancedRotation(private val settings: AdvancedRotationSettings) : Rotatio
     private var settledTicks = 0
     private var yawVelocity = 0f
     private var pitchVelocity = 0f
-    private var previousInputYaw = 0f
-    private var previousInputPitch = 0f
-    private var previousInputInitialized = false
-    private var inputYaw = 0f
-    private var inputPitch = 0f
     private val output = Rotation(0f, 0f)
 
     private var movementPending = true
@@ -131,11 +130,6 @@ class AdvancedRotation(private val settings: AdvancedRotationSettings) : Rotatio
         settledTicks = 0
         yawVelocity = 0f
         pitchVelocity = 0f
-        previousInputYaw = 0f
-        previousInputPitch = 0f
-        previousInputInitialized = false
-        inputYaw = 0f
-        inputPitch = 0f
         output.yaw = 0f
         output.pitch = 0f
         movementPending = true
@@ -577,19 +571,14 @@ class AdvancedRotation(private val settings: AdvancedRotationSettings) : Rotatio
         ensureTarget(target)
         if (lastCalculatedTick == now) return output
         val consecutive = lastCalculatedTick != Int.MIN_VALUE && now - lastCalculatedTick == 1
-        val previousYawSpeed = if (consecutive && previousInputInitialized) abs(Mth.wrapDegrees(current.yaw - previousInputYaw)) * 20f else 0f
-        val previousPitchSpeed = if (consecutive && previousInputInitialized) abs(current.pitch - previousInputPitch) * 20f else 0f
+        val yawLagSpeed = abs(Mth.wrapDegrees(ideal.yaw - current.yaw)) * 20f
+        val pitchLagSpeed = abs(ideal.pitch - current.pitch) * 20f
         if (!consecutive) {
             movementPending = true
             settledTicks = 0
             yawVelocity = 0f
             pitchVelocity = 0f
         }
-        inputYaw = current.yaw
-        inputPitch = current.pitch
-        previousInputYaw = current.yaw
-        previousInputPitch = current.pitch
-        previousInputInitialized = true
         lastCalculatedTick = now
         output.yaw = current.yaw
         output.pitch = current.pitch
@@ -687,7 +676,7 @@ class AdvancedRotation(private val settings: AdvancedRotationSettings) : Rotatio
         output.pitch = (current.pitch + pitchStep).coerceIn(-90f, 90f)
         if (output.pitch == 90f && pitchVelocity > 0f || output.pitch == -90f && pitchVelocity < 0f) pitchVelocity = 0f
         val aligned = abs(deltaYaw) <= settings.yawTolerance.getFloat() && abs(deltaPitch) <= settings.pitchTolerance.getFloat()
-        val slow = previousYawSpeed <= settings.settleVelocity.getFloat() && previousPitchSpeed <= settings.settleVelocity.getFloat()
+        val slow = yawLagSpeed <= settings.settleVelocity.getFloat() && pitchLagSpeed <= settings.settleVelocity.getFloat()
         val phaseComplete = progress >= 1f && (!settings.overshootEnabled.value || now >= recoveryUntil) && now >= afterAttackRecoveryUntil
         settledTicks = if (aligned && slow && phaseComplete && (!settings.requireVisible.value || pointVisible)) (settledTicks + 1).coerceAtMost(40) else 0
         return output
@@ -696,7 +685,7 @@ class AdvancedRotation(private val settings: AdvancedRotationSettings) : Rotatio
     fun isAttackReady(): Boolean {
         if (!syncClock()) return false
         val target = targetIdentity ?: return false
-        val point = resolvedPoint ?: return false
+        if (resolvedPoint == null) return false
         val sampleTick = lastCalculatedTick
         if (!target.isAlive || lastResolvedTick != sampleTick || now - sampleTick !in 0..1 || movementPending || sampleTick < reactionUntil || sampleTick < postAttackUntil || sampleTick < afterAttackRecoveryUntil) return false
         if (settings.policy.value == AdvancedRotationPolicy.SNAP && !snapWindow()) return false
@@ -704,14 +693,13 @@ class AdvancedRotation(private val settings: AdvancedRotationSettings) : Rotatio
         if (settings.overshootEnabled.value && sampleTick < recoveryUntil) return false
         if (settledTicks < settings.settleTicks.getInt() || settings.requireVisible.value && !pointVisible) return false
         val eye = cachedEye ?: return false
-        val dx = point.x - eye.x
-        val dy = point.y - eye.y
-        val dz = point.z - eye.z
         val current = RotationManager.getServerRotation()
-        if (abs(Mth.wrapDegrees(current.yaw - inputYaw)) * 20f > settings.settleVelocity.getFloat() || abs(current.pitch - inputPitch) * 20f > settings.settleVelocity.getFloat()) return false
-        val yaw = Mth.wrapDegrees((Math.toDegrees(atan2(dz, dx)) - 90.0).toFloat() - current.yaw)
-        val pitch = (-Math.toDegrees(atan2(dy, sqrt(dx * dx + dz * dz)))).toFloat() - current.pitch
-        return abs(yaw) <= settings.yawTolerance.getFloat() && abs(pitch) <= settings.pitchTolerance.getFloat()
+        if (overrideActive) return true
+        if (RayTraceUtil.isLookingAtEntity(target, current, ATTACK_TRACE_RANGE, true)) return true
+        val nearest = RotationUtil.getNearestPoint(eye, target.box)
+        val wanted = RotationUtil.getRotationToVec(nearest, eye)
+        return abs(Mth.wrapDegrees(wanted.yaw - current.yaw)) <= settings.yawTolerance.getFloat() &&
+            abs(wanted.pitch - current.pitch) <= settings.pitchTolerance.getFloat()
     }
 
     fun notifyAttack() {
