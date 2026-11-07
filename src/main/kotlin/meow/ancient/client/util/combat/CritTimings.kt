@@ -43,7 +43,8 @@ object CritTimings {
             && !isCritBlocked(player)
             && ServerCritState.serverFallDistance > 0.0
             && !ServerCritState.serverOnGround
-            && (sprintWillStop || !ServerCritState.serverSprinting)
+            && !ServerCritState.serverSprinting
+            && !player.isSprinting
 
     fun critReachable(player: LocalPlayer): Boolean {
         if (player.isFallFlying) return false
@@ -84,6 +85,6 @@ object CritTimings {
     fun shouldStopSprinting(player: LocalPlayer, willClickNextTick: Boolean): Boolean {
         if (!willClickNextTick || player.isFallFlying) return false
         if (isCritBlocked(player)) return false
-        return ServerCritState.serverFallDistance > 0.0 || !player.onGround() || critReachable(player)
+        return !player.onGround() && player.deltaMovement.y < 0.0 && ServerCritState.serverFallDistance > 0.0
     }
 }

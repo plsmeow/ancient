@@ -13,6 +13,7 @@ import meow.ancient.module.modules.combat.hitaura.rotation.AdvancedPostAttackMod
 import meow.ancient.module.modules.combat.hitaura.rotation.AdvancedRotationPolicy
 import meow.ancient.module.modules.combat.hitaura.rotation.AdvancedRotationSettings
 import meow.ancient.module.modules.combat.hitaura.rotation.RotationStrategy
+import meow.ancient.module.modules.combat.HitAuraModule
 import net.minecraft.util.Mth
 import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.level.ClipContext
@@ -675,31 +676,53 @@ class AdvancedRotation(private val settings: AdvancedRotationSettings) : Rotatio
         output.yaw = current.yaw + yawStep
         output.pitch = (current.pitch + pitchStep).coerceIn(-90f, 90f)
         if (output.pitch == 90f && pitchVelocity > 0f || output.pitch == -90f && pitchVelocity < 0f) pitchVelocity = 0f
-        val aligned = abs(deltaYaw) <= settings.yawTolerance.getFloat() && abs(deltaPitch) <= settings.pitchTolerance.getFloat()
-        val slow = yawLagSpeed <= settings.settleVelocity.getFloat() && pitchLagSpeed <= settings.settleVelocity.getFloat()
+        val isLookingNow = RayTraceUtil.isLookingAtEntity(target, output, ATTACK_TRACE_RANGE, true)
+        val aligned = isLookingNow || (abs(deltaYaw) <= settings.yawTolerance.getFloat() && abs(deltaPitch) <= settings.pitchTolerance.getFloat())
+        val isMoving = (mc.player?.let { it.deltaMovement.lengthSqr() > 0.001 } == true) || target.deltaMovement.lengthSqr() > 0.001
+        val slow = isMoving || (yawLagSpeed <= settings.settleVelocity.getFloat() && pitchLagSpeed <= settings.settleVelocity.getFloat())
         val phaseComplete = progress >= 1f && (!settings.overshootEnabled.value || now >= recoveryUntil) && now >= afterAttackRecoveryUntil
-        settledTicks = if (aligned && slow && phaseComplete && (!settings.requireVisible.value || pointVisible)) (settledTicks + 1).coerceAtMost(40) else 0
+        settledTicks = if (aligned && slow && (phaseComplete || isMoving || isLookingNow) && (!settings.requireVisible.value || pointVisible)) (settledTicks + 1).coerceAtMost(40) else 0
         return output
     }
 
     fun isAttackReady(): Boolean {
         if (!syncClock()) return false
         val target = targetIdentity ?: return false
-        if (resolvedPoint == null) return false
+        if (!target.isAlive) return false
         val sampleTick = lastCalculatedTick
-        if (!target.isAlive || lastResolvedTick != sampleTick || now - sampleTick !in 0..1 || movementPending || sampleTick < reactionUntil || sampleTick < postAttackUntil || sampleTick < afterAttackRecoveryUntil) return false
+        if (sampleTick == Int.MIN_VALUE || now - sampleTick !in 0..1) return false
+        if (sampleTick < reactionUntil || sampleTick < postAttackUntil || sampleTick < afterAttackRecoveryUntil) return false
         if (settings.policy.value == AdvancedRotationPolicy.SNAP && !snapWindow()) return false
-        if (sampleTick - movementStart + 1 < movementDuration) return false
-        if (settings.overshootEnabled.value && sampleTick < recoveryUntil) return false
-        if (settledTicks < settings.settleTicks.getInt() || settings.requireVisible.value && !pointVisible) return false
-        val eye = cachedEye ?: return false
+
         val current = RotationManager.getServerRotation()
         if (overrideActive) return true
-        if (RayTraceUtil.isLookingAtEntity(target, current, ATTACK_TRACE_RANGE, true)) return true
+
+        val isLooking = RayTraceUtil.isLookingAtEntity(target, current, ATTACK_TRACE_RANGE, true)
+        if (isLooking) {
+            if (settings.requireVisible.value && !pointVisible) return false
+            return true
+        }
+
+        val isMoving = (mc.player?.let { it.deltaMovement.lengthSqr() > 0.001 } == true) || target.deltaMovement.lengthSqr() > 0.001
+        if (!isMoving) {
+            if (movementPending) return false
+            if (sampleTick - movementStart + 1 < movementDuration) return false
+            if (settings.overshootEnabled.value && sampleTick < recoveryUntil) return false
+            if (settledTicks < settings.settleTicks.getInt() || (settings.requireVisible.value && !pointVisible)) return false
+        } else {
+            if (settings.requireVisible.value && !pointVisible) return false
+        }
+
+        val eye = eyePosition()
         val nearest = RotationUtil.getNearestPoint(eye, target.box)
         val wanted = RotationUtil.getRotationToVec(nearest, eye)
-        return abs(Mth.wrapDegrees(wanted.yaw - current.yaw)) <= settings.yawTolerance.getFloat() &&
-            abs(wanted.pitch - current.pitch) <= settings.pitchTolerance.getFloat()
+        val yawDiff = abs(Mth.wrapDegrees(wanted.yaw - current.yaw))
+        val pitchDiff = abs(wanted.pitch - current.pitch)
+
+        val maxYaw = if (!HitAuraModule.rayTrace) maxOf(settings.yawTolerance.getFloat(), 18.0f) else settings.yawTolerance.getFloat()
+        val maxPitch = if (!HitAuraModule.rayTrace) maxOf(settings.pitchTolerance.getFloat(), 18.0f) else settings.pitchTolerance.getFloat()
+
+        return yawDiff <= maxYaw && pitchDiff <= maxPitch
     }
 
     fun notifyAttack() {
@@ -711,12 +734,14 @@ class AdvancedRotation(private val settings: AdvancedRotationSettings) : Rotatio
         postAttackUntil = if (settings.postAttackMode.value == AdvancedPostAttackMode.TRACK) Int.MIN_VALUE else now + settings.postAttackTicks.getInt() + 1
         afterAttackRecoveryStart = if (settings.recoveryAfterAttack.value) maxOf(now + 1, postAttackUntil) else Int.MIN_VALUE
         afterAttackRecoveryUntil = if (settings.recoveryAfterAttack.value) afterAttackRecoveryStart + settings.recoveryTicks.getInt() else Int.MIN_VALUE
-        movementPending = true
+        if (settings.postAttackMode.value != AdvancedPostAttackMode.TRACK) {
+            movementPending = true
+            settledTicks = 0
+        }
         overshootYaw = 0f
         overshootPitch = 0f
         overshootEnd = Int.MIN_VALUE
         recoveryStart = Int.MIN_VALUE
         recoveryUntil = Int.MIN_VALUE
-        settledTicks = 0
     }
 }

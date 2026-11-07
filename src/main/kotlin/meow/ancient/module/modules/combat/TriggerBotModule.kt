@@ -148,6 +148,7 @@ object TriggerBotModule : Module(
         target = null
         val sprintMode = SprintResetMode.fromName(AnticheatManager.sprintReset)
         sprintResetProcessor.prepareAttack(sprintMode, false)
+        sprintResetProcessor.onUpdate()
         val player = mc.player ?: return
         val level = mc.level ?: return
         if (!canUseContext(player, level)) {
@@ -207,7 +208,6 @@ object TriggerBotModule : Module(
         val sprintMode = SprintResetMode.fromName(AnticheatManager.sprintReset)
         val useAxe = shouldUseAxe(target)
         val forceMaceReady = !useAxe && AutoMaceModule.isForceReady(target)
-        if (!sprintResetProcessor.preAttack(sprintMode)) return
         var previousAxeSlot = -1
         var previousBreachSlot = -1
         var executed = false
@@ -229,6 +229,7 @@ object TriggerBotModule : Module(
 
             if (!canUseContext(player, level) || mc.gameMode !== gameMode
                 || level.getEntity(target.id) !== target) return
+            sprintResetProcessor.preAttack(sprintMode)
             val animation = player.getItemInHand(InteractionHand.MAIN_HAND).attackAnimation
             if (mode == ClickMode.MODE_1_8) {
                 player.swing(InteractionHand.MAIN_HAND, animation, false)

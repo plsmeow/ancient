@@ -414,6 +414,7 @@ object HitAuraModule : Module(
         predictedAimPoint = null
         val sprintMode = SprintResetMode.fromName(AnticheatManager.sprintReset)
         sprintResetProcessor.prepareAttack(sprintMode, false)
+        sprintResetProcessor.onUpdate()
         safeRun {
             if (player.isDeadOrDying) {
                 targetSelector.reset()

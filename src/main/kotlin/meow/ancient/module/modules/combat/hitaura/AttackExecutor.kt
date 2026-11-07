@@ -94,7 +94,6 @@ class AttackExecutor(
                 return false
             }
         }
-        if (!sprintResetProcessor.preAttack(sprintResetMode)) return false
 
         val forceMaceReady = AutoMaceModule.isForceReady(target)
         var previousAxeSlot = -1
@@ -114,10 +113,9 @@ class AttackExecutor(
             if (MaceKillModule.isEnabled()) {
                 MaceKillModule.doCrit()
             }
-            if (HitAuraModule.rotationMode == HitAuraModule.RotationMode.ADVANCED &&
-                !(rotationProcessor.getStrategy(HitAuraModule.RotationMode.ADVANCED) as AdvancedRotation).isAttackReady()) return false
 
 
+            sprintResetProcessor.preAttack(sprintResetMode)
             val swingAnimation = localPlayer.getItemInHand(InteractionHand.MAIN_HAND).attackAnimation
             currentGameMode.attack(localPlayer, target)
             executed = true

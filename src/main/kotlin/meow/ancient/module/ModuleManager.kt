@@ -15,6 +15,7 @@ import meow.ancient.module.modules.combat.VelocityModule
 import meow.ancient.module.modules.combat.SpearKillModule
 import meow.ancient.module.modules.combat.HitBoxesModule
 import meow.ancient.module.modules.combat.CrystalAuraModule
+import meow.ancient.module.modules.combat.CrystalAuraTestModule
 import meow.ancient.module.modules.combat.AnchorAuraModule
 import meow.ancient.module.modules.combat.TpAuraModule
 import meow.ancient.module.modules.combat.CrystalOptimizerModule
@@ -82,6 +83,7 @@ object ModuleManager : ILoadable {
             SpearKillModule,
             HitBoxesModule,
             CrystalAuraModule,
+            CrystalAuraTestModule,
             AnchorAuraModule,
             TpAuraModule,
             CrystalOptimizerModule,
