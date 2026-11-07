@@ -29,7 +29,7 @@ object ConfigManager {
             return dir
         }
 
-    fun saveCurrentConfig(): Boolean = saveConfig(currentConfig)
+    fun saveCurrentConfig(): Boolean = saveConfig("default")
 
     fun saveConfig(name: String = currentConfig): Boolean {
         currentConfig = name
@@ -76,7 +76,13 @@ object ConfigManager {
     fun loadConfig(name: String = "default"): Boolean {
         return try {
             val file = File(configDirectory, "$name.json")
-            if (!file.exists()) return false
+            if (!file.exists()) {
+                if (name.equals("default", ignoreCase = true)) {
+                    saveConfig("default")
+                    return true
+                }
+                return false
+            }
             currentConfig = name
 
             val root = JsonParser.parseString(file.readText()).asJsonObject
@@ -159,6 +165,7 @@ object ConfigManager {
     }
 
     fun deleteConfig(name: String): Boolean {
+        if (name.equals("default", ignoreCase = true)) return false
         val file = File(configDirectory, "$name.json")
         return if (file.exists()) {
             file.delete()
@@ -166,7 +173,7 @@ object ConfigManager {
     }
 
     fun clearConfigs(): Int {
-        val files = configDirectory.listFiles { file -> file.isFile && file.name.endsWith(".json") } ?: return 0
+        val files = configDirectory.listFiles { file -> file.isFile && file.name.endsWith(".json") && !file.nameWithoutExtension.equals("default", ignoreCase = true) } ?: return 0
         var count = 0
         for (file in files) {
             if (file.delete()) count++
@@ -176,7 +183,7 @@ object ConfigManager {
 
     fun listConfigs(): List<String> {
         val files = configDirectory.listFiles { file -> file.isFile && file.name.endsWith(".json") }
-        return files?.map { it.nameWithoutExtension } ?: emptyList()
+        return files?.map { it.nameWithoutExtension }?.filter { !it.equals("default", ignoreCase = true) } ?: emptyList()
     }
 
     fun openDirectory(): Boolean {

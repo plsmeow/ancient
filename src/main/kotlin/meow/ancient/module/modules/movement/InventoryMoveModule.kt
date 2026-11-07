@@ -32,12 +32,9 @@ import net.minecraft.network.protocol.Packet
 import net.minecraft.network.protocol.game.ServerboundContainerButtonClickPacket
 import net.minecraft.network.protocol.game.ServerboundContainerClickPacket
 import net.minecraft.network.protocol.game.ServerboundContainerSlotStateChangedPacket
-import net.minecraft.network.protocol.game.ServerboundPlayerCommandPacket
-import net.minecraft.network.protocol.game.ServerboundPlayerInputPacket
 import net.minecraft.network.protocol.game.ServerboundSetCreativeModeSlotPacket
 import net.minecraft.world.entity.player.Input
 import net.minecraft.world.inventory.AbstractContainerMenu
-import net.minecraft.world.inventory.ContainerInput
 import net.minecraft.world.phys.Vec2
 import sweetie.evaware.flora.api.Commando
 import java.util.ArrayDeque
@@ -215,19 +212,6 @@ object InventoryMoveModule : Module(
         val packet = event.packet
         if (!isContainerActionPacket(packet) || SlownessManager.isExecutingPreparedAction()
             || currentScreen !is AbstractContainerScreen<*>) return
-        if (packet is ServerboundContainerClickPacket && packet.containerInput() == ContainerInput.SWAP) {
-            val player = owner ?: return
-            val inventoryMenu = menu ?: return
-            if (packet.containerId() == inventoryMenu.containerId
-                && InventoryActionSource.fromMenuSlot(player, inventoryMenu, packet.slotNum().toInt(),
-                    packet.buttonNum().toInt()) == InventoryActionSource.HOTBAR) {
-                if (packetQueue.isNotEmpty()) flushPackets()
-                movementSyncPending = true
-                pauseUntil = System.nanoTime() + pauseNanos
-                pauseMovement()
-                return
-            }
-        }
         if (packetQueue.isEmpty() && !MoveUtil.isMoving() && !mc.options.keyJump.isDown
             && !MoveUtil.movementKeys.any(MoveUtil::isKeyPressed)) return
         packetQueue.addLast(packet)
@@ -247,12 +231,16 @@ object InventoryMoveModule : Module(
             return
         }
         val screen = event.screen
-        if (screen !is AbstractContainerScreen<*> || packetQueue.isEmpty()) return
+        if (screen !is AbstractContainerScreen<*>) return
+        if (packetQueue.isEmpty() && !MoveUtil.isMoving() && !mc.options.keyJump.isDown
+            && !MoveUtil.movementKeys.any(MoveUtil::isKeyPressed) && owner?.isSprinting != true) return
         event.cancel = true
         if (closingScreen != null) return
         closingScreen = screen
         preparing = true
         movementSyncPending = true
+        lastPreparationRequest = System.nanoTime()
+        pauseUntil = lastPreparationRequest + pauseNanos
         pauseMovement()
     }
 
@@ -294,10 +282,12 @@ object InventoryMoveModule : Module(
             pauseUntil = 0L
             preparing = false
         }
-        if (packetQueue.isNotEmpty() && (!slownessActive() || now >= pauseUntil)
+        val hasPackets = packetQueue.isNotEmpty()
+        val hasClosing = closingScreen != null
+        if ((hasPackets || hasClosing) && (!slownessActive() || now >= pauseUntil)
             && !movementSyncPending) {
-            flushPackets()
-            finishClose()
+            if (hasPackets) flushPackets()
+            if (hasClosing) finishClose()
             preparing = false
             pauseUntil = if (slownessActive()) System.nanoTime() + pauseNanos else 0L
             if (!validateOwner()) return
@@ -312,7 +302,7 @@ object InventoryMoveModule : Module(
             }
             if (!validateOwner()) return
         }
-        if (slownessActive() && actionQueue.isEmpty() && packetQueue.isEmpty()
+        if (slownessActive() && actionQueue.isEmpty() && packetQueue.isEmpty() && closingScreen == null
             && transactions.isEmpty() && System.nanoTime() >= pauseUntil
             && (!preparing || System.nanoTime() - lastPreparationRequest >= pauseNanos)) {
             preparing = false

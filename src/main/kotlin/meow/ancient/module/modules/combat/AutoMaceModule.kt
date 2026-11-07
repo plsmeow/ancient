@@ -80,7 +80,7 @@ object AutoMaceModule : Module(
             cancelPreparation()
             return AttackPreparation.WAITING
         }
-        val source = if (needsChestSwap) InventoryActionSource.fromInventorySlot(chestSlot)
+        val source = if (needsChestSwap) InventoryActionSource.INVENTORY
             else InventoryActionSource.HOTBAR
         if (source == InventoryActionSource.HOTBAR) cancelPreparation()
         if (!InventoryMoveModule.beginInventoryAction(source)) {

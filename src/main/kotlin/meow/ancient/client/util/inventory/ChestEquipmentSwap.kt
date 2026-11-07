@@ -68,10 +68,9 @@ class ChestEquipmentSwap {
         val chestSlot = player.inventoryMenu.getSlot(6)
         if (!chestSlot.mayPickup(player) || !chestSlot.mayPlace(replacement)) return false
 
-        val source = InventoryActionSource.fromInventorySlot(slot)
-        if (source == InventoryActionSource.HOTBAR) cancelPreparation()
+        val source = InventoryActionSource.INVENTORY
         if (!InventoryMoveModule.beginInventoryAction(source)) {
-            preparingInventory = source == InventoryActionSource.INVENTORY
+            preparingInventory = true
             return false
         }
         preparingInventory = false
@@ -117,10 +116,9 @@ class ChestEquipmentSwap {
                 return false
             }
         }
-        val source = InventoryActionSource.fromInventorySlot(sourceSlot)
-        if (source == InventoryActionSource.HOTBAR) cancelPreparation()
+        val source = InventoryActionSource.INVENTORY
         if (!InventoryMoveModule.beginInventoryAction(source)) {
-            preparingInventory = source == InventoryActionSource.INVENTORY
+            preparingInventory = true
             return false
         }
         preparingInventory = false

@@ -76,7 +76,7 @@ object SlownessManager {
 
     @JvmStatic
     fun onContainerClose(connection: Connection) {
-        if (!AnticheatManager.isSwapBypassGrimFast) return
+        if (!AnticheatManager.isSwapBypassActive) return
         val player = mc.player ?: return
         val world = mc.level ?: return
         val listener = player.connection
@@ -92,7 +92,8 @@ object SlownessManager {
         pauseOwner = player
         pauseWorld = world
         pauseConnection = listener
-        pauseUntil = maxOf(pauseUntil, System.nanoTime() + 60_000_000L)
+        val durationNanos = if (AnticheatManager.isSwapBypassGrimFast) 60_000_000L else 100_000_000L
+        pauseUntil = maxOf(pauseUntil, System.nanoTime() + durationNanos)
         applySlowInput()
     }
 

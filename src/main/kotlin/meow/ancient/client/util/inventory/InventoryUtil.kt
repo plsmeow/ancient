@@ -131,7 +131,7 @@ object InventoryUtil {
             || hotbarButton !in Hotbar_rad && hotbarButton != 40) return false
         val slot = menu.getSlot(menuSlot)
         if (!slot.mayPickup(player) || !slot.mayPlace(player.inventory.getItem(hotbarButton))) return false
-        val source = InventoryActionSource.fromMenuSlot(player, menu, menuSlot, hotbarButton)
+        val source = InventoryActionSource.INVENTORY
         if (!InventoryMoveModule.beginInventoryAction(source)) return false
         try {
             if (mc.player !== player || player.containerMenu !== menu || !canModifyInventory(player)) return false
@@ -143,7 +143,7 @@ object InventoryUtil {
     }
 
     fun closeInventory() {
-        InventoryMoveModule.runInventoryAction(InventoryActionSource.HOTBAR, Runnable {
+        InventoryMoveModule.runInventoryAction(InventoryActionSource.INVENTORY, Runnable {
             val player = mc.player ?: return@Runnable
             if (!canModifyInventory(player)) return@Runnable
             player.connection.send(ServerboundContainerClosePacket(player.containerMenu.containerId))
@@ -232,7 +232,7 @@ object InventoryUtil {
         if (slot !in allslots || player.containerMenu !== player.inventoryMenu || !canModifyInventory(player)) return false
         val chestSlot = player.inventoryMenu.getSlot(6)
         if (!chestSlot.mayPickup(player) || !chestSlot.mayPlace(player.inventory.getItem(slot))) return false
-        val source = InventoryActionSource.fromInventorySlot(slot)
+        val source = InventoryActionSource.INVENTORY
         if (!InventoryMoveModule.beginInventoryAction(source)) return false
         try {
             if (slot in Hotbar_rad) return clickSlot(6, slot)

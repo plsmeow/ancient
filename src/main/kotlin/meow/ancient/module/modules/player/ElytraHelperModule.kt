@@ -130,7 +130,7 @@ object ElytraHelperModule : Module(
             return
         }
         val selected = player.inventory.getItem(slot).copy()
-        queueAction(InventoryActionSource.fromInventorySlot(slot)) { currentPlayer ->
+        queueAction(InventoryActionSource.INVENTORY) { currentPlayer ->
             if (ItemStack.matches(currentPlayer.inventory.getItem(slot), selected)
                 && currentPlayer.getItemBySlot(EquipmentSlot.CHEST).`is`(Items.ELYTRA) == chestplate) {
                 InventoryUtil.swapChest(slot)
@@ -229,7 +229,7 @@ object ElytraHelperModule : Module(
         if (player.cooldowns.isOnCooldown(player.inventory.getItem(inventorySlot))) return
         val menuSlot = if (inventorySlot in 0..8) inventorySlot + 36 else inventorySlot
         if (!canExchange(player, menuSlot, 45)) return
-        queueAction(InventoryActionSource.fromInventorySlot(inventorySlot)) { currentPlayer ->
+        queueAction(InventoryActionSource.INVENTORY) { currentPlayer ->
             val stack = currentPlayer.inventory.getItem(inventorySlot)
             if (!currentPlayer.isFallFlying || !stack.`is`(Items.FIREWORK_ROCKET)
                 || currentPlayer.cooldowns.isOnCooldown(stack)

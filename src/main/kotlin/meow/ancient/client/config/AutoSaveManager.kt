@@ -19,7 +19,7 @@ object AutoSaveManager {
 
     fun saveAll() {
         try {
-            ConfigManager.saveCurrentConfig()
+            ConfigManager.saveConfig("default")
             FriendRepository.save()
             TargetRepository.save()
             MacroRepository.save()
