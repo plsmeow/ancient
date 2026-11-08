@@ -8,6 +8,7 @@ import meow.ancient.client.extensions.mc
 import meow.ancient.client.gui.hud.HudNotificationCenter
 import meow.ancient.module.ModuleManager
 import meow.ancient.module.modules.render.ClientSoundsModule
+import meow.ancient.module.modules.render.HideModule
 import meow.ancient.module.setting.*
 import org.lwjgl.sdl.SDLMouse
 
@@ -153,7 +154,7 @@ object SettingBindingManager {
         (setting as Setting<Any?>).setOverride(value)
     }
 
-    private fun inputAllowed(): Boolean = mc.isWindowActive && currentScreen == null
+    private fun inputAllowed(): Boolean = !HideModule.isActive && mc.isWindowActive && currentScreen == null
 
     private fun validKey(key: Int): Boolean = key > 0 || KeybindSetting.isMouseButton(key)
 

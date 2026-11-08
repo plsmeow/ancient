@@ -8,6 +8,7 @@ import meow.ancient.client.util.render.engine.controls.ClientRenderPipeline
 import meow.ancient.client.util.render.engine.controls.MatrixControl
 import meow.ancient.client.util.render.font.Fonts
 import net.minecraft.client.renderer.RenderPipelines
+import meow.ancient.module.modules.render.HideModule
 import net.minecraft.resources.Identifier
 import net.minecraft.util.Mth
 import kotlin.math.atan2
@@ -37,7 +38,7 @@ object GpsRenderer {
     }
 
     fun render(partialTicks: Float) {
-        if (!enabled) return
+        if (!enabled || HideModule.isActive) return
         val player = mc.player ?: return
         if (mc.gui.hud.isHidden) return
         val graphics = RenderUtils.currentGraphics ?: return

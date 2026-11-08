@@ -8,6 +8,7 @@ import meow.ancient.client.util.staff.StaffRepository
 import meow.ancient.event.EventManager
 import meow.ancient.event.events.ClientDisconnectEvent
 import sweetie.evaware.flora.api.Commando
+import meow.ancient.module.modules.render.HideModule
 
 object AutoSaveManager {
     private const val INTERVAL_MS = 10 * 60 * 1000L
@@ -18,6 +19,7 @@ object AutoSaveManager {
     }
 
     fun saveAll() {
+        if (HideModule.isActive) return
         try {
             ConfigManager.saveConfig("default")
             FriendRepository.save()

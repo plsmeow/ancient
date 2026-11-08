@@ -8,6 +8,7 @@ import meow.ancient.client.extensions.currentScreen
 import meow.ancient.client.extensions.mc
 import meow.ancient.event.EventManager
 import meow.ancient.event.events.KeyPressEvent
+import meow.ancient.module.modules.render.HideModule
 import sweetie.evaware.flora.api.Commando
 import java.io.File
 import java.util.concurrent.CopyOnWriteArrayList
@@ -69,6 +70,7 @@ object MacroRepository {
 
     @Commando
     fun onKeyPress(event: KeyPressEvent) {
+        if (HideModule.isActive) return
         if (event.action != InputConstants.PRESS) return
         val key = event.key
         if (key == InputConstants.UNKNOWN.value) return

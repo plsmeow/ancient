@@ -4,6 +4,7 @@ import com.mojang.brigadier.ParseResults;
 import com.mojang.brigadier.suggestion.Suggestions;
 import meow.ancient.client.command.CommandManager;
 import meow.ancient.client.command.CommandSuggestionProvider;
+import meow.ancient.module.modules.render.HideModule;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientSuggestionProvider;
 import net.minecraft.client.gui.Font;
@@ -42,7 +43,7 @@ public abstract class MixinCommandSuggestions {
     private void ancient$onUpdateCommandInfo(CallbackInfo ci) {
         String text = this.input.getValue();
         String prefix = CommandManager.INSTANCE.getPrefix();
-        if (prefix.isEmpty() || !text.startsWith(prefix)) return;
+        if (prefix.isEmpty() || !text.startsWith(prefix) || HideModule.isActive) return;
         ci.cancel();
         if (this.keepSuggestions) return;
 

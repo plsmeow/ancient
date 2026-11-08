@@ -30,6 +30,7 @@ import meow.ancient.event.events.OverlayRenderEvent
 import meow.ancient.module.modules.render.HudModule
 import meow.ancient.module.modules.render.TagsModule
 import meow.ancient.module.modules.other.TestModule
+import meow.ancient.module.modules.render.HideModule
 import net.minecraft.client.DeltaTracker
 import net.minecraft.client.gui.GuiGraphicsExtractor
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents
@@ -71,7 +72,7 @@ object RenderListener : Listener() {
     }
 
     fun renderHud(guiGraphics: GuiGraphicsExtractor, deltaTracker: DeltaTracker) {
-        if (!inGame) return
+        if (!inGame || HideModule.isActive) return
 
         RenderUtils.currentGraphics = guiGraphics
         try {
@@ -96,7 +97,7 @@ object RenderListener : Listener() {
     }
 
     fun renderChatHud(guiGraphics: GuiGraphicsExtractor) {
-        if (!inGame) return
+        if (!inGame || HideModule.isActive) return
         val previousGraphics = RenderUtils.currentGraphics
         RenderUtils.currentGraphics = guiGraphics
         try {

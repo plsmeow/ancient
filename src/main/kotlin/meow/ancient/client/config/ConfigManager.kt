@@ -10,6 +10,7 @@ import meow.ancient.client.extensions.mc
 import meow.ancient.client.util.bind.SettingBindingManager
 import meow.ancient.module.ModuleManager
 import meow.ancient.module.modules.render.HudModule
+import meow.ancient.module.modules.render.HideModule
 import meow.ancient.module.setting.Setting
 import meow.ancient.module.setting.SettingBinding
 import meow.ancient.module.setting.SettingBindMode
@@ -41,7 +42,7 @@ object ConfigManager {
             val modulesObj = JsonObject()
             for (module in ModuleManager.modules) {
                 val modObj = JsonObject()
-                modObj.addProperty("enabled", module.isEnabled())
+                modObj.addProperty("enabled", if (module === HideModule) false else module.isEnabled())
                 modObj.addProperty("key", module.key)
                 modObj.addProperty("expanded", module.isExpanded)
 

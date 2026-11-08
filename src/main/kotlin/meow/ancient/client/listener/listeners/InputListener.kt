@@ -11,6 +11,7 @@ import meow.ancient.event.events.KeyPressEvent
 import meow.ancient.module.ModuleManager
 import meow.ancient.module.modules.render.ClickGuiModule
 import meow.ancient.module.setting.KeybindSetting
+import meow.ancient.module.modules.render.HideModule
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents
 import sweetie.evaware.flora.api.Commando
 
@@ -31,6 +32,7 @@ object InputListener : Listener() {
 
     @Commando
     fun onKeyPress(event: KeyPressEvent) {
+        if (HideModule.isActive) return
         SettingBindingManager.onKey(event.key, event.action)
         if (event.action != InputConstants.PRESS) return
         if (event.key == InputConstants.UNKNOWN.value) return

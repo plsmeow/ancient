@@ -20,7 +20,7 @@ object ClientSoundsModule : Module(
     private var lastSound: SoundInstance? = null
 
     fun play(enabled: Boolean) {
-        if (!isEnabled()) return
+        if (!isEnabled() || HideModule.isActive) return
         val soundManager = mc.soundManager ?: return
 
         lastSound?.let { soundManager.stop(it) }

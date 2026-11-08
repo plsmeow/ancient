@@ -2,6 +2,7 @@ package meow.ancient.client.gui.hud
 
 import meow.ancient.client.extensions.mc
 import java.util.ArrayDeque
+import meow.ancient.module.modules.render.HideModule
 
 internal const val HUD_NOTIFICATION_LIFETIME_NANOS = 2_800_000_000L
 
@@ -25,7 +26,7 @@ object HudNotificationCenter {
     @JvmStatic
     @Synchronized
     fun moduleToggled(name: String, enabled: Boolean) {
-        if (name.equals("ClickGUI", ignoreCase = true)) return
+        if (name.equals("ClickGUI", ignoreCase = true) || name.equals("Hide", ignoreCase = true) || HideModule.isActive) return
         enqueue(name, if (enabled) "Enabled" else "Disabled", enabled)
     }
 

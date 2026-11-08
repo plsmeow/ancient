@@ -2,6 +2,7 @@ package meow.ancient.client.command
 
 import meow.ancient.client.command.impl.*
 import meow.ancient.client.interfaces.ILoadable
+import meow.ancient.module.modules.render.HideModule
 import meow.ancient.client.util.other.ChatUtil
 import meow.ancient.event.EventManager
 import meow.ancient.event.events.PacketSendEvent
@@ -84,6 +85,7 @@ object CommandManager : ILoadable {
 
     @Commando
     fun onPacketSend(event: PacketSendEvent) {
+        if (HideModule.isActive) return
         val packet = event.packet
         if (packet is ServerboundChatPacket) {
             val message = packet.message
