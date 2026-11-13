@@ -150,23 +150,40 @@ class AuraActionQueue(private var owner: Any) {
     }
 
     /** Refresh supports from the same eye position that will be used to send the interaction. */
-    fun placementHit(pos: BlockPos, range: Double, wallCheck: Boolean = true, rotations: Boolean = false): BlockHitResult? {
+    fun placementHit(pos: BlockPos, range: Double, wallCheck: Boolean = true, rotations: Boolean = false,
+                     overrides: Map<BlockPos, BlockState> = emptyMap()): BlockHitResult? {
         val current = player ?: return null
         val reach = minOf(range, current.blockInteractionRange())
-        return Companion.placementHit(current, pos, range, wallCheck, eyes = serverEyes,
+        return Companion.placementHit(current, pos, range, wallCheck, overrides, eyes = serverEyes,
             secondaryEyes = current.eyePosition) { hit ->
             !rotations || !wallCheck || aimingRotation(blockAimPoint(hit)) { rotation ->
-                val actual = trace(serverEyes, rotation, reach)
+                val actual = trace(serverEyes, rotation, reach, overrides = overrides)
                 actual != null && actual.blockPos == hit.blockPos && actual.direction == hit.direction
                     && current.eyePosition.distanceToSqr(actual.location) <= reach * reach
             } != null
         }
     }
 
-    fun visibleHit(pos: BlockPos, range: Double, wallCheck: Boolean = true, preferred: Vec3? = null): BlockHitResult? {
+    fun visibleHit(pos: BlockPos, range: Double, wallCheck: Boolean = true, preferred: Vec3? = null,
+                   rotations: Boolean = false, overrides: Map<BlockPos, BlockState> = emptyMap()): BlockHitResult? {
         val current = player ?: return null
-        return Companion.visibleHit(current, pos, range, wallCheck = wallCheck, eyes = serverEyes,
-            preferred = preferred, secondaryEyes = current.eyePosition)
+        val reach = minOf(range, current.blockInteractionRange())
+        return Companion.visibleHit(current, pos, range, wallCheck = wallCheck, overrides = overrides, eyes = serverEyes,
+            preferred = preferred, secondaryEyes = current.eyePosition) { hit ->
+            !rotations || !wallCheck || aimingRotation(blockAimPoint(hit)) { rotation ->
+                val actual = trace(serverEyes, rotation, reach, overrides = overrides)
+                actual != null && actual.blockPos == pos && current.eyePosition.distanceToSqr(actual.location) <= reach * reach
+            } != null
+        }
+    }
+
+    fun visibleBoxPoint(box: AABB, range: Double, wallCheck: Boolean, rotations: Boolean,
+                        overrides: Map<BlockPos, BlockState>): Vec3? {
+        val current = player ?: return null
+        val reach = minOf(range, current.entityInteractionRange())
+        return Companion.visibleBoxPoint(current, box, reach, wallCheck, overrides, serverEyes, current.eyePosition) { point ->
+            !rotations || aimingRotation(point) { hitsBox(serverEyes, it, box, reach, wallCheck, overrides) } != null
+        }
     }
 
     fun blockHit(hit: BlockHitResult, range: Double, exactFace: Boolean = false, wallCheck: Boolean = true): BlockHitResult? {
@@ -254,17 +271,27 @@ class AuraActionQueue(private var owner: Any) {
     }
 
     private fun hitsCrystal(eyes: Vec3, rotation: Rotation, crystal: EndCrystal, reach: Double, wallCheck: Boolean): Boolean {
-        if (crystal.boundingBox.contains(eyes)) return true
+        return hitsBox(eyes, rotation, crystal.boundingBox, reach, wallCheck)
+    }
+
+    private fun hitsBox(eyes: Vec3, rotation: Rotation, box: AABB, reach: Double, wallCheck: Boolean,
+                        overrides: Map<BlockPos, BlockState> = emptyMap()): Boolean {
+        if (box.contains(eyes)) return true
         val end = eyes.add(rotation.toDirectionVec().scale(reach))
-        val hit = crystal.boundingBox.clip(eyes, end).orElse(null) ?: return crystal.boundingBox.contains(eyes)
+        val hit = box.clip(eyes, end).orElse(null) ?: return false
         if (!wallCheck) return true
-        val block = trace(eyes, rotation, reach)
+        val block = trace(eyes, rotation, reach, overrides = overrides)
         return block == null || eyes.distanceToSqr(hit) < eyes.distanceToSqr(block.location)
     }
 
-    private fun trace(eyes: Vec3, rotation: Rotation, reach: Double, targetOnly: BlockPos? = null): BlockHitResult? {
+    private fun trace(eyes: Vec3, rotation: Rotation, reach: Double, targetOnly: BlockPos? = null,
+                      overrides: Map<BlockPos, BlockState> = emptyMap()): BlockHitResult? {
         val world = level ?: return null
         val end = eyes.add(rotation.toDirectionVec().scale(reach))
+        if (overrides.isNotEmpty()) return MeteorDamageHelper.raycast(eyes, end,
+            ExplosionDamageUtil.ExposureRaycastContext(eyes, end), ExplosionDamageUtil.RaycastFactory { ray, pos ->
+                (overrides[pos] ?: world.getBlockState(pos)).getShape(world, pos).clip(ray.start, ray.end, pos)
+            })
         if (targetOnly != null) return world.getBlockState(targetOnly).getShape(world, targetOnly).clip(eyes, end, targetOnly)
         return world.clip(ClipContext(eyes, end, ClipContext.Block.OUTLINE, ClipContext.Fluid.NONE, player!!))
             .takeIf { it.type == HitResult.Type.BLOCK }
@@ -274,14 +301,28 @@ class AuraActionQueue(private var owner: Any) {
         fun visibleCrystalPoint(player: LocalPlayer, crystal: EndCrystal, range: Double, wallCheck: Boolean = true,
                                 eyes: Vec3 = player.eyePosition, secondaryEyes: Vec3? = null,
                                 accepts: (Vec3) -> Boolean = { true }): Vec3? {
-            val level = mc.level ?: return null
             val box = crystal.boundingBox
+            return visibleBoxPoint(player, box, range, wallCheck, eyes = eyes, secondaryEyes = secondaryEyes,
+                preferred = RotationUtil.getNearestPoint(eyes, box.deflate(0.05)), accepts = accepts)
+        }
+
+        fun visibleBoxPoint(player: LocalPlayer, box: AABB, range: Double, wallCheck: Boolean = true,
+                            overrides: Map<BlockPos, BlockState> = emptyMap(), eyes: Vec3 = player.eyePosition,
+                            secondaryEyes: Vec3? = null, preferred: Vec3? = null,
+                            accepts: (Vec3) -> Boolean = { true }): Vec3? {
+            val level = mc.level ?: return null
             val reach = minOf(range, player.entityInteractionRange())
-            return HitboxPointResolver.find(eyes, box, reach, RotationUtil.getNearestPoint(eyes, box.deflate(0.05)), secondaryEyes,
+            val cache = HashMap<BlockPos, VoxelShape>()
+            fun shape(pos: BlockPos) = cache.getOrPut(pos.immutable()) {
+                (overrides[pos] ?: level.getBlockState(pos)).getShape(level, pos)
+            }
+            return HitboxPointResolver.find(eyes, box, reach, preferred, secondaryEyes,
                 trace = { start, end ->
-                    if (!wallCheck) null else level.clip(ClipContext(start, end, ClipContext.Block.OUTLINE, ClipContext.Fluid.NONE, player))
+                    if (!wallCheck) null else if (overrides.isEmpty()) level.clip(ClipContext(start, end, ClipContext.Block.OUTLINE, ClipContext.Fluid.NONE, player))
                         .takeIf { it.type == HitResult.Type.BLOCK }
-                }, shapes = { pos -> level.getBlockState(pos).getShape(level, pos).toAabbs().map { it.move(pos) } }, accepts = accepts)
+                    else MeteorDamageHelper.raycast(start, end, ExplosionDamageUtil.ExposureRaycastContext(start, end),
+                        ExplosionDamageUtil.RaycastFactory { ray, pos -> shape(pos).clip(ray.start, ray.end, pos) })
+                }, shapes = { pos -> shape(pos).toAabbs().map { it.move(pos) } }, accepts = accepts)
         }
 
         fun visibleHit(player: LocalPlayer, pos: BlockPos, range: Double, face: Direction? = null,

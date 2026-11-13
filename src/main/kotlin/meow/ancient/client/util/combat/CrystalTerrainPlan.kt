@@ -6,6 +6,7 @@ import net.minecraft.world.level.block.state.BlockState
 
 /** A damage-approved terrain block must be replaced before another site may be mined. */
 internal class CrystalTerrainPlan(val pos: BlockPos, val targetId: Int) {
+    val recovery = CrystalTerrainRecovery()
     enum class Stage { MINE, BASE, CONFIRM, DONE }
     var stage = Stage.MINE
         private set

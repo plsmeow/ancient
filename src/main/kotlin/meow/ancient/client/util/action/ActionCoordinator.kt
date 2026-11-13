@@ -110,6 +110,8 @@ object ActionCoordinator {
         return state.canAct(resolveOwner(owner), preferred())
     }
 
+    fun blockReason(owner: Any): String? = state.blockReason(resolveOwner(owner), preferred())
+
     fun claimSlot(owner: ActionOwner) { state.claimSlot(owner) }
 
     /** A direct attack/use must not accidentally use a tool leased by another action group. */

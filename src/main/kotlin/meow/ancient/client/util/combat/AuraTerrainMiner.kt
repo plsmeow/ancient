@@ -35,6 +35,11 @@ import kotlin.math.ceil
 /** A single temporary terrain target. It does not alter PacketMine's manual targets/settings. */
 class AuraTerrainMiner(private var owner: Any, private val actions: AuraActionQueue,
                        private val startAllowed: (BlockPos) -> Boolean = { true }) {
+    enum class Status { IDLE, START, MINING, SLOT, FACE, ROTATION, CONFIRM }
+    var status = Status.IDLE
+        private set
+    var confirmationFailures = 0
+        private set
     private class Target(val player: LocalPlayer, val level: ClientLevel, val pos: BlockPos) {
         val progress = PacketMineProgress()
         var state = level.getBlockState(pos)
@@ -57,6 +62,7 @@ class AuraTerrainMiner(private var owner: Any, private val actions: AuraActionQu
     private var abort: Target? = null
     private var sending: Packet<*>? = null
     private var accepted = false
+    private val toolSpeeds = HashMap<Pair<BlockState, Int>, Float>()
     val active get() = target != null
     val position get() = target?.pos
     val progress: Float get() = target?.let {
@@ -69,6 +75,8 @@ class AuraTerrainMiner(private var owner: Any, private val actions: AuraActionQu
     } ?: 0f
 
     init { EventManager.register(this) }
+
+    fun beginTick() { toolSpeeds.clear() }
 
     internal fun changeOwner(newOwner: Any) {
         if (owner == newOwner) return
@@ -83,13 +91,18 @@ class AuraTerrainMiner(private var owner: Any, private val actions: AuraActionQu
         val slot = toolSlot(player, state, pos)
         if (slot < 0) return Int.MAX_VALUE
         val tool = player.inventory.getItem(slot)
+        val delta = toolProgress(player, state, pos, tool)
+        return if (delta > 0f) ceil(1.0 / delta).toInt().coerceAtLeast(1) else Int.MAX_VALUE
+    }
+
+    private fun toolProgress(player: LocalPlayer, state: BlockState, pos: BlockPos, tool: ItemStack): Float {
+        val level = mc.level ?: return 0f
         fun attribute(type: Holder<Attribute>): Double {
             val actual = player.getAttribute(type) ?: return type.value().defaultValue
             return PacketMineToolSpeed.attributeValue(actual, type, player.mainHandItem, tool)
         }
-        val delta = PacketMineToolSpeed.progress(player, tool, state, state.getDestroySpeed(level, pos),
+        return PacketMineToolSpeed.progress(player, tool, state, state.getDestroySpeed(level, pos),
             attribute(Attributes.MINING_EFFICIENCY), attribute(Attributes.BLOCK_BREAK_SPEED))
-        return if (delta > 0f) ceil(1.0 / delta).toInt().coerceAtLeast(1) else Int.MAX_VALUE
     }
 
     companion object {
@@ -104,7 +117,7 @@ class AuraTerrainMiner(private var owner: Any, private val actions: AuraActionQu
 
     fun keepVanillaMining(): Boolean = target?.let {
         it.current() && !it.packet && it.started && !isVanillaCall() && !mc.options.keyAttack.isDown
-            && !mc.options.keyUse.isDown && mc.gui.screen() == null && !it.player.isUsingItem
+            && !mc.options.keyUse.isDown && !it.player.isUsingItem
             && ActionCoordinator.canAct(owner)
     } == true
 
@@ -122,13 +135,19 @@ class AuraTerrainMiner(private var owner: Any, private val actions: AuraActionQu
             && toolSlot(player, state, pos) >= 0
     }
 
+    fun hasTool(player: LocalPlayer, pos: BlockPos): Boolean = mc.level?.let {
+        toolSlot(player, it.getBlockState(pos), pos) >= 0
+    } == true
+
     private fun toolSlot(player: LocalPlayer, state: BlockState, pos: BlockPos): Int = (0..8)
         .filter {
             val stack = player.inventory.getItem(it)
             !stack.isEmpty && stack.getDestroySpeed(state) > 1f
                 && (!state.requiresCorrectToolForDrops() || stack.isCorrectToolForDrops(state))
                 && stack.canDestroyBlock(state, mc.level!!, pos, player)
-        }.maxByOrNull { player.inventory.getItem(it).getDestroySpeed(state) } ?: -1
+        }.maxByOrNull { slot -> toolSpeeds.getOrPut(state to slot) {
+            toolProgress(player, state, pos, player.inventory.getItem(slot))
+        } } ?: -1
 
     fun select(pos: BlockPos): Boolean {
         val player = mc.player ?: return false
@@ -140,6 +159,7 @@ class AuraTerrainMiner(private var owner: Any, private val actions: AuraActionQu
     }
 
     fun cancel() {
+        status = Status.IDLE
         val current = target ?: return
         target = null
         if (current.started && !current.confirmed) abort = current
@@ -161,8 +181,9 @@ class AuraTerrainMiner(private var owner: Any, private val actions: AuraActionQu
         }
     }
 
-    fun update(range: Double, packet: Boolean, rotations: Boolean, moveFix: MoveFixMode) {
+    fun update(range: Double, packet: Boolean, rotations: Boolean, moveFix: MoveFixMode, wallCheck: Boolean = true) {
         val current = target ?: return
+        status = if (current.started) Status.MINING else Status.START
         if (!current.current() || current.confirmed && current.level.getBlockState(current.pos).isAir
             || mc.options.keyAttack.isDown) {
             cancel()
@@ -170,7 +191,8 @@ class AuraTerrainMiner(private var owner: Any, private val actions: AuraActionQu
         }
         val timeout = ((current.player.connection.getPlayerInfo(current.player.uuid)?.latency ?: 150).coerceAtLeast(0) / 50 + 5).coerceIn(5, 80)
         if (!current.packet && current.stopTick > 0) {
-            if (current.player.tickCount - current.stopTick >= timeout) cancel()
+            status = Status.CONFIRM
+            if (current.player.tickCount - current.stopTick >= timeout) { confirmationFailures++; cancel() }
             return
         }
         if (!canMine(current.player, current.pos, range)) { cancel(); return }
@@ -182,16 +204,17 @@ class AuraTerrainMiner(private var owner: Any, private val actions: AuraActionQu
         val tool = player.inventory.getItem(slot)
         if (current.started && (state.block !== current.state.block || slot != current.slot
             || !ItemStack.isSameItemSameComponents(current.tool, tool))) { cancel(); return }
-        val hit = AuraActionQueue.visibleHit(player, current.pos, range) ?: run { cancel(); return }
-        if (current.progress.timedOut(player.tickCount.toLong(), timeout.toLong())) { cancel(); return }
+        val hit = actions.visibleHit(current.pos, range, wallCheck, rotations = rotations)
+            ?: run { cancel(); status = Status.FACE; return }
+        if (current.progress.timedOut(player.tickCount.toLong(), timeout.toLong())) { confirmationFailures++; cancel(); return }
         if (packet) {
-            if (!SilentSwapUtil.prepareSlot(slot, 2, owner)) return
+            if (!SilentSwapUtil.prepareSlot(slot, 2, owner)) { status = Status.SLOT; return }
             if (!current.started) {
                 current.efficiency = minOf(player.getAttributeValue(Attributes.MINING_EFFICIENCY),
                     PacketMineToolSpeed.attributeValue(player.getAttribute(Attributes.MINING_EFFICIENCY)!!,
                         Attributes.MINING_EFFICIENCY, player.mainHandItem, tool))
             }
-            if (current.progress.phase == PacketMineProgress.Phase.CONFIRM) return
+            if (current.progress.phase == PacketMineProgress.Phase.CONFIRM) { status = Status.CONFIRM; return }
             if (current.started) {
                 current.delta = PacketMineToolSpeed.progress(player, tool, state, state.getDestroySpeed(current.level, current.pos),
                     current.efficiency, current.breakSpeed)
@@ -200,12 +223,12 @@ class AuraTerrainMiner(private var owner: Any, private val actions: AuraActionQu
             }
         } else {
             InventoryUtil.swapToSlot(slot)
-            if (player.inventory.selectedSlot != slot) return
+            if (player.inventory.selectedSlot != slot) { status = Status.SLOT; return }
         }
         current.slot = slot
         current.state = state
         current.tool = tool.copy()
-        actions.block(hit, range, rotations, moveFix) { actualHit ->
+        val aimed = actions.block(hit, range, rotations, moveFix, wallCheck = wallCheck) { actualHit ->
             if (target !== current || !canMine(player, current.pos, range)
                 || !ItemStack.isSameItemSameComponents(player.inventory.getItem(slot), current.tool)) return@block
             if (!current.started && !startAllowed(current.pos)) return@block
@@ -215,20 +238,24 @@ class AuraTerrainMiner(private var owner: Any, private val actions: AuraActionQu
                 if (!current.started) {
                     if (!send(current, ServerboundPlayerActionPacket.Action.START_DESTROY_BLOCK)) return@block
                     current.started = true
+                    status = Status.MINING
                     current.startNanos = System.nanoTime()
                     current.progress.start()
                 } else if (current.ready) {
                     if (!send(current, ServerboundPlayerActionPacket.Action.STOP_DESTROY_BLOCK)) return@block
                     current.progress.stop(player.tickCount.toLong())
+                    status = Status.CONFIRM
                 }
             } else {
                 vanilla { mc.gameMode?.continueDestroyBlock(current.pos, actualHit.direction) }
                 current.started = true
+                status = Status.MINING
                 if (current.level.getBlockState(current.pos).isAir) current.stopTick = player.tickCount
             }
             player.swing(InteractionHand.MAIN_HAND, tool.attackAnimation, false)
             player.connection.send(ServerboundPunchPacket.INSTANCE)
         }
+        if (!aimed) status = Status.ROTATION
     }
 
     private fun send(current: Target, action: ServerboundPlayerActionPacket.Action): Boolean {

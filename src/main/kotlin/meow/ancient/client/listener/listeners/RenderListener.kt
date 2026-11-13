@@ -32,6 +32,7 @@ import meow.ancient.module.modules.render.HudModule
 import meow.ancient.module.modules.render.TagsModule
 import meow.ancient.module.modules.other.TestModule
 import meow.ancient.module.modules.render.HideModule
+import meow.ancient.module.modules.combat.CrystalAuraModule
 import net.minecraft.client.DeltaTracker
 import net.minecraft.client.gui.GuiGraphicsExtractor
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents
@@ -86,6 +87,7 @@ object RenderListener : Listener() {
                 TagsModule.renderItems(guiGraphics, partialTicks)
             }
             GpsRenderer.render(partialTicks)
+            CrystalAuraModule.renderDiagnostics(guiGraphics)
             if (isOpenGLActive()) {
                 if (TagsModule.isEnabled()) TagsModule.onOverlayRender(event)
                 if (HudModule.isEnabled()) HudModule.onOverlay(event)
@@ -107,6 +109,7 @@ object RenderListener : Listener() {
         RenderUtils.currentGraphics = guiGraphics
         try {
             if (HudModule.isEnabled()) HudModule.renderChatOverlay()
+            CrystalAuraModule.renderDiagnostics(guiGraphics)
             TestModule.renderShapesShowcase(guiGraphics, 0f)
         } finally {
             RenderUtils.currentGraphics = previousGraphics

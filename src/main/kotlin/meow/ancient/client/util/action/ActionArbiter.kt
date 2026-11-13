@@ -17,15 +17,19 @@ internal class ActionArbiter {
 
     fun beginTick() { committed = null }
 
-    fun canAct(owner: ActionOwner, preferred: ActionOwner?): Boolean {
+    fun blockReason(owner: ActionOwner, preferred: ActionOwner?): String? {
         val active = committed
-        val reason = when {
+        return when {
             owner.group == ActionGroup.MANUAL -> null
             active != null && active.group != owner.group -> "${active.name} already acted"
             preferred != null && preferred.group != owner.group && preferred.priority > owner.priority -> "${preferred.name} has priority"
             preferred != null && preferred.group == owner.group && preferred.priority > owner.priority && !owner.helper -> "${preferred.name} has priority"
             else -> null
         }
+    }
+
+    fun canAct(owner: ActionOwner, preferred: ActionOwner?): Boolean {
+        val reason = blockReason(owner, preferred)
         if (reason == null) return true
         lastBlocked = "${owner.name}: $reason"
         blockedCount++

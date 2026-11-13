@@ -6,7 +6,9 @@ import meow.ancient.client.extensions.mc
 import meow.ancient.client.util.action.ActionCoordinator
 import meow.ancient.client.util.anticheat.AnticheatManager
 import meow.ancient.client.util.combat.AuraActionQueue
-import meow.ancient.client.util.combat.ExplosionDamageUtil
+import meow.ancient.client.util.combat.AuraDamageCache
+import meow.ancient.client.util.combat.AuraEntityOccupancy
+import meow.ancient.client.util.combat.AuraMotionPrediction
 import meow.ancient.client.util.friend.FriendRepository
 import meow.ancient.client.util.target.TargetRepository
 import meow.ancient.client.util.inventory.InventoryActionSource
@@ -68,6 +70,13 @@ object AnchorAuraModule : Module(
     }
     private data class Plan(val pos: BlockPos, val hit: BlockHitResult, val stage: SequenceStage)
     private val actions = AuraActionQueue(this)
+    private val damageCache = AuraDamageCache()
+    private val occupancy = AuraEntityOccupancy()
+    private val searchMemo = HashMap<Pair<Int, SequenceStage>, Plan?>()
+    private var searchTick = -1
+    private var searchPlayer: LocalPlayer? = null
+    private var searchWorld: Level? = null
+    private var searchIgnoreTerrain = false
     private val visual = AuraTargetRenderer({ isEnabled() && render }, { renderSlideSpeed })
     private var tickTimer = 0
     private var sequence: AnchorSequence? = null
@@ -86,6 +95,9 @@ object AnchorAuraModule : Module(
         sequencePlayer = null
         sequenceLevel = null
         currentTarget = null
+        searchTick = -1; searchPlayer = null; searchWorld = null
+        searchMemo.clear(); occupancy.clear()
+        damageCache.beginTick(null, ignoreTerrain)
         actions.beginTick()
         visual.reset()
         SilentSwapUtil.releasePreparedSlot(this)
@@ -144,7 +156,7 @@ object AnchorAuraModule : Module(
         if (level.dimension() == Level.NETHER) { currentTarget = null; return }
         tickTimer++
         if (awaitingConfirmation(player, level) || !ActionCoordinator.canAct(this)) return
-        if (player.isUsingItem || player.isSpectator || mc.gui.screen() != null
+        if (player.isUsingItem || player.isSpectator
             || player.containerMenu !== player.inventoryMenu || !player.containerMenu.carried.isEmpty
             || InventoryMoveModule.isInventoryActionSlowed()) return
         val target = currentTarget ?: return
@@ -238,7 +250,18 @@ object AnchorAuraModule : Module(
     }
 
     private fun anchorDamage(pos: BlockPos, target: Player): Float {
-        return ExplosionDamageUtil.anchorDamage(pos, target, ignoreTerrain, ignoreCreative = target !== mc.player && targetNPCs)
+        if (target.isSpectator || target.isCreative && (target === mc.player || !targetNPCs)) return 0f
+        return damageCache.damage(target, AuraMotionPrediction.Snapshot(target.position(), target.boundingBox),
+            Vec3.atCenterOf(pos), pos, 10f, airBase = true)
+    }
+
+    private fun ensureSearchContext(player: LocalPlayer) {
+        val level = mc.level ?: return
+        if (searchTick == player.tickCount && searchWorld === level && searchPlayer === player && searchIgnoreTerrain == ignoreTerrain) return
+        searchTick = player.tickCount; searchWorld = level; searchPlayer = player; searchIgnoreTerrain = ignoreTerrain
+        searchMemo.clear()
+        damageCache.beginTick(level, ignoreTerrain)
+        occupancy.update(level.entitiesForRendering(), AABB(player.blockPosition()).inflate(range + 4.0))
     }
 
     private fun validPlan(player: LocalPlayer, target: Player, plan: Plan, hit: BlockHitResult): Boolean {
@@ -263,6 +286,9 @@ object AnchorAuraModule : Module(
             && InventoryUtil.findHotbarSlot(Items.RESPAWN_ANCHOR) < 0) return null
         if (stage == SequenceStage.CHARGE_SENT && !player.offhandItem.`is`(Items.GLOWSTONE)
             && InventoryUtil.findHotbarSlot(Items.GLOWSTONE) < 0) return null
+        ensureSearchContext(player)
+        val key = target.id to stage
+        if (searchMemo.containsKey(key)) return searchMemo[key]
         val r = range.toInt() + 1
         val p = player.blockPosition()
         var best: Plan? = null
@@ -276,7 +302,7 @@ object AnchorAuraModule : Module(
             val pos = mutablePos.immutable()
             val state = level.getBlockState(pos)
             when (stage) {
-                SequenceStage.PLACE_SENT -> if (!state.canBeReplaced() || level.getEntities(null, AABB(pos)).any { it.isAlive }) continue
+                SequenceStage.PLACE_SENT -> if (!state.canBeReplaced() || occupancy.aliveBlocked(pos)) continue
                 SequenceStage.CHARGE_SENT -> if (!state.`is`(Blocks.RESPAWN_ANCHOR) || state.getValue(RespawnAnchorBlock.CHARGE) != 0) continue
                 SequenceStage.DETONATE_SENT -> if (!state.`is`(Blocks.RESPAWN_ANCHOR) || state.getValue(RespawnAnchorBlock.CHARGE) == 0) continue
             }
@@ -288,10 +314,11 @@ object AnchorAuraModule : Module(
                 else AuraActionQueue.visibleHit(player, pos, range, wallCheck = wallCheck)
             if (hit == null) continue
             val plan = Plan(pos, hit, stage)
-            if (pos == preferredPos) return plan
+            if (pos == preferredPos) { searchMemo[key] = plan; return plan }
             best = plan
             bestDamage = damage
         }
+        searchMemo[key] = best
         return best
     }
 
