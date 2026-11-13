@@ -3,6 +3,7 @@ import meow.ancient.client.util.friend.FriendRepository
 import meow.ancient.client.util.target.TargetRepository
 import meow.ancient.module.modules.combat.AntiBotModule
 import meow.ancient.module.modules.combat.HitBoxesModule
+import meow.ancient.module.modules.combat.TpAuraModule
 
 import meow.ancient.client.extensions.inGame
 import meow.ancient.client.extensions.mc
@@ -115,7 +116,8 @@ class TargetSelector {
             if (AntiBotModule.isBot(entity)) return false
         }
 
-        if (!throughWalls && !localPlayer.hasLineOfSight(entity)) {
+        val positionAuraReachable = TpAuraModule.getRenderPosition(entity) != null
+        if (!throughWalls && !positionAuraReachable && !localPlayer.hasLineOfSight(entity)) {
             return false
         }
 
@@ -123,7 +125,7 @@ class TargetSelector {
 
         val expand = HitBoxesModule.expandAmount(entity)
         val dist = RotationUtil.getDistanceToBox(entity)
-        if (dist > maxRange + expand) return false
+        if (dist > maxRange + expand && !positionAuraReachable) return false
 
         if (!RotationUtil.isInFov(entity, fov)) return false
 

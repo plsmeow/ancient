@@ -2,10 +2,14 @@ package meow.ancient.mixin;
 
 import meow.ancient.module.modules.render.CameraTweaksModule;
 import meow.ancient.module.modules.render.FreeCameraModule;
+import meow.ancient.module.modules.render.FreeLookModule;
+import net.minecraft.client.CameraType;
+import net.minecraft.client.Minecraft;
 import org.spongepowered.asm.mixin.injection.ModifyVariable;
 import net.minecraft.client.Camera;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
+import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
@@ -28,7 +32,34 @@ public abstract class MixinCamera {
             this.setRotation(FreeCameraModule.INSTANCE.getYaw(partialTicks), FreeCameraModule.INSTANCE.getPitch(partialTicks));
             this.setPosition(FreeCameraModule.INSTANCE.getX(partialTicks), FreeCameraModule.INSTANCE.getY(partialTicks), FreeCameraModule.INSTANCE.getZ(partialTicks));
             this.detached = true;
+            return;
         }
+        if (FreeLookModule.INSTANCE.isActive()) {
+            float yaw = FreeLookModule.INSTANCE.getYaw(partialTicks);
+            float pitch = FreeLookModule.INSTANCE.getPitch(partialTicks);
+            if (Minecraft.getInstance().options.getCameraType() == CameraType.THIRD_PERSON_FRONT) {
+                yaw += 180.0f;
+                pitch = -pitch;
+            }
+            this.setRotation(yaw, pitch);
+        }
+    }
+
+    @Inject(method = "alignWithEntity", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/Camera;getMaxZoom(F)F"))
+    private void onFreeLookBeforeOffset(float partialTicks, CallbackInfo ci) {
+        ancient$applyFreeLookRotation(partialTicks);
+    }
+
+    @Unique
+    private void ancient$applyFreeLookRotation(float partialTicks) {
+        if (!FreeLookModule.INSTANCE.isActive()) return;
+        float yaw = FreeLookModule.INSTANCE.getYaw(partialTicks);
+        float pitch = FreeLookModule.INSTANCE.getPitch(partialTicks);
+        if (Minecraft.getInstance().options.getCameraType() == CameraType.THIRD_PERSON_FRONT) {
+            yaw += 180.0f;
+            pitch = -pitch;
+        }
+        this.setRotation(yaw, pitch);
     }
 
     @ModifyVariable(method = "getMaxZoom", at = @At("HEAD"), argsOnly = true, ordinal = 0)

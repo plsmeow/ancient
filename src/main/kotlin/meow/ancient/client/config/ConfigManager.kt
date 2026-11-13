@@ -23,14 +23,49 @@ object ConfigManager {
 
     val configDirectory: File
         get() {
-            val dir = File(mc.gameDirectory, "ancient/configs")
+            val base = runCatching { mc.gameDirectory }.getOrNull() ?: File(".")
+            val dir = File(base, "ancient/configs")
             if (!dir.exists()) {
                 dir.mkdirs()
             }
             return dir
         }
 
-    fun saveCurrentConfig(): Boolean = saveConfig("default")
+    fun saveCurrentConfig(): Boolean = saveConfig(currentConfig)
+
+    fun loadLastConfig(): Boolean {
+        val target = getActiveConfig()
+        return if (loadConfig(target)) true else loadConfig("default")
+    }
+
+    fun getActiveConfig(): String {
+        return try {
+            val file = File(configDirectory, "active.txt")
+            if (file.exists()) {
+                val name = file.readText().trim()
+                if (name.isNotEmpty() && File(configDirectory, "$name.json").exists()) {
+                    return name
+                }
+            }
+            val latest = configDirectory.listFiles { f -> f.isFile && f.name.endsWith(".json") }
+                ?.maxByOrNull { it.lastModified() }
+                ?.nameWithoutExtension
+            if (latest != null && File(configDirectory, "$latest.json").exists()) {
+                return latest
+            }
+            "default"
+        } catch (_: Exception) {
+            "default"
+        }
+    }
+
+    private fun setActiveConfig(name: String) {
+        try {
+            val file = File(configDirectory, "active.txt")
+            file.writeText(name)
+        } catch (_: Exception) {
+        }
+    }
 
     fun saveConfig(name: String = currentConfig): Boolean {
         currentConfig = name
@@ -67,6 +102,7 @@ object ConfigManager {
             root.addProperty("prefix", CommandManager.prefix)
             root.add("modules", modulesObj)
             file.writeText(gson.toJson(root))
+            setActiveConfig(name)
             true
         } catch (e: Exception) {
             e.printStackTrace()
@@ -74,7 +110,7 @@ object ConfigManager {
         }
     }
 
-    fun loadConfig(name: String = "default"): Boolean {
+    fun loadConfig(name: String = getActiveConfig()): Boolean {
         return try {
             val file = File(configDirectory, "$name.json")
             if (!file.exists()) {
@@ -117,7 +153,13 @@ object ConfigManager {
                     }
                     for (setting in module.settings) {
                         val settingElement = settingsObj.get(setting.name) ?: continue
-                        setting.deserialize(settingElement)
+                        if (module.name == "SwingAnimations" && setting.name == "Мод" &&
+                            settingElement.isJsonPrimitive && settingElement.asString == "Никакой"
+                        ) {
+                            setting.deserialize(com.google.gson.JsonPrimitive("None"))
+                        } else {
+                            setting.deserialize(settingElement)
+                        }
                     }
                 }
                 val bindingsObj = modObj.get("bindings")?.takeIf { it.isJsonObject }?.asJsonObject
@@ -128,6 +170,7 @@ object ConfigManager {
                     }
                 }
             }
+            setActiveConfig(name)
             true
         } catch (e: Exception) {
             e.printStackTrace()
@@ -169,7 +212,11 @@ object ConfigManager {
         if (name.equals("default", ignoreCase = true)) return false
         val file = File(configDirectory, "$name.json")
         return if (file.exists()) {
-            file.delete()
+            val deleted = file.delete()
+            if (deleted && name.equals(currentConfig, ignoreCase = true)) {
+                loadConfig("default")
+            }
+            deleted
         } else false
     }
 

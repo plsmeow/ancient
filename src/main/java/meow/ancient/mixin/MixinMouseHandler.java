@@ -6,6 +6,7 @@ import meow.ancient.client.gui.hud.HudSettingsPopup;
 import meow.ancient.event.EventManager;
 import meow.ancient.event.events.KeyPressEvent;
 import meow.ancient.module.modules.render.HudModule;
+import meow.ancient.module.modules.render.FreeLookModule;
 import meow.ancient.module.setting.KeybindSetting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.MouseHandler;
@@ -28,6 +29,12 @@ public class MixinMouseHandler {
     @Final
     private Minecraft minecraft;
 
+    @Shadow
+    private double accumulatedDX;
+
+    @Shadow
+    private double accumulatedDY;
+
     @Inject(method = "onButton(JLnet/minecraft/client/input/MouseButtonInfo;I)V", at = @At("HEAD"), cancellable = true)
     private void ancient$onButton(long window, MouseButtonInfo buttonInfo, int action, CallbackInfo ci) {
         if (window == 0 || window != minecraft.getWindow().handle()) return;
@@ -37,6 +44,20 @@ public class MixinMouseHandler {
         if (event.getCancel()) {
             ci.cancel();
         }
+    }
+
+    @Inject(method = "turnPlayer", at = @At("HEAD"), cancellable = true)
+    private void ancient$turnFreeLook(double timeDelta, CallbackInfo ci) {
+        if (!FreeLookModule.INSTANCE.isActive()) return;
+
+        double sensitivity = minecraft.options.sensitivity().get() * 0.6 + 0.2;
+        double multiplier = sensitivity * sensitivity * sensitivity * 8.0;
+        double deltaX = this.accumulatedDX * multiplier;
+        double deltaY = this.accumulatedDY * multiplier;
+        if (minecraft.options.invertMouseX().get()) deltaX = -deltaX;
+        if (minecraft.options.invertMouseY().get()) deltaY = -deltaY;
+        FreeLookModule.INSTANCE.changeLookDirection(deltaX, deltaY);
+        ci.cancel();
     }
 
     @Inject(method = "onMove(JDDDD)V", at = @At("TAIL"))

@@ -430,8 +430,10 @@ object HitAuraModule : Module(
 
             val rotMode = rotationMode
             val maxReach = if (rotMode == RotationMode.GRIM_1204) attackRange.coerceAtMost(3.0) else attackRange
-            val effectiveAimRange = if (player.isFallFlying && elytraTarget) elytraDistance.coerceAtLeast(maxReach)
-                else (maxReach + aimRange)
+            val effectiveAimRange = maxOf(
+                if (player.isFallFlying && elytraTarget) elytraDistance.coerceAtLeast(maxReach) else maxReach + aimRange,
+                TpAuraModule.searchRange
+            )
             val priorityMode = priority
             val tMode = targetMode
 
@@ -449,6 +451,7 @@ object HitAuraModule : Module(
                     (rotationProcessor.getStrategy(rotMode) as AdvancedRotation).onTargetLost()
                 }
                 if (rotMode == RotationMode.NEURO) rotationProcessor.returnNeuroRotation(moveFix, gcdFix)
+                if (rotMode == RotationMode.GRIM_1204) rotationProcessor.getStrategy(rotMode).reset()
                 return@safeRun
             }
 

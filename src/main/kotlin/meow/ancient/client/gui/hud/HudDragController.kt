@@ -254,7 +254,7 @@ class HudDragController(private val module: Module) {
         storeAnchor(drag)
         val maxY = maxY(drag)
         if (maxY > 0f) drag.positionY.set((drag.desiredY / maxY).toDouble().coerceIn(0.0, 1.0))
-        ConfigManager.saveConfig("default")
+        ConfigManager.saveCurrentConfig()
     }
 
     private fun storeAnchor(drag: HudDrag) {

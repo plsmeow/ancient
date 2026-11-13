@@ -22,6 +22,13 @@ object AntiCheatModule : Module(
         description = "GrimFast pauses input for 50 ms before swaps and 60 ms on inventory or container close"
     )
 
+    val silentSwap by mode(
+        name = "Silent Swap",
+        value = "Simple",
+        modes = listOf("Simple", "New"),
+        description = "Simple restores immediately; New swaps only the server slot, keeps the visible item unchanged and coalesces restores before a clean real tick packet"
+    )
+
     val healthSource by mode(
         name = "Health Source",
         value = "Entity",

@@ -43,7 +43,7 @@ object Ancient : ClientModInitializer {
 		ListenerManager.load()
 		ModuleManager.load()
 		CommandManager.load()
-		ConfigManager.loadConfig("default")
+		ConfigManager.loadLastConfig()
 
 		Runtime.getRuntime().addShutdownHook(Thread {
 			stopNeuroRecording()

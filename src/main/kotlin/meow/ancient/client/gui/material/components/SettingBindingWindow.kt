@@ -152,7 +152,7 @@ class SettingBindingWindow(val setting: Setting<*>, private var x: Float, privat
             releaseEditorInput(applyNumber = false)
             dirty = false
             SettingBindingManager.clear(setting)
-            ConfigManager.saveConfig("default")
+            ConfigManager.saveCurrentConfig()
             closed = true
             return
         }
@@ -254,7 +254,7 @@ class SettingBindingWindow(val setting: Setting<*>, private var x: Float, privat
     fun commit() {
         if (!dirty) return
         SettingBindingManager.configure(setting, SettingBinding(key, mode, valueSetting.serialize(), visible))
-        ConfigManager.saveConfig("default")
+        ConfigManager.saveCurrentConfig()
         dirty = false
     }
 

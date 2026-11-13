@@ -1,7 +1,8 @@
 package meow.ancient.module.modules.combat.hitaura
 
 import meow.ancient.client.extensions.mc
-import meow.ancient.client.util.inventory.InventoryUtil
+import meow.ancient.client.util.anticheat.AnticheatManager
+import meow.ancient.client.util.inventory.SilentSwapUtil
 import net.minecraft.tags.ItemTags
 import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.item.Items
@@ -14,18 +15,18 @@ object ShieldBreakProcessor {
         if (!isTargetBlocking(target)) return -1
         val player = mc.player ?: return -1
         val axeSlot = findAxeInHotbar()
-        val previousSlot = player.inventory.selectedSlot
+        val previousSlot = SilentSwapUtil.serverSlot
         if (axeSlot == -1 || previousSlot == axeSlot) return -1
-        InventoryUtil.swapToSlot(axeSlot)
-        return if (mc.player === player && player.inventory.selectedSlot == axeSlot) previousSlot else -1
+        if (!SilentSwapUtil.selectSlot(axeSlot) || mc.player !== player) return -1
+        return previousSlot
     }
 
     fun swapBack(slot: Int) {
         if (slot !in 0..8) return
         val player = mc.player ?: return
         if (player.connection.connection.isConnected) {
-            InventoryUtil.swapToSlot(slot)
-        } else {
+            SilentSwapUtil.restoreSlot(slot)
+        } else if (!AnticheatManager.isSilentSwapNew) {
             player.inventory.selectedSlot = slot
         }
     }

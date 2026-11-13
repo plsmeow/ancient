@@ -28,6 +28,12 @@ object RotationManager : Listener() {
     private var savedPitch: Float = 0.0f
     private var packetRotationApplied: Boolean = false
 
+    val clientYaw: Float
+        get() = if (packetRotationApplied) savedYaw else mc.player?.yRot ?: 0.0f
+
+    val clientPitch: Float
+        get() = if (packetRotationApplied) savedPitch else mc.player?.xRot ?: 0.0f
+
     override fun init() {
     }
 
@@ -143,6 +149,11 @@ object RotationManager : Listener() {
         if (!isActive()) return defaultYaw
         if (activeMoveFix == MoveFixMode.OFF) return defaultYaw
         return currentRotation?.yaw ?: defaultYaw
+    }
+
+    fun lockOutgoingRotation() {
+        if (currentRotation == null) return
+        updatedThisTick = true
     }
 
 

@@ -3,7 +3,9 @@ package meow.ancient.module.modules.combat.hitaura.rotation.impl
 import meow.ancient.client.extensions.mc
 import meow.ancient.client.util.rotation.RayTraceUtil
 import meow.ancient.client.util.rotation.Rotation
+import meow.ancient.client.util.rotation.GCDUtil
 import meow.ancient.module.modules.combat.hitaura.rotation.RotationStrategy
+import meow.ancient.network.SilentPacketQueue
 import net.minecraft.client.player.LocalPlayer
 import net.minecraft.network.protocol.game.ServerboundMovePlayerPacket
 import net.minecraft.util.Mth
@@ -31,15 +33,15 @@ class Grim1204Rotation : RotationStrategy("Grim 1.20.4") {
     ): Rotation {
         val player = mc.player ?: return current
         if (rotationYaw == 0.0f && rotationPitch == 0.0f) {
-            rotationYaw = ideal.yaw
-            rotationPitch = ideal.pitch
+            rotationYaw = player.yRot
+            rotationPitch = player.xRot
         }
 
         val dYaw = Mth.wrapDegrees(ideal.yaw - rotationYaw)
         val dPitch = ideal.pitch - rotationPitch
 
         val currentRot = Rotation(rotationYaw, rotationPitch)
-        val lookingAtTarget = RayTraceUtil.isLookingAtEntity(target, currentRot, 999.0, true)
+        val lookingAtTarget = RayTraceUtil.isLookingAtEntity(target, currentRot, 3.0, true)
         pitchAcceleration = if (lookingAtTarget) {
             AIMED_PITCH_STEP
         } else if (pitchAcceleration < MAX_PITCH_STEP) {
@@ -57,25 +59,24 @@ class Grim1204Rotation : RotationStrategy("Grim 1.20.4") {
 
         val newYaw = rotationYaw + stepYaw
         val newPitch = (rotationPitch + stepPitch).coerceIn(-90.0f, 90.0f)
-
-        val sensitivity = mc.options.sensitivity().get() * 0.6 + 0.2
-        val gcdFix = (sensitivity * sensitivity * sensitivity * 8.0 * 0.15).toFloat()
-
-        if (gcdFix > 0.001f) {
-            rotationYaw = newYaw - (newYaw - rotationYaw) % gcdFix
-            rotationPitch = newPitch - (newPitch - rotationPitch) % gcdFix
-        } else {
-            rotationYaw = newYaw
-            rotationPitch = newPitch
-        }
+        val targetRot = Rotation(newYaw, newPitch)
+        val fixedRot = GCDUtil.applyGCD(targetRot, currentRot)
+        rotationYaw = fixedRot.yaw
+        rotationPitch = fixedRot.pitch
 
         return current
     }
 
+    fun isLookingAtTarget(target: LivingEntity, range: Double = 3.0, throughWalls: Boolean = false): Boolean {
+        val currentRot = Rotation(rotationYaw, rotationPitch)
+        return RayTraceUtil.isLookingAtEntity(target, currentRot, range, throughWalls)
+    }
+
     fun sendRotationPacket(player: LocalPlayer) {
-        player.connection.send(
-            ServerboundMovePlayerPacket.PosRot(
-                player.position(),
+        val connection = player.connection.connection
+        SilentPacketQueue.send(
+            connection,
+            ServerboundMovePlayerPacket.Rot(
                 rotationYaw,
                 rotationPitch,
                 player.onGround(),
@@ -85,9 +86,10 @@ class Grim1204Rotation : RotationStrategy("Grim 1.20.4") {
     }
 
     fun sendResetPacket(player: LocalPlayer) {
-        player.connection.send(
-            ServerboundMovePlayerPacket.PosRot(
-                player.position(),
+        val connection = player.connection.connection
+        SilentPacketQueue.send(
+            connection,
+            ServerboundMovePlayerPacket.Rot(
                 player.yRot,
                 player.xRot,
                 player.onGround(),

@@ -282,7 +282,7 @@ class ModuleComponent(val module: Module) : GuiComponent {
         if (isBinding && button >= 4) {
             module.key = KeybindSetting.fromMouseButton(button)
             isBinding = false
-            ConfigManager.saveConfig("default")
+            ConfigManager.saveCurrentConfig()
             return true
         }
 
@@ -300,12 +300,14 @@ class ModuleComponent(val module: Module) : GuiComponent {
                 0 -> {
                     ClickGuiScreen.clearAllListening()
                     module.toggle()
+                    ConfigManager.saveCurrentConfig()
                     return true
                 }
                 1 -> {
                     ClickGuiScreen.clearAllListening()
                     if (hasSettings()) {
                         isExpanded = !isExpanded
+                        ConfigManager.saveCurrentConfig()
                     }
                     return true
                 }
@@ -361,7 +363,7 @@ class ModuleComponent(val module: Module) : GuiComponent {
                 module.key = keyCode
             }
             isBinding = false
-            ConfigManager.saveConfig("default")
+            ConfigManager.saveCurrentConfig()
             return true
         }
 

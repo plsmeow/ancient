@@ -2,9 +2,11 @@ package meow.ancient.module.modules.combat
 
 import meow.ancient.client.extensions.COMBAT
 import meow.ancient.client.extensions.mc
+import meow.ancient.client.util.anticheat.AnticheatManager
 import meow.ancient.client.util.inventory.ChestEquipmentSwap
 import meow.ancient.client.util.inventory.InventoryActionSource
 import meow.ancient.client.util.inventory.InventoryUtil
+import meow.ancient.client.util.inventory.SilentSwapUtil
 import meow.ancient.event.events.ClientDisconnectEvent
 import meow.ancient.event.events.PlayerUpdateEvent
 import meow.ancient.module.Module
@@ -74,7 +76,7 @@ object AutoMaceModule : Module(
             cancelPreparation()
             return AttackPreparation.WAITING
         }
-        val selectedSlot = player.inventory.selectedSlot
+        val selectedSlot = SilentSwapUtil.serverSlot
         if ((selectedSlot != maceSlot || needsChestSwap)
             && (player.containerMenu !== player.inventoryMenu || !player.inventoryMenu.carried.isEmpty)) {
             cancelPreparation()
@@ -97,7 +99,10 @@ object AutoMaceModule : Module(
             }
             attackPlayer = player
             previousSlot = if (selectedSlot != maceSlot) selectedSlot else -1
-            if (previousSlot >= 0) InventoryUtil.swapToSlot(maceSlot)
+            if ((previousSlot >= 0 || AnticheatManager.isSilentSwapNew) && !SilentSwapUtil.selectSlot(maceSlot)) {
+                previousSlot = -1
+                return AttackPreparation.WAITING
+            }
             return AttackPreparation.READY
         } catch (failure: Throwable) {
             afterAttack(false)
@@ -150,7 +155,7 @@ object AutoMaceModule : Module(
     @Commando
     fun onDisconnect(event: ClientDisconnectEvent) {
         val player = attackPlayer
-        if (player != null && player === mc.player && previousSlot in 0..8) {
+        if (!AnticheatManager.isSilentSwapNew && player != null && player === mc.player && previousSlot in 0..8) {
             player.inventory.selectedSlot = previousSlot
         }
         attackPlayer = null
@@ -189,8 +194,8 @@ object AutoMaceModule : Module(
         previousSlot = -1
         if (player == null || player !== mc.player || slot !in 0..8) return
         if (player.connection.connection.isConnected) {
-            InventoryUtil.swapToSlot(slot)
-        } else {
+            SilentSwapUtil.restoreSlot(slot)
+        } else if (!AnticheatManager.isSilentSwapNew) {
             player.inventory.selectedSlot = slot
         }
     }

@@ -35,7 +35,7 @@ object ToggleCommand : Command(
         }
 
         module.setEnabled(newState)
-        ConfigManager.saveConfig("default")
+        ConfigManager.saveCurrentConfig()
 
         val stateTag = if (module.isEnabled()) "§aENABLED" else "§cDISABLED"
         ChatUtil.send("${module.name} is now $stateTag§f")

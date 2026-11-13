@@ -154,7 +154,14 @@ object SettingBindingManager {
         (setting as Setting<Any?>).setOverride(value)
     }
 
-    private fun inputAllowed(): Boolean = !HideModule.isActive && mc.isWindowActive && currentScreen == null
+    private fun inputAllowed(): Boolean {
+        if (HideModule.isActive) return false
+        val window = runCatching { mc.window }.getOrNull() ?: return false
+        val isFocused = runCatching { window.isFocused }.getOrDefault(false)
+        if (!isFocused) return false
+        val screen = runCatching { currentScreen }.getOrNull()
+        return screen == null
+    }
 
     private fun validKey(key: Int): Boolean = key > 0 || KeybindSetting.isMouseButton(key)
 
@@ -164,9 +171,13 @@ object SettingBindingManager {
 
     private fun isKeyDown(key: Int): Boolean {
         if (!validKey(key)) return false
-        if (!KeybindSetting.isMouseButton(key)) return InputConstants.isKeyDown(key)
-        val button = KeybindSetting.toMouseButton(key)
-        return button in 1..8 && (SDLMouse.SDL_GetMouseState(null, null) and (1 shl (button - 1))) != 0
+        return runCatching {
+            if (!KeybindSetting.isMouseButton(key)) InputConstants.isKeyDown(key)
+            else {
+                val button = KeybindSetting.toMouseButton(key)
+                button in 1..8 && (SDLMouse.SDL_GetMouseState(null, null) and (1 shl (button - 1))) != 0
+            }
+        }.getOrDefault(false)
     }
 
     private fun cloneSetting(setting: Setting<*>): Setting<*> = when (setting) {

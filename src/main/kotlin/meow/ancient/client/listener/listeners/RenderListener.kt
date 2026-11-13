@@ -1,5 +1,6 @@
 package meow.ancient.client.listener.listeners
 
+import meow.ancient.client.gui.material.ClickGuiAnimation
 import com.mojang.blaze3d.systems.RenderSystem
 import com.mojang.renderpearl.backend.opengl.GlDevice
 import com.mojang.renderpearl.backend.opengl.GlStateManager
@@ -86,11 +87,15 @@ object RenderListener : Listener() {
             }
             GpsRenderer.render(partialTicks)
             if (isOpenGLActive()) {
+                if (TagsModule.isEnabled()) TagsModule.onOverlayRender(event)
                 if (HudModule.isEnabled()) HudModule.onOverlay(event)
             } else {
                 EventManager.post(event)
             }
             TestModule.renderShapesShowcase(guiGraphics, partialTicks)
+            if (ClickGuiAnimation.isClosing) {
+                ClickGuiAnimation.renderClosing(guiGraphics, partialTicks)
+            }
         } finally {
             RenderUtils.currentGraphics = null
         }

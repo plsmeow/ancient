@@ -3,10 +3,10 @@ package meow.ancient.module.modules.combat
 import meow.ancient.client.extensions.COMBAT
 import meow.ancient.client.extensions.inGame
 import meow.ancient.client.extensions.mc
+import meow.ancient.client.util.inventory.SilentSwapUtil
 import meow.ancient.event.events.PlayerUpdateEvent
 import meow.ancient.module.Module
 import net.minecraft.core.component.DataComponents
-import net.minecraft.network.protocol.game.ServerboundSetCarriedItemPacket
 import net.minecraft.util.Mth
 import net.minecraft.world.item.Items
 import net.minecraft.world.item.enchantment.Enchantments
@@ -57,25 +57,16 @@ object BreachSwapModule : Module(
         if (!isActive()) return -1
 
         val maceSlot = findBreachMaceSlot()
-        val player = mc.player ?: return -1
-        val previousSlot = player.inventory.selectedSlot
+        val previousSlot = SilentSwapUtil.serverSlot
         if (previousSlot == maceSlot) return -1
 
-        selectSlot(maceSlot)
+        if (!SilentSwapUtil.selectSlot(maceSlot)) return -1
         return previousSlot
     }
 
     fun swapBack(previousSlot: Int) {
         if (previousSlot in 0..8) {
-            selectSlot(previousSlot)
-        }
-    }
-
-    private fun selectSlot(slot: Int) {
-        val player = mc.player ?: return
-        if (slot in 0..8) {
-            player.inventory.selectedSlot = slot
-            player.connection.send(ServerboundSetCarriedItemPacket(slot))
+            SilentSwapUtil.restoreSlot(previousSlot)
         }
     }
 

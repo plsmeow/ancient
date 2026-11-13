@@ -41,7 +41,7 @@ object BindCommand : Command(
                 }
 
                 module.key = key
-                ConfigManager.saveConfig("default")
+                ConfigManager.saveCurrentConfig()
                 val formatted = KeybindSetting.formatKey(key)
                 ChatUtil.success("Bound ${module.name} to $formatted")
             }
@@ -59,7 +59,7 @@ object BindCommand : Command(
                 }
 
                 module.key = InputConstants.UNKNOWN.value
-                ConfigManager.saveConfig("default")
+                ConfigManager.saveCurrentConfig()
                 ChatUtil.success("Removed keybind for ${module.name}")
             }
 
@@ -71,7 +71,7 @@ object BindCommand : Command(
                         cleared++
                     }
                 }
-                ConfigManager.saveConfig("default")
+                ConfigManager.saveCurrentConfig()
                 ChatUtil.success("Cleared $cleared keybinds")
             }
 

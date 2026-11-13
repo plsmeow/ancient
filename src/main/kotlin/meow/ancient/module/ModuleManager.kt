@@ -5,6 +5,7 @@ import meow.ancient.client.interfaces.ILoadable
 import meow.ancient.module.modules.combat.BowBombModule
 import meow.ancient.module.modules.combat.AntiBotModule
 import meow.ancient.module.modules.combat.AutoTotemModule
+import meow.ancient.module.modules.combat.AutoLungeModule
 import meow.ancient.module.modules.combat.AutoMaceModule
 import meow.ancient.module.modules.combat.BreachSwapModule
 import meow.ancient.module.modules.combat.CriticalsModule
@@ -56,6 +57,7 @@ import meow.ancient.module.modules.render.CameraTweaksModule
 import meow.ancient.module.modules.render.ClickGuiModule
 import meow.ancient.module.modules.render.ClientSoundsModule
 import meow.ancient.module.modules.render.FreeCameraModule
+import meow.ancient.module.modules.render.FreeLookModule
 import meow.ancient.module.modules.render.FullBrightModule
 import meow.ancient.module.modules.render.HudModule
 import meow.ancient.module.modules.render.LightEspModule
@@ -65,6 +67,7 @@ import meow.ancient.module.modules.render.TargetEspModule
 import meow.ancient.module.modules.render.ViewModelModule
 import meow.ancient.module.modules.render.PredictionsModule
 import meow.ancient.module.modules.render.HideModule
+import meow.ancient.module.modules.render.SwingAnimationsModule
 
 object ModuleManager : ILoadable {
     val modules: MutableList<Module> = ArrayList()
@@ -76,6 +79,7 @@ object ModuleManager : ILoadable {
             AutoTotemModule,
             AntiBotModule,
             TriggerBotModule,
+            AutoLungeModule,
             AutoMaceModule,
             BowBombModule,
             CriticalsModule,
@@ -122,6 +126,7 @@ object ModuleManager : ILoadable {
             HudModule,
             TagsModule,
             FreeCameraModule,
+            FreeLookModule,
             TargetEspModule,
             FullBrightModule,
             ArrowsModule,
@@ -134,6 +139,7 @@ object ModuleManager : ILoadable {
             LightEspModule,
             PredictionsModule,
             HideModule,
+            SwingAnimationsModule,
         )
     }
 

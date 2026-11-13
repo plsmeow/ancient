@@ -21,7 +21,7 @@ object AutoSaveManager {
     fun saveAll() {
         if (HideModule.isActive) return
         try {
-            ConfigManager.saveConfig("default")
+            ConfigManager.saveCurrentConfig()
             FriendRepository.save()
             TargetRepository.save()
             MacroRepository.save()

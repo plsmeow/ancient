@@ -1,6 +1,7 @@
 package meow.ancient.client.util.inventory
 
 import meow.ancient.client.extensions.mc
+import meow.ancient.client.util.rotation.RotationManager
 import meow.ancient.module.modules.movement.InventoryMoveModule
 import net.minecraft.client.player.LocalPlayer
 import net.minecraft.core.component.DataComponents
@@ -168,29 +169,19 @@ object InventoryUtil {
             val gameMode = mc.gameMode ?: return@Runnable
             val level = mc.level ?: return@Runnable
             if (!canModifyInventory(player)) return@Runnable
+            val item = player.getItemInHand(hand)
+            val useClientLook = !item.`is`(Items.FIREWORK_ROCKET)
+            val yaw = if (useClientLook) RotationManager.clientYaw else RotationManager.getServerRotation().yaw
+            val pitch = if (useClientLook) RotationManager.clientPitch else RotationManager.getServerRotation().pitch
             gameMode.startPrediction(level) { sequence ->
-                ServerboundUseItemPacket(hand, sequence, player.yRot, player.xRot)
+                ServerboundUseItemPacket(hand, sequence, yaw, pitch)
             }
             player.swing(hand, SwingAnimation.DEFAULT, false)
         })
     }
 
     fun withSilentSlot(slot: Int, action: Runnable) {
-        if (slot !in Hotbar_rad) return
-        InventoryMoveModule.runInventoryAction(InventoryActionSource.HOTBAR, Runnable {
-            val player = mc.player ?: return@Runnable
-            if (!canModifyInventory(player)) return@Runnable
-            val previous = player.inventory.selectedSlot
-            val switched = previous != slot
-            if (switched) player.connection.send(ServerboundSetCarriedItemPacket(slot))
-            try {
-                action.run()
-            } finally {
-                if (switched && mc.player === player && player.connection.connection.isConnected) {
-                    player.connection.send(ServerboundSetCarriedItemPacket(previous))
-                }
-            }
-        })
+        SilentSwapUtil.withSlot(slot, action::run)
     }
 
     fun useItemLegit(hand: InteractionHand, hotbarSlot: Int? = null) {

@@ -80,6 +80,10 @@ object SpeedModule : Module(
     val metaHvhSpeed by number("Base Speed", 0.36, 0.1, 1.0, 0.01, 2, isVisible = { mode == "MetaHVH" })
     val metaHvhTarget by boolean("HvH Target", false, isVisible = { mode == "MetaHVH" })
     val metaHvhPredictStrength by number("Predict", 4.0, 0.5, 20.0, 0.1, 1, isVisible = { mode == "MetaHVH" && metaHvhTarget })
+    val hvhSearchRange by number(
+        "HVH Search Range", 200.0, 1.0, 200.0, 1.0, 0, unit = "b",
+        isVisible = { (mode == "Vanilla" && hvhTarget) || (mode == "MetaHVH" && metaHvhTarget) }
+    )
 
     private const val VANILLA_DEFAULT_SPEED = 0.2873
     private const val HVH_TARGET_ZONE = 0.6
@@ -92,6 +96,13 @@ object SpeedModule : Module(
     private var renderRegistered = false
 
     private val extrapolator = EntityExtrapolation()
+
+    fun targetSearchRange(): Double =
+        if (isEnabled() && ((mode == "Vanilla" && hvhTarget) || (mode == "MetaHVH" && metaHvhTarget))) {
+            hvhSearchRange
+        } else {
+            0.0
+        }
 
     override fun onEnable() {
         super.onEnable()
@@ -336,7 +347,9 @@ object SpeedModule : Module(
             ServerboundPlayerActionPacket(ServerboundPlayerActionPacket.Action.SWAP_ITEM_WITH_OFFHAND, BlockPos.ZERO, Direction.DOWN)
         )
         mc.gameMode?.startPrediction(level) { sequence ->
-            ServerboundUseItemPacket(InteractionHand.MAIN_HAND, sequence, player.yRot, player.xRot)
+            val rotation = RotationManager.getServerRotation()
+            RotationManager.lockOutgoingRotation()
+            ServerboundUseItemPacket(InteractionHand.MAIN_HAND, sequence, rotation.yaw, rotation.pitch)
         }
         player.connection.send(
             ServerboundPlayerCommandPacket(player, ServerboundPlayerCommandPacket.Action.START_FALL_FLYING)

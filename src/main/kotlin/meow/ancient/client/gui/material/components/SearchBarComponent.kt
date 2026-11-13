@@ -23,12 +23,17 @@ class SearchBarComponent {
     private val resultsAnim = AnimFloat(0f, 0f, 16f)
     private val clearAnim = AnimFloat(0f, 0f, 16f)
 
+    var animOffsetY = 0f
     private var currentX = 0f
     private var currentY = 14f
     private var currentW = 220f
     private val height = 24f
     private var scrollOffset = 0f
 
+    val currentXPos: Float get() = currentX
+    val currentYPos: Float get() = currentY
+    val currentWidth: Float get() = currentW
+    val currentHeight: Float get() = height
     val query: String get() = textField.text.trim()
     val isFocused: Boolean get() = textField.isFocused
 
@@ -56,6 +61,7 @@ class SearchBarComponent {
     }
 
     fun render(matrix: Matrix4f, mouseX: Int, mouseY: Int, dt: Float) {
+        currentY = 14f + animOffsetY
         val screenW = mc.window.guiScaledWidth.toFloat()
         val palette = M3Theme.current
         val matches = getMatchingModules()
@@ -349,6 +355,7 @@ class SearchBarComponent {
     }
 
     fun mouseClicked(mouseX: Double, mouseY: Double, button: Int): Boolean {
+        currentY = 14f + animOffsetY
         if (button == 0) {
             if (query.isNotEmpty()) {
                 val clearBtnX = currentX + currentW - 19f
@@ -391,7 +398,7 @@ class SearchBarComponent {
                         val mod = matches[i]
                         if (button == 0) {
                             mod.toggle()
-                            ConfigManager.saveConfig("default")
+                            ConfigManager.saveCurrentConfig()
                             return true
                         } else if (button == 1) {
                             ClickGuiScreen.scrollToModule(mod)

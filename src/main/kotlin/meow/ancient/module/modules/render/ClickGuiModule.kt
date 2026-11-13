@@ -18,6 +18,20 @@ object ClickGuiModule : Module(
         description = "Dim background behind the GUI"
     )
 
+    val animations by boolean(
+        name = "Animations",
+        value = true,
+        description = "Fly-in open and fly-out close animations"
+    )
+
+    override fun toggle() {
+        if (state && mc.gui.screen() === ClickGuiScreen) {
+            ClickGuiScreen.onClose()
+            return
+        }
+        super.toggle()
+    }
+
     override fun onEnable() {
         val screen = mc.gui.screen()
         if (screen !== ClickGuiScreen) {

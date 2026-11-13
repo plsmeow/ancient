@@ -116,7 +116,7 @@ object HudSettingsPopup {
                 if (component is KeybindComponent && component.isListening) {
                     component.keySetting.set(KeybindSetting.fromMouseButton(button))
                     component.stopListening()
-                    ConfigManager.saveConfig("default")
+                    ConfigManager.saveCurrentConfig()
                     return true
                 }
             }
@@ -143,7 +143,7 @@ object HudSettingsPopup {
         if (!isOpen) return
         captured?.mouseReleased(x, y, button)
         captured = null
-        ConfigManager.saveConfig("default")
+        ConfigManager.saveCurrentConfig()
     }
 
     fun mouseDragged(x: Double, y: Double, button: Int, dx: Double, dy: Double): Boolean {
@@ -188,7 +188,7 @@ object HudSettingsPopup {
         element = null
         components = emptyList()
         scroll = 0f
-        ConfigManager.saveConfig("default")
+        ConfigManager.saveCurrentConfig()
     }
 
     private fun over(x: Double, y: Double): Boolean =

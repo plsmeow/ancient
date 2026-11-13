@@ -21,6 +21,12 @@ object AnticheatManager {
     val isSwapBypassGrimFast: Boolean
         get() = swapBypass == "GrimFast"
 
+    val silentSwap: String
+        get() = AntiCheatModule.silentSwap
+
+    val isSilentSwapNew: Boolean
+        get() = silentSwap == "New"
+
     val healthSource: String
         get() = AntiCheatModule.healthSource
 

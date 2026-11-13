@@ -1,12 +1,14 @@
 package meow.ancient.mixin;
 
 import meow.ancient.client.util.rotation.RotationManager;
+import meow.ancient.client.util.inventory.SilentSwapUtil;
 import meow.ancient.event.EventManager;
 import meow.ancient.event.events.PlayerTickEndEvent;
 import meow.ancient.event.events.PlayerUpdateEvent;
 import meow.ancient.event.events.PlayerPreMovementEvent;
 import meow.ancient.event.events.PlayerMovementSentEvent;
 import meow.ancient.module.modules.combat.HitAuraModule;
+import meow.ancient.module.modules.combat.VelocityModule;
 import meow.ancient.module.modules.combat.SpearKillModule;
 import meow.ancient.module.modules.combat.TriggerBotModule;
 import meow.ancient.module.modules.movement.InventoryMoveModule;
@@ -23,12 +25,14 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 @Mixin(LocalPlayer.class)
 public class MixinLocalPlayer {
-    @Inject(method = "tick", at = @At("HEAD"))
+    @Inject(method = "tick", at = @At("HEAD"), cancellable = true)
     private void onTick(CallbackInfo ci) {
+        SilentSwapUtil.INSTANCE.onTickStart();
         RotationManager.INSTANCE.onPreUpdate();
         EventManager.INSTANCE.post(PlayerUpdateEvent.INSTANCE);
         RotationManager.INSTANCE.onPostUpdate();
         InventoryMoveModule.INSTANCE.applySlownessInput(((LocalPlayer) (Object) this).input);
+        if (VelocityModule.INSTANCE.shouldFreezeTick()) ci.cancel();
     }
 
     @Inject(method = "tick", at = @At("TAIL"))

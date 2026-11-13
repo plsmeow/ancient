@@ -1,10 +1,12 @@
 package meow.ancient.mixin;
 
 import meow.ancient.client.util.rotation.RotationManager;
+import meow.ancient.module.modules.player.FakePlayerEntity;
 import meow.ancient.module.modules.render.FreeCameraModule;
 import meow.ancient.module.modules.movement.NoWebModule;
 import meow.ancient.client.util.friend.FriendRepository;
 import meow.ancient.module.modules.combat.HitBoxesModule;
+import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
@@ -19,6 +21,13 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 @Mixin(Entity.class)
 public class MixinEntity {
+    @Inject(method = "hurtOrSimulate", at = @At("HEAD"))
+    private void onHurtOrSimulate(DamageSource source, float damage, CallbackInfoReturnable<Boolean> cir) {
+        if ((Object) this instanceof FakePlayerEntity fakePlayer) {
+            fakePlayer.applyDamage(source, damage);
+        }
+    }
+
     @Redirect(
         method = "moveRelative(FLnet/minecraft/world/phys/Vec3;)V",
         at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/Entity;getYRot()F")

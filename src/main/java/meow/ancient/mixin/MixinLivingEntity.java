@@ -5,6 +5,7 @@ import meow.ancient.client.util.rotation.Rotation;
 import meow.ancient.client.util.rotation.RotationManager;
 import net.minecraft.client.Minecraft;
 import meow.ancient.module.modules.player.NoPushModule;
+import meow.ancient.module.modules.render.SwingAnimationsModule;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.phys.Vec3;
@@ -14,6 +15,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 @Mixin(LivingEntity.class)
 public class MixinLivingEntity {
@@ -82,6 +84,13 @@ public class MixinLivingEntity {
     }
 
 
+    @Inject(method = "getModifiedSwingDuration", at = @At("HEAD"), cancellable = true)
+    private void onGetModifiedSwingDuration(CallbackInfoReturnable<Integer> cir) {
+        if (SwingAnimationsModule.INSTANCE.isEnabled()) {
+            cir.setReturnValue(SwingAnimationsModule.swingDuration());
+        }
+    }
+
     @Inject(method = "push(Lnet/minecraft/world/entity/Entity;)V", at = @At("HEAD"), cancellable = true)
     private void onPush(Entity entity, CallbackInfo ci) {
         if (NoPushModule.INSTANCE.shouldCancelEntityPush() && (Object) this == Minecraft.getInstance().player) {
@@ -95,4 +104,5 @@ public class MixinLivingEntity {
             ci.cancel();
         }
     }
+
 }

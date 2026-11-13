@@ -25,7 +25,7 @@ object PrefixCommand : Command(
 
         val oldPrefix = CommandManager.prefix
         CommandManager.prefix = newPrefix
-        ConfigManager.saveConfig("default")
+        ConfigManager.saveCurrentConfig()
         ChatUtil.success("Command prefix changed from '§7$oldPrefix§a' to '§d$newPrefix§a'")
     }
 }

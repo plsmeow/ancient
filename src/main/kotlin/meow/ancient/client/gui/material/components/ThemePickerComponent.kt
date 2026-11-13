@@ -1,5 +1,6 @@
 package meow.ancient.client.gui.material.components
 
+import meow.ancient.client.gui.material.ClickGuiAnimation
 import meow.ancient.client.gui.material.AnimFloat
 import meow.ancient.client.gui.material.ClickGuiScreen
 import meow.ancient.client.gui.material.M3Theme
@@ -24,6 +25,12 @@ class ThemePickerComponent(
     private val hoverGracePeriod = 180L
 
     val isExpanded: Boolean get() = expandAnim.value > 0.01f
+
+    fun reset() {
+        expandAnim.setImmediate(0f)
+        hoverAlphaAnim.setImmediate(0f)
+        lastHoverTime = 0L
+    }
 
     private fun isHoveringZone(mouseX: Double, mouseY: Double): Boolean {
         if (ClickGuiScreen.activeColorPicker != null) return true
@@ -67,7 +74,7 @@ class ThemePickerComponent(
         val palette = M3Theme.current
         val hovered = isHoveringZone(mouseX.toDouble(), mouseY.toDouble())
         val panelHovered = mouseX >= x && mouseX <= x + width && mouseY >= y && mouseY <= y + height
-        val targetExpand = if (hovered) 1f else 0f
+        val targetExpand = if (!ClickGuiAnimation.isOpening && !ClickGuiAnimation.isClosing && hovered) 1f else 0f
         val progress = expandAnim.update(targetExpand, dt)
         val panelHover = hoverAlphaAnim.update(if (panelHovered) 1f else 0f, dt)
 

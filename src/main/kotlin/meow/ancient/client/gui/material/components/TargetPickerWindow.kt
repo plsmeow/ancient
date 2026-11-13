@@ -302,7 +302,7 @@ class TargetPickerWindow(val setting: TargetSetting) {
 
         if (over(mx, my, (x + width - 42f).toDouble(), (y + 9f).toDouble(), 28.0, 16.0)) {
             setting.set(emptySet())
-            ConfigManager.saveConfig("default")
+            ConfigManager.saveCurrentConfig()
             rebuild()
             return
         }
@@ -310,7 +310,7 @@ class TargetPickerWindow(val setting: TargetSetting) {
         if (over(mx, my, (x + width - 74f).toDouble(), (y + 9f).toDouble(), 28.0, 16.0)) {
             val allLiving = MinecraftPickerCatalogs.entities.entries.map { it.id }
             setting.selectAll(allLiving)
-            ConfigManager.saveConfig("default")
+            ConfigManager.saveCurrentConfig()
             rebuild()
             return
         }
@@ -351,7 +351,7 @@ class TargetPickerWindow(val setting: TargetSetting) {
                             } else {
                                 setting.selectAll(item.allIds)
                             }
-                            ConfigManager.saveConfig("default")
+                            ConfigManager.saveCurrentConfig()
                             rebuild()
                             return
                         }
@@ -360,7 +360,7 @@ class TargetPickerWindow(val setting: TargetSetting) {
                     is ListItem.Row -> {
                         if (over(mx, my, lx.toDouble(), curY.toDouble(), listW.toDouble(), entityRowHeight.toDouble())) {
                             setting.toggle(item.entry.id)
-                            ConfigManager.saveConfig("default")
+                            ConfigManager.saveCurrentConfig()
                             rebuild()
                             return
                         }

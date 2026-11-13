@@ -23,6 +23,7 @@ import net.minecraft.client.gui.GuiGraphicsExtractor
 import net.minecraft.world.entity.EquipmentSlot
 import net.minecraft.world.entity.EntityType
 import net.minecraft.world.entity.LivingEntity
+import net.minecraft.world.entity.item.ItemEntity
 import net.minecraft.world.entity.player.Player
 import net.minecraft.world.item.ItemStack
 import org.joml.Vector3f
@@ -194,6 +195,7 @@ object TagsModule : Module(
 
     @Commando
     fun onOverlayRender(event: OverlayRenderEvent) {
+        val graphics = RenderUtils.currentGraphics ?: return
         safeRun {
             val partialTicks = event.partialTicks
 
@@ -234,7 +236,7 @@ object TagsModule : Module(
 
             for (tag in activeTags) {
                 val target = tag.target ?: continue
-                val nameText = target.name.string
+                val nameText = if (target is ItemEntity) "${target.item.hoverName.string} x${target.item.count}" else target.name.string
 
                 val living = target as? LivingEntity
                 val totalHp = living?.let { AnticheatManager.getHealth(it).coerceAtLeast(0f) } ?: 0f
@@ -263,6 +265,10 @@ object TagsModule : Module(
                 val rectW = padX + nameW + (if (living != null) gap + badgeW else 0f) + totalBarW + padX
                 val rectX = tag.screenX - rectW * 0.5f
                 val rectY = tag.screenY - rectH
+                val badgeX = rectX + rectW - padX - totalBarW - badgeW
+                val badgeY = rectY + (rectH - badgeH) * 0.5f
+
+                graphics.nextStratum()
 
                 RenderUtils.roundedRect(
                     matrix = matrix,
@@ -275,17 +281,6 @@ object TagsModule : Module(
                     pipeline = ClientRenderPipeline.HUD_RECT
                 )
 
-                val nameY = rectY + rectH * 0.5f - fontSize * 0.56f
-                font.drawString(
-                    matrix = matrix,
-                    text = nameText,
-                    x = rectX + padX,
-                    y = nameY,
-                    size = fontSize,
-                    color = palette.onSurface,
-                    shadow = false,
-                    pipeline = ClientRenderPipeline.HUD_TEXT
-                )
                 if (statusColor != null) {
                     val barH = if (living != null) badgeH else (rectH - 4.0f * scale)
                     val barX = rectX + rectW - padX - barW
@@ -302,21 +297,31 @@ object TagsModule : Module(
                     )
                 }
 
-                if (living == null) continue
-
-                val badgeX = rectX + rectW - padX - totalBarW - badgeW
-                val badgeY = rectY + (rectH - badgeH) * 0.5f
-
-                RenderUtils.roundedRect(
+                if (living != null) {
+                    RenderUtils.roundedRect(
+                        matrix = matrix,
+                        x = badgeX,
+                        y = badgeY,
+                        width = badgeW,
+                        height = badgeH,
+                        color = badgeBg,
+                        radius = badgeRadius,
+                        pipeline = ClientRenderPipeline.HUD_RECT
+                    )
+                }
+                graphics.nextStratum()
+                val nameY = rectY + rectH * 0.5f - fontSize * 0.56f
+                font.drawString(
                     matrix = matrix,
-                    x = badgeX,
-                    y = badgeY,
-                    width = badgeW,
-                    height = badgeH,
-                    color = badgeBg,
-                    radius = badgeRadius,
-                    pipeline = ClientRenderPipeline.HUD_RECT
+                    text = nameText,
+                    x = rectX + padX,
+                    y = nameY,
+                    size = fontSize,
+                    color = palette.onSurface,
+                    shadow = false,
+                    pipeline = ClientRenderPipeline.HUD_TEXT
                 )
+                if (living == null) continue
 
                 val badgeTextY = badgeY + badgeH * 0.5f - badgeFontSize * 0.56f
                 font.drawCenteredString(

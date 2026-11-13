@@ -100,10 +100,11 @@ object NeuroTrainer {
         if (!python.isFile || !python.canExecute()) return false
         var process: Process? = null
         return try {
-            process = ProcessBuilder(listOf(python.absolutePath) + args)
-                .redirectErrorStream(true)
-                .redirectOutput(ProcessBuilder.Redirect.DISCARD)
-                .start()
+            process = ProcessBuilder(listOf(python.absolutePath) + args).apply {
+                environment()["PYTHONWARNINGS"] = "ignore"
+                redirectErrorStream(true)
+                redirectOutput(ProcessBuilder.Redirect.DISCARD)
+            }.start()
             if (process.waitFor(timeoutSeconds, TimeUnit.SECONDS)) process.exitValue() == 0 else false
         } catch (_: InterruptedException) {
             Thread.currentThread().interrupt()
@@ -136,6 +137,9 @@ object NeuroTrainer {
         return ProcessBuilder(command).redirectErrorStream(true).apply {
             environment()["PYTHONIOENCODING"] = "utf-8"
             environment()["PYTHONDONTWRITEBYTECODE"] = "1"
+            environment()["PYTHONWARNINGS"] = "ignore"
+            environment()["MKL_ENABLE_INSTRUCTIONS"] = "SSE4_2"
+            environment()["ONEDNN_MAX_CPU_ISA"] = "SSE41"
         }.start()
     }
 }

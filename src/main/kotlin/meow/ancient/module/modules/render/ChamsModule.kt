@@ -4,55 +4,59 @@ import meow.ancient.client.extensions.RENDER
 import meow.ancient.client.extensions.mc
 import meow.ancient.client.gui.material.M3Theme
 import meow.ancient.client.util.other.color.Color4b
+import meow.ancient.client.util.render.ChamsRenderer
 import meow.ancient.module.Module
+import meow.ancient.module.setting.MinecraftPickerCatalogs
+import net.minecraft.world.entity.Entity
 import net.minecraft.world.entity.EntityType
-import net.minecraft.world.entity.LivingEntity
-import net.minecraft.world.entity.Mob
-import net.minecraft.world.entity.player.Player
 
 object ChamsModule : Module(
     name = "Chams",
     category = RENDER,
-    description = "Highlights entities with outlines"
+    description = "Model silhouette outline, fill and glow for selected entities and first-person hands"
 ) {
-    val mode by mode("Mode", "Glow Outline", listOf("Glow Outline", "Tinted Glow"))
-    val players = boolean("Players", true)
-    val mobs = boolean("Mobs", false)
+    val entityTypes by picker("Entity Types", setOf("minecraft:player"), MinecraftPickerCatalogs.entities)
+    val hands by boolean("Hands", true)
     val self by boolean("Self", false)
-    val color = color("Color", Color4b(255, 60, 60, 255))
-    val theme = boolean("Theme", true)
+    val outline by boolean("Outline", true)
+    val fill by boolean("Fill", true)
+    val glow by boolean("Glow", true)
+    val glowRadius by number("Glow Radius", 10.0, 2.0, 32.0, 0.5, 1, isVisible = { glow })
+    val glowStrength by number("Glow Strength", 1.2, 0.1, 3.0, 0.05, 2, isVisible = { glow })
+    val lineWidth by number("Line Width", 2.0, 0.5, 6.0, 0.5, 1, isVisible = { outline })
+    val fillOpacity by number("Fill Opacity", 0.15, 0.0, 1.0, 0.01, 2, isVisible = { fill })
+    val theme by boolean("Theme", true)
+    val color by color("Color", Color4b(180, 160, 255), isVisible = { !theme })
 
+    private var cachedSelection: Set<String>? = null
+    private val selectedTypes = HashSet<EntityType<*>>()
 
-    @JvmStatic
-    fun shouldRenderChams(entity: LivingEntity): Boolean {
-        if (!isEnabled()) return false
-        if (entity is Player) {
-            if (entity === mc.player && (!self || mc.options.cameraType.isFirstPerson)) return false
-            return players.value
+    fun shouldRender(entity: Entity): Boolean {
+        if (!isEnabled() || (!outline && !fill && !glow) || !entity.isAlive || entity.isRemoved) return false
+        if (cachedSelection !== entityTypes) {
+            cachedSelection = entityTypes
+            selectedTypes.clear()
+            for (id in entityTypes) MinecraftPickerCatalogs.entities.find(id)?.value?.let(selectedTypes::add)
         }
-        if (entity is Mob) {
-            return mobs.value
-        }
-        return false
+        if (entity.type !in selectedTypes) return false
+        return entity !== mc.player || (self && !mc.options.cameraType.isFirstPerson)
     }
 
-    @JvmStatic
-    fun shouldRenderChamsState(state: net.minecraft.client.renderer.entity.state.LivingEntityRenderState): Boolean {
-        if (!isEnabled()) return false
-        if (state is net.minecraft.client.renderer.entity.state.AvatarRenderState) {
-            return players.value
-        }
-        return mobs.value
+    fun shouldRenderHands(): Boolean = isEnabled() && hands && (outline || fill || glow)
+
+    fun outlineColor(): Color4b = (if (theme) M3Theme.current.primary else color).let {
+        if (outline) it else it.alpha(0)
     }
 
-    @JvmStatic
-    fun shouldTint(): Boolean {
-        return isEnabled() && mode == "Tinted Glow"
+    fun fillColor(): Color4b = (if (theme) M3Theme.current.primary else color).let {
+        it.alpha(if (fill) (it.a * fillOpacity).toInt() else 0)
     }
 
-    @JvmStatic
-    fun getChamsColor(): Int {
-        val raw = if (theme.value) M3Theme.current.primary.argb else color.value.argb
-        return if ((raw and 0xFF000000.toInt()) == 0) (raw or 0xFF000000.toInt()) else raw
+    fun glowColor(): Color4b = (if (theme) M3Theme.current.primary else color).let {
+        if (glow) it else it.alpha(0)
+    }
+
+    override fun onDisable() {
+        ChamsRenderer.close()
     }
 }

@@ -1,5 +1,7 @@
 package meow.ancient.mixin;
 
+import meow.ancient.client.util.render.ChamsEntityRenderState;
+import meow.ancient.module.modules.render.ChamsModule;
 import meow.ancient.module.modules.render.NoRenderModule;
 import meow.ancient.module.modules.render.TagsModule;
 import net.minecraft.client.renderer.culling.Frustum;
@@ -15,6 +17,14 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 @Mixin(EntityRenderer.class)
 public class MixinEntityRenderer<T extends Entity, S extends EntityRenderState> {
+    @Inject(
+        method = "extractRenderState(Lnet/minecraft/world/entity/Entity;Lnet/minecraft/client/renderer/entity/state/EntityRenderState;F)V",
+        at = @At("TAIL")
+    )
+    private void ancient$extractChamsTarget(T entity, S state, float partialTick, CallbackInfo ci) {
+        ((ChamsEntityRenderState) state).ancient$setChamsTarget(ChamsModule.INSTANCE.shouldRender(entity));
+    }
+
     @Inject(
         method = "extractNameTags(Lnet/minecraft/world/entity/Entity;Lnet/minecraft/client/renderer/entity/state/EntityRenderState;FDD)V",
         at = @At("TAIL")

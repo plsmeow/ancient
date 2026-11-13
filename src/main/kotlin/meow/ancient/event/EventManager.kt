@@ -1,7 +1,6 @@
 package meow.ancient.event
 
 import sweetie.evaware.flora.Flora
-import sweetie.evaware.flora.FloraAutomation
 
 object EventManager {
     fun post(any: Any) {
@@ -9,10 +8,10 @@ object EventManager {
     }
 
     fun register(any: Any) {
-        FloraAutomation.register(any)
+        Flora.register(any)
     }
 
     fun unregister(any: Any) {
-        FloraAutomation.unregister(any)
+        Flora.unregister(any)
     }
 }

@@ -106,7 +106,7 @@ class KeybindComponent(val keySetting: KeybindSetting) : SettingComponent(keySet
             if (button >= 4) {
                 keySetting.set(KeybindSetting.fromMouseButton(button))
                 isListening = false
-                ConfigManager.saveConfig("default")
+                ConfigManager.saveCurrentConfig()
                 return true
             }
             isListening = false
@@ -128,7 +128,7 @@ class KeybindComponent(val keySetting: KeybindSetting) : SettingComponent(keySet
                 keySetting.set(keyCode)
             }
             isListening = false
-            ConfigManager.saveConfig("default")
+            ConfigManager.saveCurrentConfig()
             return true
         }
         return false

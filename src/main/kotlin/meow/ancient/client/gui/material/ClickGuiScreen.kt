@@ -21,6 +21,7 @@ import meow.ancient.client.gui.material.components.ThemePickerComponent
 import meow.ancient.client.interfaces.IRenderable
 import meow.ancient.client.util.other.color.Color4b
 import meow.ancient.client.util.render.RenderUtils
+import meow.ancient.client.util.render.ScissorUtil
 import meow.ancient.client.util.render.engine.controls.ClientRenderPipeline
 import meow.ancient.client.util.render.engine.controls.MatrixControl
 import meow.ancient.module.Module
@@ -229,8 +230,14 @@ object ClickGuiScreen : Screen(Component.literal("Ancient ClickGUI")), IRenderab
         closeSettingBinding()
         activeColorPicker = null
         releasePanelInput()
+        themePicker.reset()
         lastFrameTime = System.currentTimeMillis()
         parentScreen?.init(width, height)
+        if (ClickGuiModule.animations) {
+            ClickGuiAnimation.startOpen(panels, width.toFloat(), height.toFloat())
+        } else {
+            ClickGuiAnimation.reset()
+        }
     }
 
     override fun render(mouseX: Int, mouseY: Int) {
@@ -243,28 +250,55 @@ object ClickGuiScreen : Screen(Component.literal("Ancient ClickGUI")), IRenderab
         val screenW = mc.window.guiScaledWidth.toFloat()
         val screenH = mc.window.guiScaledHeight.toFloat()
 
+        if (ClickGuiAnimation.isClosing) {
+            ClickGuiAnimation.renderClosing(RenderUtils.currentGraphics ?: return, dt)
+            return
+        }
+
+        val barOffset = if (ClickGuiAnimation.isOpening) ClickGuiAnimation.getBarOffset() else 0f
+        searchBar.animOffsetY = barOffset
+
         if (parentScreen != null || (ClickGuiModule.blur && mc.options.getMenuBackgroundBlurriness() == 0)) {
+            val alphaMultiplier = if (ClickGuiAnimation.isOpening) ClickGuiAnimation.getOpenProgress() else 1f
+            val baseAlpha = if (parentScreen != null) 110 else 80
+            val scrimAlpha = (baseAlpha * alphaMultiplier).toInt().coerceIn(0, 255)
             RenderUtils.rect(
                 matrix = matrix,
                 x = 0f,
                 y = 0f,
                 width = screenW,
                 height = screenH,
-                color = if (parentScreen != null) Color4b(0, 0, 0, 110) else Color4b(0, 0, 0, 80),
+                color = Color4b(0, 0, 0, scrimAlpha),
                 pipeline = ClientRenderPipeline.LOW
             )
         }
 
         for (panel in panels) {
-            RenderUtils.currentGraphics?.nextStratum()
-            panel.render(matrix, mouseX, mouseY, dt)
+            val offset = if (ClickGuiAnimation.isOpening) ClickGuiAnimation.getPanelOpenOffset(panel) else Pair(0f, 0f)
+            val origX = panel.x
+            val origY = panel.y
+            panel.x += offset.first
+            panel.y += offset.second
+            try {
+                RenderUtils.currentGraphics?.nextStratum()
+                panel.render(matrix, mouseX, mouseY, dt)
+            } finally {
+                panel.x = origX
+                panel.y = origY
+            }
         }
 
         RenderUtils.currentGraphics?.nextStratum()
         searchBar.render(matrix, mouseX, mouseY, dt)
 
-        RenderUtils.currentGraphics?.nextStratum()
-        themePicker.render(matrix, mouseX, mouseY, dt)
+        val tpOrigY = themePicker.y
+        themePicker.y += barOffset
+        try {
+            RenderUtils.currentGraphics?.nextStratum()
+            themePicker.render(matrix, mouseX, mouseY, dt)
+        } finally {
+            themePicker.y = tpOrigY
+        }
 
         pruneEditors()
         editorWindows.lastOrNull()?.let {
@@ -278,7 +312,6 @@ object ClickGuiScreen : Screen(Component.literal("Ancient ClickGUI")), IRenderab
         }
         activePicker?.render(matrix, mouseX, mouseY, dt)
         activeTargetPicker?.render(matrix, mouseX, mouseY, dt)
-
     }
 
     override fun extractRenderState(guiGraphics: GuiGraphicsExtractor, mouseX: Int, mouseY: Int, partialTick: Float) {
@@ -333,6 +366,10 @@ object ClickGuiScreen : Screen(Component.literal("Ancient ClickGUI")), IRenderab
     }
 
     override fun mouseClicked(event: MouseButtonEvent, bl: Boolean): Boolean {
+        if (ClickGuiAnimation.isClosing) return true
+        if (ClickGuiAnimation.isOpening) {
+            ClickGuiAnimation.finishOpen()
+        }
         val rawButton = event.button()
         val mouseX = event.x()
         val mouseY = event.y()
@@ -374,14 +411,14 @@ object ClickGuiScreen : Screen(Component.literal("Ancient ClickGUI")), IRenderab
                     if (modComp.isBinding) {
                         modComp.module.key = KeybindSetting.fromMouseButton(rawButton)
                         modComp.isBinding = false
-                        ConfigManager.saveConfig("default")
+                        ConfigManager.saveCurrentConfig()
                         return true
                     }
                     for (settingComp in modComp.settingComponents) {
                         if (settingComp is KeybindComponent && settingComp.isListening) {
                             settingComp.keySetting.set(KeybindSetting.fromMouseButton(rawButton))
                             settingComp.stopListening()
-                            ConfigManager.saveConfig("default")
+                            ConfigManager.saveCurrentConfig()
                             return true
                         }
                     }
@@ -417,6 +454,7 @@ object ClickGuiScreen : Screen(Component.literal("Ancient ClickGUI")), IRenderab
     }
 
     override fun mouseReleased(event: MouseButtonEvent): Boolean {
+        if (ClickGuiAnimation.isClosing) return true
         val mouseX = event.x()
         val mouseY = event.y()
         val button = normalizeButton(event.button())
@@ -451,6 +489,7 @@ object ClickGuiScreen : Screen(Component.literal("Ancient ClickGUI")), IRenderab
     }
 
     override fun mouseDragged(event: MouseButtonEvent, deltaX: Double, deltaY: Double): Boolean {
+        if (ClickGuiAnimation.isClosing) return true
         val mouseX = event.x()
         val mouseY = event.y()
         val button = normalizeButton(event.button())
@@ -535,6 +574,14 @@ object ClickGuiScreen : Screen(Component.literal("Ancient ClickGUI")), IRenderab
         val keyCode = event.key()
         val scanCode = event.keycode()
         val modifiers = event.modifiers()
+        if (ClickGuiAnimation.isClosing) {
+            if (keyCode == InputConstants.KEY_ESCAPE || keyCode == InputConstants.KEY_RSHIFT ||
+                (ClickGuiModule.key != InputConstants.UNKNOWN.value && keyCode == ClickGuiModule.key)) {
+                forceClose()
+                return true
+            }
+            return true
+        }
         activeTargetPicker?.let {
             it.keyPressed(event)
             activeSettingBinding?.commit()
@@ -595,6 +642,7 @@ object ClickGuiScreen : Screen(Component.literal("Ancient ClickGUI")), IRenderab
     }
 
     override fun charTyped(event: CharacterEvent): Boolean {
+        if (ClickGuiAnimation.isClosing) return true
         activeTargetPicker?.let {
             it.charTyped(event)
             activeSettingBinding?.commit()
@@ -646,6 +694,10 @@ object ClickGuiScreen : Screen(Component.literal("Ancient ClickGUI")), IRenderab
     override fun isInputCaptured(): Boolean = editorWindows.isNotEmpty() || activeSettingBinding != null || activeTargetPicker != null || activePicker != null || activeColorPicker != null || CustomTextField.hasFocus || super.isInputCaptured()
 
     override fun removed() {
+        if (!ClickGuiAnimation.isClosing) {
+            ClickGuiAnimation.reset()
+        }
+        themePicker.reset()
         closeEditors()
         closeSettingBinding()
         closePicker()
@@ -654,9 +706,18 @@ object ClickGuiScreen : Screen(Component.literal("Ancient ClickGUI")), IRenderab
         clearAllListening()
         releasePanelInput()
         searchBar.clearAndBlur()
+        ConfigManager.saveCurrentConfig()
     }
 
     override fun onClose() {
+        if (ClickGuiModule.animations && !ClickGuiAnimation.isClosing) {
+            startCloseAnimation()
+            return
+        }
+        forceClose()
+    }
+
+    fun startCloseAnimation() {
         closeEditors()
         closeSettingBinding()
         clearAllListening()
@@ -665,6 +726,28 @@ object ClickGuiScreen : Screen(Component.literal("Ancient ClickGUI")), IRenderab
         closeTargetPicker()
         releasePanelInput()
         searchBar.clearAndBlur()
+        themePicker.reset()
+        ConfigManager.saveCurrentConfig()
+        ClickGuiAnimation.startClose(panels, searchBar, themePicker, width.toFloat(), height.toFloat())
+        val parent = parentScreen
+        parentScreen = null
+        ClickGuiModule.setEnabled(false)
+        if (mc.gui.screen() === this) {
+            mc.gui.setScreen(parent)
+        }
+    }
+
+    fun forceClose() {
+        ClickGuiAnimation.reset()
+        closeEditors()
+        closeSettingBinding()
+        clearAllListening()
+        activeColorPicker = null
+        closePicker()
+        closeTargetPicker()
+        releasePanelInput()
+        searchBar.clearAndBlur()
+        ConfigManager.saveCurrentConfig()
         val parent = parentScreen
         parentScreen = null
         ClickGuiModule.setEnabled(false)

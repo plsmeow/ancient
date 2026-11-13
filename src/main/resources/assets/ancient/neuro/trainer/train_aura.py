@@ -4,7 +4,10 @@ import glob
 import math
 import os
 import sys
+import warnings
 
+os.environ["PYTHONWARNINGS"] = "ignore"
+warnings.filterwarnings("ignore")
 import numpy as np
 
 from common import (MIX, compare, detector_auc, export, quantize, runs_of, squash, step,

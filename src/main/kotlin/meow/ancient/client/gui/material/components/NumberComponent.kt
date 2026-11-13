@@ -52,7 +52,7 @@ class NumberComponent(private val numSetting: NumberSetting) : SettingComponent(
             val parsed = currentInput.toDoubleOrNull()
             if (parsed != null) {
                 numSetting.set(parsed)
-                ConfigManager.saveConfig("default")
+                ConfigManager.saveCurrentConfig()
             }
         }
         isEditing = false

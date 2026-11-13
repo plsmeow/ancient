@@ -9,8 +9,10 @@ import meow.ancient.module.modules.combat.AutoMaceModule
 import meow.ancient.module.modules.combat.BreachSwapModule
 import meow.ancient.module.modules.combat.HitAuraModule
 import meow.ancient.module.modules.combat.MaceKillModule
+import meow.ancient.module.modules.combat.TpAuraModule
 import meow.ancient.module.modules.combat.hitaura.rotation.impl.NeuroRotation
 import meow.ancient.module.modules.combat.hitaura.rotation.impl.AdvancedRotation
+import meow.ancient.module.modules.combat.hitaura.rotation.impl.Grim1204Rotation
 import meow.ancient.module.modules.combat.HitAuraModule.ClickMode
 import meow.ancient.module.modules.combat.HitAuraModule.SprintResetMode
 import net.minecraft.world.InteractionHand
@@ -35,7 +37,8 @@ class AttackExecutor(
         sprintResetMode: SprintResetMode = SprintResetMode.OFF
     ): Boolean {
         if (!inGame || HitAuraModule.shouldIgnoreContext()) return false
-        if (RotationUtil.getDistanceToBox(target) > attackRange) return false
+        if (TpAuraModule.isPendingVaultReturn()) return false
+        if (RotationUtil.getDistanceToBox(target) > attackRange && TpAuraModule.getRenderPosition(target) == null) return false
         if (BreachSwapModule.isActive() && !BreachSwapModule.isVirtualCooldownReady(ticksAhead)) return false
         if (!AutoMaceModule.isForceReady(target)
             && !clickerProcessor.isReadyToClick(clickMode, cps, randomizeCps, cpsSpread, ticksAhead > 0)) return false
@@ -52,7 +55,8 @@ class AttackExecutor(
         cpsSpread: Double
     ): Boolean {
         if (!inGame || HitAuraModule.shouldIgnoreContext()) return false
-        if (RotationUtil.getDistanceToBox(target) > attackRange) return false
+        if (TpAuraModule.isPendingVaultReturn()) return false
+        if (RotationUtil.getDistanceToBox(target) > attackRange && TpAuraModule.getRenderPosition(target) == null) return false
         if (!AutoMaceModule.isForceReady(target)
             && !clickerProcessor.isReadyToClick(clickMode, cps, randomizeCps, cpsSpread, true)) return false
         return true
@@ -74,15 +78,18 @@ class AttackExecutor(
         if (!shouldPrepareAttack(target, attackRange, clickMode, cps, randomizeCps, cpsSpread, onlyCrits, smartCrits, 0, sprintResetMode)) {
             return false
         }
+        val positionAuraReachable = TpAuraModule.getRenderPosition(target) != null
         if (HitAuraModule.rotationMode == HitAuraModule.RotationMode.NEURO &&
             !(rotationProcessor.getStrategy(HitAuraModule.RotationMode.NEURO) as NeuroRotation).isAttackReady()) return false
         if (HitAuraModule.rotationMode == HitAuraModule.RotationMode.ADVANCED &&
             !(rotationProcessor.getStrategy(HitAuraModule.RotationMode.ADVANCED) as AdvancedRotation).isAttackReady()) return false
+        if (!positionAuraReachable && HitAuraModule.rotationMode == HitAuraModule.RotationMode.GRIM_1204 &&
+            !(rotationProcessor.getStrategy(HitAuraModule.RotationMode.GRIM_1204) as Grim1204Rotation).isLookingAtTarget(target, attackRange, throughWalls)) return false
 
         val localPlayer = mc.player ?: return false
         val currentGameMode = mc.gameMode ?: return false
 
-        if (rayTrace && !localPlayer.isFallFlying) {
+        if (rayTrace && !localPlayer.isFallFlying && !positionAuraReachable) {
             val outgoingRotation = RotationManager.getServerRotation()
             val hitsHitbox = RayTraceUtil.isLookingAtEntity(
                 target = target,
@@ -94,7 +101,7 @@ class AttackExecutor(
                 return false
             }
         }
-
+        var tpAuraMoved = false
         val forceMaceReady = AutoMaceModule.isForceReady(target)
         var previousAxeSlot = -1
         var breachSwapSlot = -1
@@ -110,16 +117,29 @@ class AttackExecutor(
             if (previousAxeSlot == -1 && BreachSwapModule.isActive()) {
                 breachSwapSlot = BreachSwapModule.swapToBreachMace()
             }
+            tpAuraMoved = TpAuraModule.beforeAttack(target)
+            if (positionAuraReachable && !tpAuraMoved) return false
             if (MaceKillModule.isEnabled()) {
                 MaceKillModule.doCrit()
             }
 
 
+            val isGrim1204 = HitAuraModule.rotationMode == HitAuraModule.RotationMode.GRIM_1204
+            val grim1204 = if (isGrim1204) rotationProcessor.getStrategy(HitAuraModule.RotationMode.GRIM_1204) as? Grim1204Rotation else null
             sprintResetProcessor.preAttack(sprintResetMode)
+            grim1204?.sendRotationPacket(localPlayer)
             val swingAnimation = localPlayer.getItemInHand(InteractionHand.MAIN_HAND).attackAnimation
-            currentGameMode.attack(localPlayer, target)
-            executed = true
-            localPlayer.swing(InteractionHand.MAIN_HAND, swingAnimation, false)
+            try {
+                currentGameMode.attack(localPlayer, target)
+                executed = true
+                localPlayer.swing(InteractionHand.MAIN_HAND, swingAnimation, false)
+            } finally {
+                grim1204?.sendResetPacket(localPlayer)
+                if (tpAuraMoved) {
+                    TpAuraModule.afterAttack()
+                    tpAuraMoved = false
+                }
+            }
             if (HitAuraModule.rotationMode == HitAuraModule.RotationMode.NEURO) {
                 (rotationProcessor.getStrategy(HitAuraModule.RotationMode.NEURO) as NeuroRotation).notifyAttack()
             }
@@ -129,6 +149,7 @@ class AttackExecutor(
             return true
         } finally {
             try {
+                if (tpAuraMoved) TpAuraModule.afterAttack()
                 if (executed) clickerProcessor.onAttackExecuted(clickMode, cps, randomizeCps, cpsSpread)
             } finally {
                 try {

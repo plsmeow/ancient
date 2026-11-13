@@ -1,6 +1,9 @@
 import json
 import os
+import warnings
 
+os.environ["PYTHONWARNINGS"] = "ignore"
+warnings.filterwarnings("ignore")
 import numpy as np
 import torch
 import torch.nn as nn
@@ -76,9 +79,23 @@ def chunk(sequences):
     return torch.tensor(np.array(xs)), torch.tensor(np.array(ys))
 
 
+def select_device():
+    if torch.cuda.is_available():
+        try:
+            major, minor = torch.cuda.get_device_capability(0)
+            if (major, minor) >= (7, 5):
+                test_gru = nn.GRU(16, 16, batch_first=True).cuda()
+                test_x = torch.zeros(1, 4, 16, device="cuda")
+                test_out, _ = test_gru(test_x)
+                test_out.sum().backward()
+                return "cuda"
+        except Exception:
+            pass
+    return "cpu"
+
 def train_policy(sequences, features, hidden, epochs, seed, quiet=False, mix=MIX):
     torch.manual_seed(seed)
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    device = select_device()
     x, y = chunk(sequences)
     x, y = x.to(device), y.to(device)
     order = torch.randperm(len(x), generator=torch.Generator().manual_seed(seed)).to(device)

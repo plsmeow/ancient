@@ -4,11 +4,11 @@ import com.mojang.blaze3d.platform.InputConstants
 import meow.ancient.client.extensions.PLAYER
 import meow.ancient.client.extensions.mc
 import meow.ancient.client.util.inventory.InventoryUtil
+import meow.ancient.client.util.inventory.SilentSwapUtil
 import meow.ancient.event.events.KeyPressEvent
 import meow.ancient.event.events.PlayerUpdateEvent
 import meow.ancient.module.Module
 import meow.ancient.module.modules.render.FreeCameraModule
-import net.minecraft.network.protocol.game.ServerboundSetCarriedItemPacket
 import net.minecraft.world.InteractionHand
 import net.minecraft.world.item.Items
 import sweetie.evaware.flora.api.Commando
@@ -134,7 +134,6 @@ object ClickPearlModule : Module(
         if (inventorySlot == -1) return
 
         val swapSlot = findUsableHotbarSlot()
-        val previous = player.inventory.selectedSlot
         val menuSlot = inventorySlot
 
         if (InventoryUtil.clickSlot(menuSlot, swapSlot)) {
@@ -142,12 +141,7 @@ object ClickPearlModule : Module(
                 if (legit) {
                     InventoryUtil.useItemLegit(InteractionHand.MAIN_HAND, swapSlot)
                 } else {
-                    player.connection.send(ServerboundSetCarriedItemPacket(swapSlot))
-                    try {
-                        InventoryUtil.useItem(InteractionHand.MAIN_HAND)
-                    } finally {
-                        player.connection.send(ServerboundSetCarriedItemPacket(previous))
-                    }
+                    SilentSwapUtil.withSlot(swapSlot) { InventoryUtil.useItem(InteractionHand.MAIN_HAND) }
                 }
             } finally {
                 InventoryUtil.clickSlot(menuSlot, swapSlot)
