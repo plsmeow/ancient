@@ -3,33 +3,31 @@ package meow.ancient.module.modules.combat
 import meow.ancient.client.extensions.COMBAT
 import meow.ancient.client.extensions.inGame
 import meow.ancient.client.extensions.mc
+import meow.ancient.client.util.action.ActionCoordinator
 import meow.ancient.client.util.anticheat.AnticheatManager
+import meow.ancient.client.util.combat.AuraActionQueue
 import meow.ancient.client.util.combat.ExplosionDamageUtil
 import meow.ancient.client.util.friend.FriendRepository
 import meow.ancient.client.util.target.TargetRepository
 import meow.ancient.client.util.inventory.InventoryActionSource
 import meow.ancient.client.util.inventory.InventoryUtil
+import meow.ancient.client.util.inventory.SilentSwapUtil
+import meow.ancient.client.util.render.AuraTargetRenderer
 import meow.ancient.client.util.rotation.MoveFixMode
-import meow.ancient.client.util.rotation.RotationManager
-import meow.ancient.client.util.rotation.RotationUtil
 import meow.ancient.event.events.ClientDisconnectEvent
 import meow.ancient.event.events.PlayerUpdateEvent
 import meow.ancient.module.Module
 import meow.ancient.module.modules.movement.InventoryMoveModule
 import net.minecraft.client.player.LocalPlayer
 import net.minecraft.core.BlockPos
-import net.minecraft.core.Direction
-import java.util.concurrent.ThreadLocalRandom
 import net.minecraft.world.InteractionHand
 import net.minecraft.world.entity.player.Player
 import net.minecraft.world.item.Items
-import net.minecraft.world.level.ClipContext
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.block.Blocks
 import net.minecraft.world.level.block.RespawnAnchorBlock
 import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.BlockHitResult
-import net.minecraft.world.phys.HitResult
 import net.minecraft.world.phys.Vec3
 import sweetie.evaware.flora.api.Commando
 
@@ -51,40 +49,58 @@ object AnchorAuraModule : Module(
     val silentSlots by boolean("Silent Slots", true)
     val ignoreTerrain by boolean("Ignore Terrain", false, "Treats all blocks as indestructible when calculating explosion damage")
     val lethalOverride by boolean("Lethal Override", true)
+    val targetNPCs by boolean("Target NPCs", true, "Includes practice NPCs reported as creative players")
+    val render by boolean("Render", true, "Animated placement, charge and detonation targets")
+    val renderSlideSpeed by number("Render Slide Speed", 14.0, 5.0, 30.0, 1.0, 0, isVisible = { render })
 
-    private enum class SequenceStage {
-        PLACE_SENT,
-        CHARGE_SENT,
-        DETONATE_SENT
-    }
-
-    private data class AnchorSequence(val pos: BlockPos, var stage: SequenceStage)
-
+    private enum class SequenceStage { PLACE_SENT, CHARGE_SENT, DETONATE_SENT }
+    private data class AnchorSequence(val pos: BlockPos, val stage: SequenceStage, val sentTick: Int, val charges: Int)
+    private data class Plan(val pos: BlockPos, val hit: BlockHitResult, val stage: SequenceStage)
+    private val actions = AuraActionQueue(this)
+    private val visual = AuraTargetRenderer({ isEnabled() && render }, { renderSlideSpeed })
     private var tickTimer = 0
     private var sequence: AnchorSequence? = null
     private var sequencePlayer: LocalPlayer? = null
     private var sequenceLevel: Level? = null
+    var currentTarget: Player? = null
+        private set
 
     private fun reset() {
         tickTimer = 0
         sequence = null
         sequencePlayer = null
         sequenceLevel = null
+        currentTarget = null
+        actions.beginTick()
+        visual.reset()
+        SilentSwapUtil.releasePreparedSlot(this)
     }
 
-    private fun reconcileSequence(level: Level) {
-        val current = sequence ?: return
+    private fun awaitingConfirmation(player: LocalPlayer, level: Level): Boolean {
+        val current = sequence ?: return false
         val state = level.getBlockState(current.pos)
-        if (state.`is`(Blocks.RESPAWN_ANCHOR)) return
-        if (current.stage != SequenceStage.PLACE_SENT || !state.canBeReplaced()) {
-            sequence = null
+        val anchor = state.`is`(Blocks.RESPAWN_ANCHOR)
+        val confirmed = when (current.stage) {
+            SequenceStage.PLACE_SENT -> anchor
+            SequenceStage.CHARGE_SENT -> anchor && state.getValue(RespawnAnchorBlock.CHARGE) > current.charges
+            SequenceStage.DETONATE_SENT -> !anchor
         }
+        val ping = player.connection.getPlayerInfo(player.uuid)?.latency ?: 150
+        val timeout = (ping.coerceAtLeast(0) / 50 + 10).coerceIn(10, 80)
+        if (confirmed || player.tickCount - current.sentTick >= timeout) {
+            sequence = null
+            return false
+        }
+        visual.show(AABB(current.pos), renderKind(current.stage))
+        return true
     }
 
-    private fun getMoveFixMode(): MoveFixMode = MoveFixMode.fromName(moveFix)
+    private fun getMoveFixMode() = MoveFixMode.fromName(moveFix)
 
     @Commando
     fun onUpdate(event: PlayerUpdateEvent) {
+        actions.beginTick()
+        visual.beginTick()
         val player = mc.player
         val level = mc.level
         if (!inGame || player == null || level == null || !player.connection.connection.isConnected) {
@@ -95,31 +111,65 @@ object AnchorAuraModule : Module(
             reset()
             sequencePlayer = player
             sequenceLevel = level
+            actions.beginTick()
         }
-        if (level.dimension() == Level.NETHER) return
-
-        reconcileSequence(level)
-
-        val target = findTarget(player)
-        if (target == null) {
-            tickTimer = 0
-            return
-        }
-
+        currentTarget = findTarget(player)
+        if (level.dimension() == Level.NETHER) { currentTarget = null; return }
         tickTimer++
+        if (awaitingConfirmation(player, level) || !ActionCoordinator.canAct(this)) return
+        if (player.isUsingItem || player.isSpectator || mc.gui.screen() != null
+            || player.containerMenu !== player.inventoryMenu || !player.containerMenu.carried.isEmpty
+            || InventoryMoveModule.isInventoryActionSlowed()) return
+        val target = currentTarget ?: return
         if (tickTimer <= delay.toInt()) return
-
         val targetHp = AnticheatManager.getHealth(target)
-        val current = sequence
-        val executed = if (current != null) {
-            advanceSequence(player, target, targetHp, current)
-        } else {
-            explodeChargedAnchor(player, target, targetHp)
-                || chargeExistingAnchor(player, target, targetHp)
-                || placeNewAnchor(player, target, targetHp)
+        val plan = findPlan(player, target, targetHp, SequenceStage.DETONATE_SENT)
+            ?: findPlan(player, target, targetHp, SequenceStage.CHARGE_SENT)
+            ?: findPlan(player, target, targetHp, SequenceStage.PLACE_SENT)
+            ?: return
+        if (!preparePlan(player, plan)) return
+        visual.show(AABB(plan.pos), renderKind(plan.stage))
+        actions.block(plan.hit, range, rotations, getMoveFixMode(), exactFace = plan.stage == SequenceStage.PLACE_SENT) { hit ->
+            if (!validPlan(player, target, plan, hit)) return@block
+            val state = level.getBlockState(plan.pos)
+            val charges = if (state.`is`(Blocks.RESPAWN_ANCHOR)) state.getValue(RespawnAnchorBlock.CHARGE) else 0
+            val sent = when (plan.stage) {
+                SequenceStage.PLACE_SENT -> placeAnchor(player, hit)
+                SequenceStage.CHARGE_SENT -> chargeAnchor(player, hit)
+                SequenceStage.DETONATE_SENT -> detonateAnchor(player, hit)
+            }
+            if (sent) {
+                sequence = AnchorSequence(plan.pos, plan.stage, player.tickCount, charges)
+                tickTimer = 0
+                visual.pulse()
+            }
         }
+    }
 
-        if (executed) tickTimer = 0
+    private fun renderKind(stage: SequenceStage) = when (stage) {
+        SequenceStage.PLACE_SENT -> AuraTargetRenderer.Kind.PLACE
+        SequenceStage.CHARGE_SENT -> AuraTargetRenderer.Kind.CHARGE
+        SequenceStage.DETONATE_SENT -> AuraTargetRenderer.Kind.BREAK
+    }
+
+    private fun detonationSlot(player: LocalPlayer): Int? =
+        player.inventory.selectedSlot.takeIf { !player.inventory.getItem(it).`is`(Items.GLOWSTONE) }
+            ?: (0..8).firstOrNull { !player.inventory.getItem(it).`is`(Items.GLOWSTONE) }
+
+    private fun preparePlan(player: LocalPlayer, plan: Plan): Boolean {
+        val item = when (plan.stage) {
+            SequenceStage.PLACE_SENT -> Items.RESPAWN_ANCHOR
+            SequenceStage.CHARGE_SENT -> Items.GLOWSTONE
+            SequenceStage.DETONATE_SENT -> null
+        }
+        val slot = if (item == null) detonationSlot(player) ?: return false
+            else if (player.offhandItem.`is`(item)) player.inventory.selectedSlot
+            else InventoryUtil.findHotbarSlot(item)
+        if (slot !in 0..8) return false
+        if (silentSlots || item != null && player.offhandItem.`is`(item))
+            return SilentSwapUtil.prepareSlot(slot, 1, this)
+        InventoryUtil.swapToSlot(slot)
+        return player.inventory.selectedSlot == slot && SilentSwapUtil.serverSlot == slot
     }
 
     private fun findTarget(player: Player): Player? {
@@ -129,7 +179,8 @@ object AnchorAuraModule : Module(
         var bestIsTarget = false
         val maxReachSq = targetRange * targetRange
         for (entity in level.entitiesForRendering()) {
-            if (entity !is Player || entity === player || !entity.isAlive || entity.isCreative || entity.isSpectator) continue
+            if (entity !is Player || entity === player || !entity.isAlive || entity.isRemoved
+                || entity.isCreative && !targetNPCs || entity.isSpectator) continue
             if (FriendRepository.isFriend(entity)) continue
             val dist = player.distanceToSqr(entity)
             if (dist > maxReachSq) continue
@@ -143,75 +194,92 @@ object AnchorAuraModule : Module(
         return best
     }
 
-    private fun advanceSequence(player: LocalPlayer, target: Player, targetHp: Float, current: AnchorSequence): Boolean {
-        val level = mc.level ?: return false
-        if (current.stage == SequenceStage.DETONATE_SENT) return false
-        val state = level.getBlockState(current.pos)
-        if (!state.`is`(Blocks.RESPAWN_ANCHOR)) return false
-        if (player.eyePosition.distanceToSqr(Vec3.atCenterOf(current.pos)) > range * range) return false
-        if (ExplosionDamageUtil.anchorDamage(current.pos, player, ignoreTerrain) > maxSelfDamage.toFloat()) return false
-        val targetDamage = ExplosionDamageUtil.anchorDamage(current.pos, target, ignoreTerrain)
-        val isLethal = lethalOverride && targetDamage >= targetHp
-        if (!isLethal && targetDamage < minDamage.toFloat()) return false
+    private fun damageAllowed(player: LocalPlayer, target: Player, pos: BlockPos): Boolean {
+        if (!target.isAlive || ExplosionDamageUtil.anchorDamage(pos, player, ignoreTerrain) > maxSelfDamage.toFloat()) return false
+        val damage = ExplosionDamageUtil.anchorDamage(pos, target, ignoreTerrain, ignoreCreative = targetNPCs)
+        return damage >= minDamage.toFloat() || lethalOverride && damage >= AnticheatManager.getHealth(target)
+    }
 
-        val hitResult = getAnchorHitResult(current.pos, player)
-        if (state.getValue(RespawnAnchorBlock.CHARGE) > 0) {
-            if (!detonateAnchor(player, hitResult)) return false
-            current.stage = SequenceStage.DETONATE_SENT
-            return true
+    private fun validPlan(player: LocalPlayer, target: Player, plan: Plan, hit: BlockHitResult): Boolean {
+        val level = mc.level ?: return false
+        if (!damageAllowed(player, target, plan.pos)) return false
+        val state = level.getBlockState(plan.pos)
+        return when (plan.stage) {
+            SequenceStage.PLACE_SENT -> state.canBeReplaced() && hit.blockPos.relative(hit.direction) == plan.pos
+                && level.getEntities(null, AABB(plan.pos)).none { it.isAlive }
+            SequenceStage.CHARGE_SENT -> state.`is`(Blocks.RESPAWN_ANCHOR) && state.getValue(RespawnAnchorBlock.CHARGE) == 0
+            SequenceStage.DETONATE_SENT -> state.`is`(Blocks.RESPAWN_ANCHOR) && state.getValue(RespawnAnchorBlock.CHARGE) > 0
         }
-        if (current.stage != SequenceStage.PLACE_SENT || !chargeAnchor(player, hitResult)) return false
-        current.stage = SequenceStage.CHARGE_SENT
-        return true
+    }
+
+    private fun findPlan(player: LocalPlayer, target: Player, targetHp: Float, stage: SequenceStage): Plan? {
+        val level = mc.level ?: return null
+        if (stage == SequenceStage.PLACE_SENT && !player.offhandItem.`is`(Items.RESPAWN_ANCHOR)
+            && InventoryUtil.findHotbarSlot(Items.RESPAWN_ANCHOR) < 0) return null
+        if (stage == SequenceStage.CHARGE_SENT && !player.offhandItem.`is`(Items.GLOWSTONE)
+            && InventoryUtil.findHotbarSlot(Items.GLOWSTONE) < 0) return null
+        val r = range.toInt() + 1
+        val p = player.blockPosition()
+        var best: Plan? = null
+        var bestDamage = 0f
+        for (mutablePos in BlockPos.betweenClosed(p.x - r, maxOf(p.y - r, level.minY), p.z - r,
+            p.x + r, minOf(p.y + r, level.maxY - 1), p.z + r)) {
+            val pos = mutablePos.immutable()
+            val state = level.getBlockState(pos)
+            when (stage) {
+                SequenceStage.PLACE_SENT -> if (!state.canBeReplaced() || level.getEntities(null, AABB(pos)).any { it.isAlive }) continue
+                SequenceStage.CHARGE_SENT -> if (!state.`is`(Blocks.RESPAWN_ANCHOR) || state.getValue(RespawnAnchorBlock.CHARGE) != 0) continue
+                SequenceStage.DETONATE_SENT -> if (!state.`is`(Blocks.RESPAWN_ANCHOR) || state.getValue(RespawnAnchorBlock.CHARGE) == 0) continue
+            }
+            if (player.eyePosition.distanceToSqr(Vec3.atCenterOf(pos)) > range * range) continue
+            val damage = ExplosionDamageUtil.anchorDamage(pos, target, ignoreTerrain, ignoreCreative = targetNPCs)
+            if (damage <= bestDamage || damage < minDamage.toFloat() && !(lethalOverride && damage >= targetHp)) continue
+            if (ExplosionDamageUtil.anchorDamage(pos, player, ignoreTerrain) > maxSelfDamage.toFloat()) continue
+            val hit = if (stage == SequenceStage.PLACE_SENT) AuraActionQueue.placementHit(player, pos, range)
+                else AuraActionQueue.visibleHit(player, pos, range)
+            if (hit == null) continue
+            best = Plan(pos, hit, stage)
+            bestDamage = damage
+        }
+        return best
     }
 
     private fun interact(player: LocalPlayer, hand: InteractionHand, hitResult: BlockHitResult, slot: Int? = null): Boolean {
-        val gameMode = mc.gameMode ?: return false
-        if (!mc.isSameThread || mc.player !== player || mc.level !== sequenceLevel
+        if (!mc.isSameThread || mc.player !== player || mc.level !== sequenceLevel || mc.gameMode == null
             || !player.connection.connection.isConnected || !player.containerMenu.carried.isEmpty
             || player.isSpectator || slot != null && slot !in 0..8) return false
-
+        // Packet-only interaction: advance the sequence from actual server block updates, not prediction.
         if (hand == InteractionHand.MAIN_HAND && silentSlots) {
-            val selected = slot ?: player.inventory.selectedSlot
-            var executed = false
-            InventoryUtil.withSilentSlot(selected) {
-                if (mc.player === player && mc.level === sequenceLevel && mc.gameMode === gameMode) {
-                    rotate(player, hitResult.location)
-                    executed = InventoryUtil.useItemOnPacket(hand, hitResult)
-                }
+            var sent = false
+            InventoryUtil.withSilentSlot(slot ?: player.inventory.selectedSlot) {
+                sent = InventoryUtil.useItemOnPacket(hand, hitResult)
             }
-            return executed
+            return sent
         }
-
         if (slot != null) {
             InventoryUtil.swapToSlot(slot)
             if (player.inventory.selectedSlot != slot) return false
         }
-        rotate(player, hitResult.location)
-        val result = gameMode.useItemOn(player, hand, hitResult)
-        if (!result.consumesAction()) return false
-        player.swing(hand, player.getItemInHand(hand).attackAnimation, false)
-        return true
+        return InventoryUtil.useItemOnPacket(hand, hitResult)
     }
 
-    private fun chargeAnchor(player: LocalPlayer, hitResult: BlockHitResult): Boolean {
+    private fun placeAnchor(player: LocalPlayer, hit: BlockHitResult): Boolean {
+        if (player.offhandItem.`is`(Items.RESPAWN_ANCHOR)) return interact(player, InteractionHand.OFF_HAND, hit)
+        val slot = InventoryUtil.findHotbarSlot(Items.RESPAWN_ANCHOR)
+        if (slot !in 0..8) return false
+        return interact(player, InteractionHand.MAIN_HAND, hit, slot)
+    }
+
+    private fun chargeAnchor(player: LocalPlayer, hit: BlockHitResult): Boolean {
         if (player.isSecondaryUseActive) return false
-        if (player.offhandItem.`is`(Items.GLOWSTONE)) {
-            return interact(player, InteractionHand.OFF_HAND, hitResult)
-        }
+        if (player.offhandItem.`is`(Items.GLOWSTONE)) return interact(player, InteractionHand.OFF_HAND, hit)
         val slot = InventoryUtil.findHotbarSlot(Items.GLOWSTONE)
         if (slot !in 0..8) return false
-        return interact(player, InteractionHand.MAIN_HAND, hitResult, slot)
+        return interact(player, InteractionHand.MAIN_HAND, hit, slot)
     }
 
     private fun detonateAnchor(player: LocalPlayer, hitResult: BlockHitResult): Boolean {
-        val selected = player.inventory.selectedSlot
-        val slot = selected.takeIf {
-            it in 0..8 && !player.inventory.getItem(it).isEmpty && !player.inventory.getItem(it).`is`(Items.GLOWSTONE)
-        }
-            ?: (0..8).firstOrNull { !player.inventory.getItem(it).isEmpty && !player.inventory.getItem(it).`is`(Items.GLOWSTONE) }
-            ?: (0..8).firstOrNull { !player.inventory.getItem(it).`is`(Items.GLOWSTONE) }
-            ?: return false
+        val slot = detonationSlot(player) ?: return false
         if (player.isSecondaryUseActive && (!player.inventory.getItem(slot).isEmpty || !player.offhandItem.isEmpty)) return false
         if (!player.offhandItem.`is`(Items.GLOWSTONE)) {
             return interact(player, InteractionHand.MAIN_HAND, hitResult, slot)
@@ -244,271 +312,7 @@ object AnchorAuraModule : Module(
         }
     }
 
-    private fun explodeChargedAnchor(player: LocalPlayer, target: Player, targetHp: Float): Boolean {
-        val level = mc.level ?: return false
-        val pPos = player.blockPosition()
-        val r = range.toInt() + 1
-        val maxReachSq = range * range
-
-        var bestPos: BlockPos? = null
-        var bestDamage = 0.0f
-
-        val minX = pPos.x - r
-        val maxX = pPos.x + r
-        val minY = (pPos.y - r).coerceAtLeast(level.minY)
-        val maxY = (pPos.y + r).coerceAtMost(level.maxY)
-        val minZ = pPos.z - r
-        val maxZ = pPos.z + r
-
-        for (x in minX..maxX) {
-            for (y in minY..maxY) {
-                for (z in minZ..maxZ) {
-                    val pos = BlockPos(x, y, z)
-                    val state = level.getBlockState(pos)
-                    if (!state.`is`(Blocks.RESPAWN_ANCHOR)) continue
-                    if (state.getValue(RespawnAnchorBlock.CHARGE) <= 0) continue
-
-                    val center = Vec3.atCenterOf(pos)
-                    if (player.eyePosition.distanceToSqr(center) > maxReachSq) continue
-
-                    val selfDamage = ExplosionDamageUtil.anchorDamage(pos, player, ignoreTerrain)
-                    if (selfDamage > maxSelfDamage.toFloat()) continue
-
-                    val targetDamage = ExplosionDamageUtil.anchorDamage(pos, target, ignoreTerrain)
-                    val isLethal = lethalOverride && targetDamage >= targetHp
-                    if (!isLethal && targetDamage < minDamage.toFloat()) continue
-
-                    if (targetDamage > bestDamage) {
-                        bestDamage = targetDamage
-                        bestPos = pos
-                    }
-                }
-            }
-        }
-
-        val anchorPos = bestPos ?: return false
-        if (!detonateAnchor(player, getAnchorHitResult(anchorPos, player))) return false
-        sequence = AnchorSequence(anchorPos, SequenceStage.DETONATE_SENT)
-        return true
-    }
-
-    private fun chargeExistingAnchor(player: LocalPlayer, target: Player, targetHp: Float): Boolean {
-        val level = mc.level ?: return false
-        val pPos = player.blockPosition()
-        val r = range.toInt() + 1
-        val maxReachSq = range * range
-
-        var bestPos: BlockPos? = null
-        var bestDamage = 0.0f
-
-        val minX = pPos.x - r
-        val maxX = pPos.x + r
-        val minY = (pPos.y - r).coerceAtLeast(level.minY)
-        val maxY = (pPos.y + r).coerceAtMost(level.maxY)
-        val minZ = pPos.z - r
-        val maxZ = pPos.z + r
-
-        for (x in minX..maxX) {
-            for (y in minY..maxY) {
-                for (z in minZ..maxZ) {
-                    val pos = BlockPos(x, y, z)
-                    val state = level.getBlockState(pos)
-                    if (!state.`is`(Blocks.RESPAWN_ANCHOR)) continue
-                    if (state.getValue(RespawnAnchorBlock.CHARGE) > 0) continue
-
-                    val center = Vec3.atCenterOf(pos)
-                    if (player.eyePosition.distanceToSqr(center) > maxReachSq) continue
-
-                    val selfDamage = ExplosionDamageUtil.anchorDamage(pos, player, ignoreTerrain)
-                    if (selfDamage > maxSelfDamage.toFloat()) continue
-
-                    val targetDamage = ExplosionDamageUtil.anchorDamage(pos, target, ignoreTerrain)
-                    val isLethal = lethalOverride && targetDamage >= targetHp
-                    if (!isLethal && targetDamage < minDamage.toFloat()) continue
-
-                    if (targetDamage > bestDamage) {
-                        bestDamage = targetDamage
-                        bestPos = pos
-                    }
-                }
-            }
-        }
-
-        val anchorPos = bestPos ?: return false
-        if (!chargeAnchor(player, getAnchorHitResult(anchorPos, player))) return false
-        sequence = AnchorSequence(anchorPos, SequenceStage.CHARGE_SENT)
-        return true
-    }
-
-    private fun placeNewAnchor(player: LocalPlayer, target: Player, targetHp: Float): Boolean {
-        val level = mc.level ?: return false
-        val pPos = player.blockPosition()
-        val r = range.toInt() + 1
-        val maxReachSq = range * range
-
-        var bestPos: BlockPos? = null
-        var bestDamage = 0.0f
-        var bestHit: BlockHitResult? = null
-
-        val minX = pPos.x - r
-        val maxX = pPos.x + r
-        val minY = (pPos.y - r).coerceAtLeast(level.minY)
-        val maxY = (pPos.y + r).coerceAtMost(level.maxY)
-        val minZ = pPos.z - r
-        val maxZ = pPos.z + r
-
-        val anchorAabb = AABB(0.0, 0.0, 0.0, 1.0, 1.0, 1.0)
-
-        for (x in minX..maxX) {
-            for (y in minY..maxY) {
-                for (z in minZ..maxZ) {
-                    val pos = BlockPos(x, y, z)
-                    if (!level.getBlockState(pos).canBeReplaced()) continue
-
-                    val center = Vec3.atCenterOf(pos)
-                    if (player.eyePosition.distanceToSqr(center) > maxReachSq) continue
-
-                    val selfDamage = ExplosionDamageUtil.anchorDamage(pos, player, ignoreTerrain)
-                    if (selfDamage > maxSelfDamage.toFloat()) continue
-
-                    val targetDamage = ExplosionDamageUtil.anchorDamage(pos, target, ignoreTerrain)
-                    val isLethal = lethalOverride && targetDamage >= targetHp
-                    if (!isLethal && targetDamage < minDamage.toFloat()) continue
-
-                    val box = anchorAabb.move(pos.x.toDouble(), pos.y.toDouble(), pos.z.toDouble())
-                    if (level.getEntities(null, box).any { it.isAlive }) continue
-
-                    val hit = getPlaceHitResult(pos, player) ?: continue
-
-                    if (targetDamage > bestDamage) {
-                        bestDamage = targetDamage
-                        bestPos = pos
-                        bestHit = hit
-                    }
-                }
-            }
-        }
-
-        val anchorPos = bestPos ?: return false
-        val hitResult = bestHit ?: return false
-        val executed = if (player.offhandItem.`is`(Items.RESPAWN_ANCHOR)) {
-            interact(player, InteractionHand.OFF_HAND, hitResult)
-        } else {
-            val slot = InventoryUtil.findHotbarSlot(Items.RESPAWN_ANCHOR)
-            if (slot !in 0..8) return false
-            interact(player, InteractionHand.MAIN_HAND, hitResult, slot)
-        }
-        if (!executed) return false
-        sequence = AnchorSequence(anchorPos, SequenceStage.PLACE_SENT)
-        return true
-    }
-
-    private fun getPlaceHitResult(pos: BlockPos, player: LocalPlayer): BlockHitResult? {
-        val level = mc.level ?: return null
-        val eyes = player.eyePosition
-        var bestHit: BlockHitResult? = null
-        var bestDist = Double.MAX_VALUE
-
-        for (side in Direction.values()) {
-            val neighbour = pos.relative(side.opposite)
-            val neighbourState = level.getBlockState(neighbour)
-            if (neighbourState.canBeReplaced() || neighbourState.isAir || neighbourState.hasBlockEntity()) continue
-
-            val hitVec = Vec3(
-                neighbour.x + 0.5 + side.stepX * 0.5,
-                neighbour.y + 0.5 + side.stepY * 0.5,
-                neighbour.z + 0.5 + side.stepZ * 0.5
-            )
-
-            val dot = (eyes.x - hitVec.x) * side.stepX + (eyes.y - hitVec.y) * side.stepY + (eyes.z - hitVec.z) * side.stepZ
-            if (dot <= 0.0) continue
-
-            val dist = eyes.distanceToSqr(hitVec)
-            if (dist > range * range || dist >= bestDist) continue
-
-            val clip = level.clip(
-                ClipContext(
-                    eyes,
-                    hitVec,
-                    ClipContext.Block.COLLIDER,
-                    ClipContext.Fluid.NONE,
-                    player
-                )
-            )
-
-            if (clip.type == HitResult.Type.BLOCK && clip.blockPos == neighbour) {
-                bestHit = BlockHitResult(hitVec, side, neighbour, false)
-                bestDist = dist
-            }
-        }
-        if (bestHit != null) return bestHit
-
-        val down = pos.below()
-        val downState = level.getBlockState(down)
-        if (!downState.canBeReplaced() && !downState.isAir && !downState.hasBlockEntity() && eyes.y > pos.y) {
-            val hitVec = Vec3(down.x + 0.5, down.y + 1.0, down.z + 0.5)
-            if (eyes.distanceToSqr(hitVec) <= range * range) {
-                return BlockHitResult(hitVec, Direction.UP, down, false)
-            }
-        }
-        return null
-    }
-
-    private fun getAnchorHitResult(pos: BlockPos, player: LocalPlayer): BlockHitResult {
-        val level = mc.level ?: return BlockHitResult(Vec3(pos.x + 0.5, pos.y + 1.0, pos.z + 0.5), Direction.UP, pos, false)
-        val eyes = player.eyePosition
-        var bestHit: BlockHitResult? = null
-        var bestDist = Double.MAX_VALUE
-
-        for (side in Direction.values()) {
-            val hitVec = Vec3(
-                pos.x + 0.5 + side.stepX * 0.5,
-                pos.y + 0.5 + side.stepY * 0.5,
-                pos.z + 0.5 + side.stepZ * 0.5
-            )
-
-            val dot = (eyes.x - hitVec.x) * side.stepX + (eyes.y - hitVec.y) * side.stepY + (eyes.z - hitVec.z) * side.stepZ
-            if (dot <= 0.0) continue
-
-            val dist = eyes.distanceToSqr(hitVec)
-            if (dist > range * range || dist >= bestDist) continue
-
-            val clip = level.clip(
-                ClipContext(
-                    eyes,
-                    hitVec,
-                    ClipContext.Block.COLLIDER,
-                    ClipContext.Fluid.NONE,
-                    player
-                )
-            )
-
-            if (clip.type == HitResult.Type.BLOCK && clip.blockPos == pos) {
-                bestHit = BlockHitResult(hitVec, side, pos, false)
-                bestDist = dist
-            }
-        }
-        if (bestHit != null) return bestHit
-
-        val side = if (pos.y + 0.5 > eyes.y) Direction.DOWN else Direction.UP
-        val hitY = if (side == Direction.UP) pos.y + 1.0 else pos.y.toDouble()
-        return BlockHitResult(Vec3(pos.x + 0.5, hitY, pos.z + 0.5), side, pos, false)
-    }
-
-    private fun rotate(player: LocalPlayer, location: Vec3) {
-        if (rotations) {
-            val rot = RotationUtil.getRotationToVec(location, player.eyePosition)
-            val rng = ThreadLocalRandom.current()
-            rot.yaw += rng.nextFloat(-0.04f, 0.04f)
-            rot.pitch += rng.nextFloat(-0.04f, 0.04f)
-            RotationManager.setRotation(rot, moveFix = getMoveFixMode())
-        }
-    }
-
     override fun onEnable() = reset()
-
     override fun onDisable() = reset()
-
-    @Commando
-    fun onDisconnect(event: ClientDisconnectEvent) = reset()
+    @Commando fun onDisconnect(event: ClientDisconnectEvent) = reset()
 }

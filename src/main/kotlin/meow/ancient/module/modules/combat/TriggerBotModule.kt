@@ -3,6 +3,7 @@ package meow.ancient.module.modules.combat
 import meow.ancient.client.extensions.COMBAT
 import meow.ancient.client.extensions.currentScreen
 import meow.ancient.client.extensions.mc
+import meow.ancient.client.util.action.ActionCoordinator
 import meow.ancient.client.util.anticheat.AnticheatManager
 import meow.ancient.event.events.ClientDisconnectEvent
 import meow.ancient.event.events.PlayerMovementSentEvent
@@ -200,6 +201,7 @@ object TriggerBotModule : Module(
 
 
     private fun attack(player: LocalPlayer, level: ClientLevel, target: LivingEntity) {
+        if (!ActionCoordinator.canAct(this)) return
         val gameMode = mc.gameMode ?: return
         val mode = clickMode
         val attackCps = cps

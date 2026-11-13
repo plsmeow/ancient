@@ -2,6 +2,7 @@ package meow.ancient.module.modules.combat.hitaura
 
 import meow.ancient.client.extensions.inGame
 import meow.ancient.client.extensions.mc
+import meow.ancient.client.util.action.ActionCoordinator
 import meow.ancient.client.util.rotation.RayTraceUtil
 import meow.ancient.client.util.rotation.RotationManager
 import meow.ancient.client.util.rotation.RotationUtil
@@ -37,6 +38,7 @@ class AttackExecutor(
         sprintResetMode: SprintResetMode = SprintResetMode.OFF
     ): Boolean {
         if (!inGame || HitAuraModule.shouldIgnoreContext()) return false
+        if (!ActionCoordinator.canAct(HitAuraModule)) return false
         if (TpAuraModule.isPendingVaultReturn()) return false
         if (RotationUtil.getDistanceToBox(target) > attackRange && TpAuraModule.getRenderPosition(target) == null) return false
         if (BreachSwapModule.isActive() && !BreachSwapModule.isVirtualCooldownReady(ticksAhead)) return false

@@ -1,6 +1,7 @@
 package meow.ancient.client.util.inventory
 
 import meow.ancient.client.extensions.mc
+import meow.ancient.client.util.action.ActionCoordinator
 import meow.ancient.client.util.anticheat.AnticheatManager
 import meow.ancient.module.modules.movement.InventoryMoveModule
 import meow.ancient.event.EventManager
@@ -58,6 +59,8 @@ object SilentSwapUtil {
         var scopeDepth = 0
         var scopeSlot = -1
         var sendDepth = 0
+        var restoreNotBeforeTick = 0
+        var restoreOwner: Any? = null
 
         fun isCurrent(): Boolean = mc.player === player && mc.level === world
             && player.connection.connection === connection && connection.isConnected && !player.isSpectator
@@ -74,9 +77,21 @@ object SilentSwapUtil {
         get() {
             val player = mc.player ?: return -1
             val current = state
-            return if (AnticheatManager.isSilentSwapNew && current != null && current.isCurrent()
+            return if (current != null && current.isCurrent() && current.isManaged()
                 && current.serverSlot in HOTBAR) current.serverSlot else player.inventory.selectedSlot
         }
+
+    data class DebugSnapshot(val serverSlot: Int, val clientSlot: Int, val pendingSlot: Int,
+        val holdTicks: Int, val actionLocked: Boolean, val movementSent: Boolean, val teleportPending: Boolean)
+
+    fun debugSnapshot(): DebugSnapshot {
+        val player = mc.player
+        val current = state?.takeIf { it.isCurrent() }
+        return DebugSnapshot(current?.serverSlot ?: -1, player?.inventory?.selectedSlot ?: -1,
+            current?.pendingSlot ?: -1, ((current?.restoreNotBeforeTick ?: 0) - (player?.tickCount ?: 0)).coerceAtLeast(0),
+            current?.packets?.actionLocked ?: false, current?.packets?.sentMovement ?: false,
+            current?.packets?.teleportPending ?: false)
+    }
 
     init {
         EventManager.register(this)
@@ -90,18 +105,21 @@ object SilentSwapUtil {
 
     fun withSlot(slot: Int, action: () -> Unit) {
         if (slot !in HOTBAR) return
+        val owner = ActionCoordinator.resolveOwner()
         InventoryMoveModule.runInventoryAction(InventoryActionSource.HOTBAR, Runnable {
+            if (!ActionCoordinator.canAct(owner)) return@Runnable
             val player = mc.player ?: return@Runnable
             if (!canSwap(player)) return@Runnable
-            if (!AnticheatManager.isSilentSwapNew) {
+            if (!AnticheatManager.isSilentSwapNew && state?.isManaged() != true) {
                 val previous = player.inventory.selectedSlot
                 if (previous == slot) {
-                    action()
+                    ActionCoordinator.withOwner(owner, action)
                     return@Runnable
                 }
                 player.connection.send(ServerboundSetCarriedItemPacket(slot))
+                ActionCoordinator.claimSlot(owner)
                 try {
-                    action()
+                    ActionCoordinator.withOwner(owner, action)
                 } finally {
                     restoreSimple(player, previous, false)
                 }
@@ -111,10 +129,11 @@ object SilentSwapUtil {
             observeSelection(current)
             if (current.scopeDepth > 0 && current.scopeSlot != slot) return@Runnable
             val swapped = swapTo(current, slot) ?: return@Runnable
+            ActionCoordinator.claimSlot(owner)
             current.scopeDepth++
             current.scopeSlot = slot
             try {
-                action()
+                ActionCoordinator.withOwner(owner, action)
             } finally {
                 if (state === current && current.isCurrent()) {
                     observeSelection(current)
@@ -132,32 +151,63 @@ object SilentSwapUtil {
         if (slot !in HOTBAR) return false
         if (AnticheatManager.isSilentSwapNew && !mc.isSameThread) return false
         var selected = false
+        val owner = ActionCoordinator.resolveOwner()
         InventoryMoveModule.runInventoryAction(InventoryActionSource.HOTBAR, Runnable {
+            if (!ActionCoordinator.canAct(owner)) return@Runnable
             val player = mc.player ?: return@Runnable
             if (!canSwap(player)) return@Runnable
-            if (!AnticheatManager.isSilentSwapNew) {
+            if (!AnticheatManager.isSilentSwapNew && state?.isManaged() != true) {
                 if (player.inventory.selectedSlot == slot) {
                     selected = true
                     return@Runnable
                 }
                 player.connection.send(ServerboundSetCarriedItemPacket(slot))
                 player.inventory.selectedSlot = slot
+                ActionCoordinator.claimSlot(owner)
                 selected = true
                 return@Runnable
             }
             val current = currentState(player) ?: return@Runnable
             observeSelection(current)
             if (swapTo(current, slot) == null) return@Runnable
+            ActionCoordinator.claimSlot(owner)
             selected = true
         })
         return selected
+    }
+
+    /** Select only on the server before movement; restore at the next safe tick boundary. */
+    fun prepareSlot(slot: Int, holdTicks: Int = 0, owner: Any? = null): Boolean {
+        if (slot !in HOTBAR || !mc.isSameThread) return false
+        var prepared = false
+        val actionOwner = ActionCoordinator.resolveOwner(owner)
+        InventoryMoveModule.runInventoryAction(InventoryActionSource.HOTBAR, Runnable {
+            if (!ActionCoordinator.canAct(actionOwner)) return@Runnable
+            val player = mc.player ?: return@Runnable
+            val current = currentState(player) ?: return@Runnable
+            observeSelection(current)
+            current.pendingSlot = player.inventory.selectedSlot
+            prepared = sendSlot(current, slot)
+            if (prepared) {
+                ActionCoordinator.claimSlot(actionOwner)
+                current.restoreNotBeforeTick = player.tickCount + holdTicks.coerceAtLeast(0)
+                current.restoreOwner = owner
+            }
+        })
+        return prepared
+    }
+
+    fun releasePreparedSlot(owner: Any) {
+        if (!mc.isSameThread) return
+        val current = state ?: return
+        if (current.restoreOwner === owner) current.restoreNotBeforeTick = 0
     }
 
     fun restoreSlot(slot: Int, syncClientSlot: Boolean = true) {
         if (slot !in HOTBAR) return
         val player = mc.player ?: return
         if (!canSwap(player)) return
-        if (!AnticheatManager.isSilentSwapNew) {
+        if (!AnticheatManager.isSilentSwapNew && state?.isManaged() != true) {
             restoreSimple(player, slot, syncClientSlot)
             return
         }
@@ -174,7 +224,7 @@ object SilentSwapUtil {
         if (player.connection.connection !== connection) return true
         val current = currentState(player) ?: return true
         if (lastServerSlot in HOTBAR) current.serverSlot = lastServerSlot
-        if (AnticheatManager.isSilentSwapNew) mc.gameMode?.carriedIndex = player.inventory.selectedSlot
+        if (current.isManaged()) mc.gameMode?.carriedIndex = player.inventory.selectedSlot
         if (!current.isManaged()) return true
         if (current.sendDepth == 0) observeSelection(current)
         if (slot != current.serverSlot && (current.packets.actionLocked || current.packets.sentMovement
@@ -195,7 +245,7 @@ object SilentSwapUtil {
         when (packet) {
             is ServerboundSetCarriedItemPacket -> {
                 if (current.sendDepth == 0) current.pendingSlot = -1
-                if (AnticheatManager.isSilentSwapNew) mc.gameMode?.carriedIndex = player.inventory.selectedSlot
+                if (current.isManaged()) mc.gameMode?.carriedIndex = player.inventory.selectedSlot
             }
             is ServerboundMovePlayerPacket -> {
                 if (isTickPacket(current.packets, packet)) current.packets.actionLocked = false
@@ -286,7 +336,7 @@ object SilentSwapUtil {
         if ((current.packets.actionLocked || current.packets.sentMovement)
             && slot != current.serverSlot) return false
         if (current.scopeDepth > 0 && slot != current.scopeSlot) return false
-        if (AnticheatManager.isSilentSwapNew) mc.gameMode?.carriedIndex = current.player.inventory.selectedSlot
+        if (current.isManaged()) mc.gameMode?.carriedIndex = current.player.inventory.selectedSlot
         if (current.serverSlot == slot) return true
         current.sendDepth++
         try {
@@ -315,9 +365,12 @@ object SilentSwapUtil {
         if (!current.isManaged()) return
         observeSelection(current)
         if (current.pendingSlot !in HOTBAR) return
+        if (current.player.tickCount < current.restoreNotBeforeTick) return
         val slot = current.pendingSlot
         if (!sendSlot(current, slot)) return
         current.pendingSlot = -1
+        current.restoreOwner = null
+        ActionCoordinator.onSlotRestored()
     }
 
     private fun observeSelection(current: SwapState) {
@@ -325,7 +378,7 @@ object SilentSwapUtil {
         if (selected == current.expectedSlot) return
         current.expectedSlot = selected
         current.pendingSlot = selected.takeIf { it in HOTBAR } ?: -1
-        if (AnticheatManager.isSilentSwapNew) mc.gameMode?.carriedIndex = selected
+        if (current.isManaged()) mc.gameMode?.carriedIndex = selected
     }
 
     private fun currentState(player: LocalPlayer): SwapState? {
@@ -339,6 +392,7 @@ object SilentSwapUtil {
 
     private fun restoreSimple(player: LocalPlayer, slot: Int, syncClientSlot: Boolean) {
         player.connection.send(ServerboundSetCarriedItemPacket(slot))
+        ActionCoordinator.onSlotRestored()
         if (syncClientSlot && mc.player === player) player.inventory.selectedSlot = slot
     }
 

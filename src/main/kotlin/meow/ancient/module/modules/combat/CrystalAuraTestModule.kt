@@ -3,6 +3,7 @@ package meow.ancient.module.modules.combat
 import meow.ancient.client.extensions.COMBAT
 import meow.ancient.client.extensions.inGame
 import meow.ancient.client.extensions.mc
+import meow.ancient.client.util.action.ActionCoordinator
 import meow.ancient.client.util.combat.ExplosionDamageUtil
 import meow.ancient.client.util.friend.FriendRepository
 import meow.ancient.client.util.inventory.InventoryUtil
@@ -740,6 +741,7 @@ object CrystalAuraTestModule : Module(
     }
 
     private fun attemptBreak(player: LocalPlayer, level: ClientLevel, crystal: EndCrystal): Boolean {
+        if (!ActionCoordinator.canAct(this)) return false
         if (!isReady(player)) return false
         if (!crystal.isAlive || level.getEntity(crystal.id) !== crystal) return false
         if (breakCooldown.containsKey(crystal.id)) return false
@@ -755,6 +757,7 @@ object CrystalAuraTestModule : Module(
     }
 
     private fun attemptPlace(player: LocalPlayer, level: ClientLevel, placement: Placement): Boolean {
+        if (!ActionCoordinator.canAct(this)) return false
         if (!isReady(player)) return false
         val item = if (placement.support) Items.OBSIDIAN else Items.END_CRYSTAL
         if (placement.support && !obsidianBase) return false

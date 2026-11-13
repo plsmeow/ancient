@@ -2,6 +2,7 @@ package meow.ancient.client.util.rotation
 
 import meow.ancient.client.extensions.inGame
 import meow.ancient.client.extensions.mc
+import meow.ancient.client.util.action.ActionCoordinator
 import meow.ancient.client.listener.Listener
 import net.minecraft.client.player.ClientInput
 import net.minecraft.client.player.LocalPlayer
@@ -12,6 +13,10 @@ object RotationManager : Listener() {
     var currentRotation: Rotation? = null
         private set
     var previousRotation: Rotation? = null
+        private set
+    var rotationOwner: String? = null
+        private set
+    var rotationPriority = 0
         private set
 
     var activeMoveFix: MoveFixMode = MoveFixMode.SILENT
@@ -57,6 +62,8 @@ object RotationManager : Listener() {
     ) {
         if (!inGame) return
         val localPlayer = mc.player ?: return
+        val owner = ActionCoordinator.resolveOwner()
+        if (!ActionCoordinator.canAct(owner) || updatedThisTick && owner.priority < rotationPriority) return
 
         val basePrev = currentRotation ?: Rotation(localPlayer.yRot, localPlayer.xRot)
         val normalized = rotation.normalizeTo(basePrev)
@@ -69,6 +76,8 @@ object RotationManager : Listener() {
         this.keepTicks = keepTicks
         this.returnSpeed = returnSpeed
         this.updatedThisTick = true
+        this.rotationOwner = owner.name
+        this.rotationPriority = owner.priority
 
         if (clientLook) {
             localPlayer.yRot = finalRot.yaw
@@ -79,6 +88,8 @@ object RotationManager : Listener() {
     fun resetImmediate() {
         currentRotation = null
         previousRotation = null
+        rotationOwner = null
+        rotationPriority = 0
         keepTicks = 0
         updatedThisTick = false
         MoveFixProcessor.reset()
@@ -103,6 +114,11 @@ object RotationManager : Listener() {
             return
         }
         val localPlayer = mc.player ?: run {
+            resetImmediate()
+            return
+        }
+
+        if (ActionCoordinator.manualUseActive()) {
             resetImmediate()
             return
         }

@@ -1,7 +1,10 @@
 package meow.ancient.client.util.inventory
 
 import meow.ancient.client.extensions.mc
+import meow.ancient.client.util.action.ActionCoordinator
 import meow.ancient.client.util.rotation.RotationManager
+import meow.ancient.event.EventManager
+import meow.ancient.event.events.PacketSentEvent
 import meow.ancient.module.modules.movement.InventoryMoveModule
 import net.minecraft.client.player.LocalPlayer
 import net.minecraft.core.component.DataComponents
@@ -21,11 +24,22 @@ import net.minecraft.world.item.component.SwingAnimation
 import net.minecraft.world.item.enchantment.EnchantmentHelper
 import net.minecraft.world.item.enchantment.Enchantments
 import net.minecraft.world.phys.BlockHitResult
+import sweetie.evaware.flora.api.Commando
 
 object InventoryUtil {
     private val Hotbar_rad = 0 until 9
     private val invent_rad = 9 until 36
     private val allslots = 0 until 36
+    private class UseReceipt(var packet: ServerboundUseItemOnPacket? = null, var accepted: Boolean = false)
+    private var useReceipt: UseReceipt? = null
+
+    init { EventManager.register(this) }
+
+    @Commando
+    fun onPacketSent(event: PacketSentEvent) {
+        if (!mc.isSameThread) return
+        useReceipt?.let { if (event.packet === it.packet) it.accepted = true }
+    }
 
     fun swapToOffhand(slot: Int, closeInvPacket: Boolean = true, forceGrim: Boolean = false) {
         val player = mc.player ?: return
@@ -152,31 +166,41 @@ object InventoryUtil {
     }
 
     fun useItemOnPacket(hand: InteractionHand, hitResult: BlockHitResult): Boolean {
+        if (!ActionCoordinator.canAct()) return false
         val player = mc.player ?: return false
         val gameMode = mc.gameMode ?: return false
         val level = mc.level ?: return false
         if (!canModifyInventory(player)) return false
-        gameMode.startPrediction(level) { sequence ->
-            ServerboundUseItemOnPacket(hand, hitResult, sequence)
-        }
-        player.swing(hand, SwingAnimation.DEFAULT, false)
-        return true
+        val previous = useReceipt
+        val receipt = UseReceipt()
+        useReceipt = receipt
+        try {
+            gameMode.startPrediction(level) { sequence ->
+                ServerboundUseItemOnPacket(hand, hitResult, sequence).also { receipt.packet = it }
+            }
+            if (receipt.accepted) player.swing(hand, SwingAnimation.DEFAULT, false)
+            return receipt.accepted
+        } finally { useReceipt = previous }
     }
 
     fun useItem(hand: InteractionHand) {
+        val owner = ActionCoordinator.resolveOwner()
         InventoryMoveModule.runInventoryAction(InventoryActionSource.HOTBAR, Runnable {
-            val player = mc.player ?: return@Runnable
-            val gameMode = mc.gameMode ?: return@Runnable
-            val level = mc.level ?: return@Runnable
-            if (!canModifyInventory(player)) return@Runnable
-            val item = player.getItemInHand(hand)
-            val useClientLook = !item.`is`(Items.FIREWORK_ROCKET)
-            val yaw = if (useClientLook) RotationManager.clientYaw else RotationManager.getServerRotation().yaw
-            val pitch = if (useClientLook) RotationManager.clientPitch else RotationManager.getServerRotation().pitch
-            gameMode.startPrediction(level) { sequence ->
-                ServerboundUseItemPacket(hand, sequence, yaw, pitch)
+            ActionCoordinator.withOwner(owner) {
+                if (!ActionCoordinator.canAct(owner)) return@withOwner
+                val player = mc.player ?: return@withOwner
+                val gameMode = mc.gameMode ?: return@withOwner
+                val level = mc.level ?: return@withOwner
+                if (!canModifyInventory(player)) return@withOwner
+                val item = player.getItemInHand(hand)
+                val useClientLook = !item.`is`(Items.FIREWORK_ROCKET)
+                val yaw = if (useClientLook) RotationManager.clientYaw else RotationManager.getServerRotation().yaw
+                val pitch = if (useClientLook) RotationManager.clientPitch else RotationManager.getServerRotation().pitch
+                gameMode.startPrediction(level) { sequence ->
+                    ServerboundUseItemPacket(hand, sequence, yaw, pitch)
+                }
+                player.swing(hand, SwingAnimation.DEFAULT, false)
             }
-            player.swing(hand, SwingAnimation.DEFAULT, false)
         })
     }
 
@@ -186,23 +210,27 @@ object InventoryUtil {
 
     fun useItemLegit(hand: InteractionHand, hotbarSlot: Int? = null) {
         if (hotbarSlot != null && hotbarSlot !in Hotbar_rad) return
+        val owner = ActionCoordinator.resolveOwner()
         InventoryMoveModule.runInventoryAction(InventoryActionSource.HOTBAR, Runnable {
-            val player = mc.player ?: return@Runnable
-            val gameMode = mc.gameMode ?: return@Runnable
-            if (!canModifyInventory(player)) return@Runnable
-            val previous = player.inventory.selectedSlot
-            val selected = hotbarSlot ?: previous
-            val switched = selected != previous
-            if (switched) player.inventory.selectedSlot = selected
-            try {
-                val result = gameMode.useItem(player, hand)
-                if (result is net.minecraft.world.InteractionResult.Success && result.shouldSwing()) {
-                    player.swing(hand, SwingAnimation.DEFAULT, false)
-                }
-            } finally {
-                if (switched && mc.player === player && player.connection.connection.isConnected) {
-                    player.inventory.selectedSlot = previous
-                    gameMode.tick()
+            ActionCoordinator.withOwner(owner) {
+                if (!ActionCoordinator.canAct(owner)) return@withOwner
+                val player = mc.player ?: return@withOwner
+                val gameMode = mc.gameMode ?: return@withOwner
+                if (!canModifyInventory(player)) return@withOwner
+                val previous = player.inventory.selectedSlot
+                val selected = hotbarSlot ?: previous
+                val switched = selected != previous
+                if (switched) player.inventory.selectedSlot = selected
+                try {
+                    val result = gameMode.useItem(player, hand)
+                    if (result is net.minecraft.world.InteractionResult.Success && result.shouldSwing()) {
+                        player.swing(hand, SwingAnimation.DEFAULT, false)
+                    }
+                } finally {
+                    if (switched && mc.player === player && player.connection.connection.isConnected) {
+                        player.inventory.selectedSlot = previous
+                        gameMode.tick()
+                    }
                 }
             }
         })

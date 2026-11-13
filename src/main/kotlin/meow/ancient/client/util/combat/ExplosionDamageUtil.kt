@@ -55,38 +55,41 @@ object ExplosionDamageUtil {
         crystal: Vec3,
         predictMovement: Boolean = false,
         obsidianPos: BlockPos? = null,
-        ignoreTerrain: Boolean = false
+        ignoreTerrain: Boolean = false,
+        ignoreCreative: Boolean = false
     ): Float {
         val factory = getOverridingHitFactory(
             obsidianPos,
             if (obsidianPos != null) Blocks.OBSIDIAN.defaultBlockState() else null,
             ignoreTerrain
         )
-        return explosionDamage(target, crystal, 12f, predictMovement, factory)
+        return explosionDamage(target, crystal, 12f, predictMovement, factory, ignoreCreative)
     }
 
     fun crystalDamage(
         explosionPos: Vec3,
         target: LivingEntity,
         obsidianPos: BlockPos? = null,
-        ignoreTerrain: Boolean = false
+        ignoreTerrain: Boolean = false,
+        ignoreCreative: Boolean = false
     ): Float {
-        return crystalDamage(target, explosionPos, false, obsidianPos, ignoreTerrain)
+        return crystalDamage(target, explosionPos, false, obsidianPos, ignoreTerrain, ignoreCreative)
     }
 
-    fun anchorDamage(target: LivingEntity, anchorPos: BlockPos, ignoreTerrain: Boolean = false): Float {
+    fun anchorDamage(target: LivingEntity, anchorPos: BlockPos, ignoreTerrain: Boolean = false, ignoreCreative: Boolean = false): Float {
         val anchorCenter = Vec3(anchorPos.x + 0.5, anchorPos.y + 1.0, anchorPos.z + 0.5)
         return explosionDamage(
             target,
             anchorCenter,
             10f,
             false,
-            getOverridingHitFactory(anchorPos, Blocks.AIR.defaultBlockState(), ignoreTerrain)
+            getOverridingHitFactory(anchorPos, Blocks.AIR.defaultBlockState(), ignoreTerrain),
+            ignoreCreative
         )
     }
 
-    fun anchorDamage(anchorPos: BlockPos, target: LivingEntity, ignoreTerrain: Boolean = false): Float {
-        return anchorDamage(target, anchorPos, ignoreTerrain)
+    fun anchorDamage(anchorPos: BlockPos, target: LivingEntity, ignoreTerrain: Boolean = false, ignoreCreative: Boolean = false): Float {
+        return anchorDamage(target, anchorPos, ignoreTerrain, ignoreCreative)
     }
 
     fun explosionDamage(
@@ -94,9 +97,10 @@ object ExplosionDamageUtil {
         explosionPos: Vec3,
         power: Float,
         predictMovement: Boolean,
-        raycastFactory: RaycastFactory
+        raycastFactory: RaycastFactory,
+        ignoreCreative: Boolean = false
     ): Float {
-        if (target is Player && (target.isCreative || target.isSpectator)) return 0f
+        if (target is Player && (target.isCreative && !ignoreCreative || target.isSpectator)) return 0f
 
         val position = if (predictMovement) target.position().add(target.deltaMovement) else target.position()
         var box = target.boundingBox

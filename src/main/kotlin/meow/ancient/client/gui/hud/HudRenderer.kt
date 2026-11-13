@@ -10,6 +10,8 @@ import meow.ancient.client.util.render.engine.controls.ClientRenderPipeline
 import meow.ancient.client.util.render.engine.controls.MatrixControl
 import meow.ancient.module.ModuleManager
 import meow.ancient.module.modules.combat.HitAuraModule
+import meow.ancient.module.modules.combat.CrystalAuraModule
+import meow.ancient.module.modules.combat.AnchorAuraModule
 import meow.ancient.module.modules.render.ClickGuiModule
 import meow.ancient.module.modules.render.HudModule
 import meow.ancient.module.setting.KeybindSetting
@@ -230,7 +232,9 @@ class HudRenderer(private val serverStats: HudServerStats) {
     }
 
     private fun updateTarget(module: HudModule) {
-        val auraTarget = if (HitAuraModule.isEnabled()) HitAuraModule.currentTarget else null
+        val auraTarget = (if (HitAuraModule.isEnabled()) HitAuraModule.currentTarget else null)
+            ?: (if (CrystalAuraModule.isEnabled()) CrystalAuraModule.currentTarget else null)
+            ?: (if (AnchorAuraModule.isEnabled()) AnchorAuraModule.currentTarget else null)
         val rayTraceTarget = if (module.targetRayTrace) {
             mc.crosshairPickEntity ?: (mc.hitResult as? EntityHitResult)?.entity
         } else null

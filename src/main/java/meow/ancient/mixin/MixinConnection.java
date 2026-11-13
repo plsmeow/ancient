@@ -3,9 +3,11 @@ package meow.ancient.mixin;
 import meow.ancient.event.EventManager;
 import meow.ancient.client.util.inventory.SlownessManager;
 import meow.ancient.client.util.inventory.SilentSwapUtil;
+import meow.ancient.client.util.action.ActionCoordinator;
 import meow.ancient.network.SilentPacketQueue;
 import meow.ancient.event.events.PacketReceiveEvent;
 import meow.ancient.event.events.PacketSendEvent;
+import meow.ancient.event.events.PacketSentEvent;
 import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.ChannelHandlerContext;
 import net.minecraft.network.Connection;
@@ -30,6 +32,10 @@ public class MixinConnection {
     private void onSendPacket(Packet<?> packet, ChannelFutureListener listener, boolean flush, CallbackInfo ci) {
         Connection connection = (Connection) (Object) this;
         boolean silent = SilentPacketQueue.consume(packet);
+        if (!ActionCoordinator.canSendPacket(connection, packet)) {
+            ci.cancel();
+            return;
+        }
         if (packet instanceof ServerboundSetCarriedItemPacket heldItemPacket) {
             if (!SilentSwapUtil.canSendCarriedItem(connection, heldItemPacket.getSlot(), lastServerSlot)
                     || heldItemPacket.getSlot() == lastServerSlot) {
@@ -48,6 +54,10 @@ public class MixinConnection {
                 return;
             }
         }
+        if (!ActionCoordinator.canSendPacket(connection, packet)) {
+            ci.cancel();
+            return;
+        }
         if (packet instanceof ServerboundSetCarriedItemPacket heldItemPacket) {
             int slot = heldItemPacket.getSlot();
             if (!SilentSwapUtil.canSendCarriedItem(connection, slot, lastServerSlot) || slot == lastServerSlot) {
@@ -58,6 +68,8 @@ public class MixinConnection {
         }
         SilentSwapUtil.onPacketSending(connection, packet, lastServerSlot);
         SilentSwapUtil.onPacketSent(connection, packet, lastServerSlot);
+        ActionCoordinator.onPacketSent(connection, packet);
+        EventManager.INSTANCE.post(new PacketSentEvent(packet));
     }
 
     @Inject(

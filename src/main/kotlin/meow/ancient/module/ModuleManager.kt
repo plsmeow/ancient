@@ -22,6 +22,7 @@ import meow.ancient.module.modules.combat.TpAuraModule
 import meow.ancient.module.modules.combat.CrystalOptimizerModule
 import meow.ancient.module.modules.combat.AimAssistModule
 import meow.ancient.module.modules.movement.StepModule
+import meow.ancient.module.modules.movement.PhaseModule
 import meow.ancient.module.modules.player.FastExpModule
 import meow.ancient.module.modules.movement.AirStuckModule
 import meow.ancient.module.modules.movement.ElytraBoosterModule
@@ -44,6 +45,7 @@ import meow.ancient.module.modules.other.FtHelperModule
 import meow.ancient.module.modules.other.HwHelperModule
 import meow.ancient.module.modules.other.NeuroRecordModule
 import meow.ancient.module.modules.player.ElytraHelperModule
+import meow.ancient.module.modules.player.PacketMineModule
 import meow.ancient.module.modules.player.NoDelayModule
 import meow.ancient.module.modules.player.AutoTpacceptModule
 import meow.ancient.module.modules.player.ClickPearlModule
@@ -109,9 +111,11 @@ object ModuleManager : ILoadable {
             SpeedModule,
             NoWebModule,
             StepModule,
+            PhaseModule,
             NoDelayModule,
             FastExpModule,
             ElytraHelperModule,
+            PacketMineModule,
             ClickPearlModule,
             AutoTpacceptModule,
             NoPushModule,
