@@ -13,6 +13,7 @@ import meow.ancient.module.modules.combat.VelocityModule;
 import meow.ancient.module.modules.combat.SpearKillModule;
 import meow.ancient.module.modules.combat.TriggerBotModule;
 import meow.ancient.module.modules.movement.InventoryMoveModule;
+import meow.ancient.module.modules.movement.ElytraRecastModule;
 import meow.ancient.module.modules.movement.PhaseModule;
 import meow.ancient.module.modules.movement.NoSlowModule;
 import net.minecraft.client.player.LocalPlayer;
@@ -28,6 +29,11 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 @Mixin(LocalPlayer.class)
 public class MixinLocalPlayer {
+    @Inject(method = "aiStep()V", at = @At("RETURN"))
+    private void ancient$recastElytra(CallbackInfo ci) {
+        ElytraRecastModule.INSTANCE.onAfterMovement((LocalPlayer) (Object) this);
+    }
+
     @Inject(method = "tick", at = @At("HEAD"), cancellable = true)
     private void onTick(CallbackInfo ci) {
         ActionCoordinator.INSTANCE.beginTick();

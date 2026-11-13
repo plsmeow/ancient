@@ -2,6 +2,7 @@ package meow.ancient.module.modules.other
 
 import meow.ancient.client.extensions.OTHER
 import meow.ancient.client.gui.material.MaterialYouShapesRenderer
+import meow.ancient.client.gui.debug.TestDiagnosticsPanel
 import meow.ancient.client.util.other.color.Color4b
 import meow.ancient.module.Module
 import meow.ancient.module.setting.MinecraftPickerCatalogs
@@ -11,8 +12,14 @@ import net.minecraft.client.gui.GuiGraphicsExtractor
 object TestModule : Module(
     name = "Test",
     category = OTHER,
-    description = "Material 3 showcase module"
+    description = "Client diagnostics and Material 3 showcase"
 ) {
+    val debugPanel by boolean("Debug Panel", true, description = "Show action priorities, slots, rotations, mining, motion and server corrections")
+    val debugSections by multiMode("Debug Sections", setOf("Actions", "Rotation", "Mining", "Motion", "Corrections"),
+        listOf("Actions", "Rotation", "Mining", "Motion", "Corrections"), isVisible = { debugPanel })
+    val debugX = number("Debug X", 16.0, 0.0, 4096.0, 1.0, 0, isVisible = { debugPanel })
+    val debugY = number("Debug Y", 90.0, 0.0, 4096.0, 1.0, 0, isVisible = { debugPanel })
+    val debugScale by number("Debug Scale", 1.0, 0.75, 1.5, 0.05, 2, isVisible = { debugPanel })
     val materialYouShapes by boolean("Material You Shapes", false, description = "Showcase Material You shapes on screen")
     val theSwitch by boolean("The Switch", true)
     var textDemo by text("Text", "Ancient", description = "Editable persistent text")
@@ -31,6 +38,7 @@ object TestModule : Module(
     val effects by picker("Mob Effects", linkedSetOf("minecraft:speed", "minecraft:strength", "minecraft:regeneration"), MinecraftPickerCatalogs.effects)
 
     fun renderShapesShowcase(graphics: GuiGraphicsExtractor, partialTicks: Float) {
+        TestDiagnosticsPanel.render(graphics)
         val visible = isEnabled() && materialYouShapes
         MaterialYouShapesRenderer.render(graphics, partialTicks, visible)
     }

@@ -6,6 +6,9 @@ import meow.ancient.client.util.rotation.RotationManager;
 import net.minecraft.client.Minecraft;
 import meow.ancient.module.modules.player.NoPushModule;
 import meow.ancient.module.modules.render.SwingAnimationsModule;
+import meow.ancient.module.modules.movement.ElytraFlyModule;
+import meow.ancient.module.modules.movement.ElytraBoosterModule;
+import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.phys.Vec3;
@@ -21,6 +24,20 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 public class MixinLivingEntity {
     @Shadow
     public float yHeadRot;
+
+    @Inject(method = "updateFallFlyingMovement(Lnet/minecraft/world/phys/Vec3;)Lnet/minecraft/world/phys/Vec3;",
+        at = @At("RETURN"), cancellable = true)
+    private void ancient$elytraMotion(Vec3 velocity, CallbackInfoReturnable<Vec3> cir) {
+        if ((Object) this instanceof LocalPlayer player && player == Minecraft.getInstance().player) {
+            Vec3 motion = ElytraFlyModule.INSTANCE.getMotion(player);
+            if (motion != null) {
+                cir.setReturnValue(motion);
+            } else if (ElytraBoosterModule.INSTANCE.isGrimMode()) {
+                Vec3 bounded = ElytraBoosterModule.INSTANCE.getGrimMovement(player, cir.getReturnValue());
+                if (bounded != null) cir.setReturnValue(bounded);
+            }
+        }
+    }
 
     @Redirect(
         method = "jumpFromGround()V",

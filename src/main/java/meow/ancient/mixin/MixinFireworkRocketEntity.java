@@ -4,6 +4,8 @@ import meow.ancient.client.util.rotation.MoveFixMode;
 import meow.ancient.client.util.rotation.Rotation;
 import meow.ancient.client.util.rotation.RotationManager;
 import meow.ancient.module.modules.movement.ElytraBoosterModule;
+import meow.ancient.module.modules.movement.ElytraFlyModule;
+import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
@@ -18,12 +20,23 @@ public abstract class MixinFireworkRocketEntity {
     @Redirect(method = "tick", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/LivingEntity;setDeltaMovement(Lnet/minecraft/world/phys/Vec3;)V"))
     private void redirectBoost(LivingEntity entity, Vec3 vanillaVelocity) {
         if (entity == Minecraft.getInstance().player) {
+            if (entity instanceof LocalPlayer player) {
+                Vec3 motion = ElytraFlyModule.INSTANCE.getMotion(player);
+                if (motion != null) {
+                    entity.setDeltaMovement(motion);
+                    return;
+                }
+            }
             Vec3 look = entity.getLookAngle();
             if (RotationManager.INSTANCE.isActive() && RotationManager.INSTANCE.getActiveMoveFix() != MoveFixMode.OFF) {
                 Rotation rot = RotationManager.INSTANCE.getCurrentRotation();
                 if (rot != null) {
                     look = Entity.calculateViewVector(rot.getPitch(), rot.getYaw());
                 }
+            }
+            if (entity instanceof LocalPlayer player && ElytraBoosterModule.INSTANCE.isGrimMode()) {
+                entity.setDeltaMovement(ElytraBoosterModule.INSTANCE.getGrimBoost(player, (FireworkRocketEntity) (Object) this, look));
+                return;
             }
             if (ElytraBoosterModule.INSTANCE.isEnabled()) {
                 Vec3 old = entity.getDeltaMovement();

@@ -125,10 +125,7 @@ object ElytraHelperModule : Module(
         }
 
         val slot = if (chestplate) InventoryUtil.findBestChestplateSlot() else InventoryUtil.findBestElytraSlot()
-        if (slot < 0) {
-            ChatUtil.send(if (chestplate) "Chestplate not found in inventory." else "Elytra not found in inventory.")
-            return
-        }
+        if (slot < 0) return
         val selected = player.inventory.getItem(slot).copy()
         queueAction(InventoryActionSource.INVENTORY) { currentPlayer ->
             if (ItemStack.matches(currentPlayer.inventory.getItem(slot), selected)

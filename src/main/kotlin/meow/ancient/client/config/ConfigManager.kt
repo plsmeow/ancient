@@ -147,6 +147,14 @@ object ConfigManager {
 
                 val settingsObj = modObj.getAsJsonObject("settings")
                 if (settingsObj != null) {
+                    if (module.name == "ElytraFly" && settingsObj.has("Mode")) {
+                        if (!settingsObj.has("FireWorks")) {
+                            settingsObj.addProperty("FireWorks", settingsObj.get("Mode").asString == "Firework")
+                        }
+                        settingsObj.get("Firework Delay")?.let {
+                            settingsObj.addProperty("Firework Delay", it.asDouble / 50.0)
+                        }
+                    }
                     if (module === HudModule) {
                         HudModule.dragController.prepareConfigLoad()
                         migrateHudElements(settingsObj)

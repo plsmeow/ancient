@@ -28,6 +28,7 @@ import meow.ancient.module.modules.player.FastExpModule
 import meow.ancient.module.modules.movement.AirStuckModule
 import meow.ancient.module.modules.movement.ElytraBoosterModule
 import meow.ancient.module.modules.movement.ElytraFlyModule
+import meow.ancient.module.modules.movement.ElytraRecastModule
 import meow.ancient.module.modules.movement.ElytraJumpModule
 import meow.ancient.module.modules.movement.FlightModule
 import meow.ancient.module.modules.movement.HighJumpModule
@@ -102,6 +103,7 @@ object ModuleManager : ILoadable {
             AirStuckModule,
             ElytraBoosterModule,
             ElytraFlyModule,
+            ElytraRecastModule,
             ElytraJumpModule,
             ElytraMotionModule,
             FlightModule,

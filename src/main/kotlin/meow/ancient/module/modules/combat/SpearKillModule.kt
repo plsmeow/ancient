@@ -6,39 +6,27 @@ import meow.ancient.client.extensions.mc
 import meow.ancient.client.util.movement.TeleportPath
 import meow.ancient.client.util.friend.FriendRepository
 import meow.ancient.client.util.target.TargetRepository
-import meow.ancient.client.util.other.ChatUtil
 import meow.ancient.client.util.other.DamageUtils
 import meow.ancient.client.util.rotation.GCDUtil
 import meow.ancient.client.util.rotation.Rotation
 import meow.ancient.client.util.rotation.RotationManager
 import meow.ancient.event.events.ClientDisconnectEvent
-import meow.ancient.event.events.PacketReceiveEvent
 import meow.ancient.event.events.PlayerUpdateEvent
 import meow.ancient.module.Module
-import meow.ancient.module.setting.MinecraftPickerCatalogs
-import net.minecraft.world.entity.EntityType
 import net.minecraft.core.component.DataComponents
-import net.minecraft.network.protocol.game.ClientboundDamageEventPacket
-import net.minecraft.network.protocol.game.ClientboundEntityEventPacket
-import net.minecraft.network.protocol.game.ClientboundSetEntityDataPacket
 import net.minecraft.tags.ItemTags
 import net.minecraft.util.Mth
 import net.minecraft.world.InteractionHand
-import net.minecraft.world.damagesource.DamageTypes
 import net.minecraft.world.entity.Entity
-import net.minecraft.world.entity.EntityEvent
 import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.entity.player.Player
 import net.minecraft.world.item.ItemStack
-import net.minecraft.world.item.component.AttackRange
-import net.minecraft.world.item.component.KineticWeapon
 import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.Vec3
 import sweetie.evaware.flora.api.Commando
 import kotlin.math.acos
 import kotlin.math.ceil
 import kotlin.math.min
-import kotlin.math.sin
 
 object SpearKillModule : Module(
     name = "SpearKill",
@@ -51,7 +39,6 @@ object SpearKillModule : Module(
     val retry = boolean("Retry", false)
     val tpBack = boolean("TP Back", false, isVisible = { !retry.value })
     val onlyInstKill = boolean("Only InstKill", false, isVisible = { mode == "Teleport" })
-    val damageNotify = boolean("Damage Notify", true)
 
     val teleportTypeSetting = mode("Teleport Type", "Simple", listOf("Simple", "Step", "Vault", "Bypass"), isVisible = { mode == "Teleport" })
     val teleportType by teleportTypeSetting
@@ -91,122 +78,23 @@ object SpearKillModule : Module(
     var lockedPitch: Float = 0f
         private set
 
-    private var lastTarget: Entity? = null
-    private var lastTargetTick: Int = 0
-    private var strikeTarget: Entity? = null
-    private var lastStrikeTick: Int = 0
-    private var damageTarget: Entity? = null
-    private var pendingDamage: Float = 0f
-    private var pendingDeath: Boolean = false
-    private var ownSpearDamage: Boolean = false
-    private var mixedDamage: Boolean = false
-    private var killNotified: Boolean = false
-    private var damageExpiryTick: Int = 0
-
     override fun onEnable() {
         reset()
     }
 
     override fun onDisable() {
         reset()
-        clearDamageNotification()
-        lastTarget = null
-        strikeTarget = null
     }
 
     @Commando
     fun onDisconnect(event: ClientDisconnectEvent) {
         reset()
-        clearDamageNotification()
-        lastTarget = null
-        strikeTarget = null
-    }
-
-    @Commando
-    fun onPacketReceive(event: PacketReceiveEvent) {
-        if (!inGame || !damageNotify.value) return
-        val player = mc.player ?: return
-        val level = mc.level ?: return
-        val packet = event.packet
-
-        if (packet is ClientboundDamageEventPacket) {
-            val entity = level.getEntity(packet.entityId) ?: return
-            val isTarget = entity === target || entity === damageTarget
-                || (entity === lastTarget && player.tickCount <= lastTargetTick + 15)
-            if (!isTarget) return
-
-            if (damageTarget !== entity || player.tickCount > damageExpiryTick) {
-                clearDamageNotification()
-                damageTarget = entity
-                damageExpiryTick = player.tickCount + 5
-            }
-            if (packet.sourceType.`is`(DamageTypes.SPEAR) || packet.sourceType.`is`(DamageTypes.MACE_SMASH)) {
-                ownSpearDamage = true
-            } else {
-                mixedDamage = true
-            }
-        } else if (packet is ClientboundEntityEventPacket) {
-            val entity = packet.getEntity(level) ?: return
-            val isTarget = entity === target || entity === damageTarget
-                || (entity === lastTarget && player.tickCount <= lastTargetTick + 15)
-            if (!isTarget) return
-
-            if (packet.eventId.toInt() == EntityEvent.DEATH.toInt()) {
-                pendingDeath = true
-                if (entity is LivingEntity && (entity.health <= 0 || entity.isDeadOrDying)) {
-                    notifySpearKill()
-                }
-                if (killNotified) clearDamageNotification()
-            }
-        } else if (packet is ClientboundSetEntityDataPacket) {
-            val entity = level.getEntity(packet.id) ?: return
-            val isTarget = entity === target || entity === damageTarget
-                || (entity === lastTarget && player.tickCount <= lastTargetTick + 15)
-            if (!isTarget) return
-
-            for (item in packet.packedItems) {
-                if (item.id == 9) {
-                    val health = item.value as? Float ?: continue
-                    if (health <= 0) {
-                        pendingDeath = true
-                        notifySpearKill()
-                        if (killNotified) clearDamageNotification()
-                    }
-                }
-            }
-        }
-    }
-
-    private fun notifySpearKill() {
-        if (!ownSpearDamage || mixedDamage || killNotified || damageTarget == null) return
-        ChatUtil.send("Killed ${damageTarget?.name?.string}")
-        killNotified = true
-    }
-
-    private fun clearDamageNotification() {
-        damageTarget = null
-        pendingDamage = 0f
-        pendingDeath = false
-        ownSpearDamage = false
-        mixedDamage = false
-        killNotified = false
-        damageExpiryTick = 0
     }
 
     @Commando
     fun onUpdate(event: PlayerUpdateEvent) {
         if (!inGame) return
         val player = mc.player ?: return
-
-        if (damageTarget != null) {
-            if (player.tickCount > damageExpiryTick || !damageNotify.value) {
-                clearDamageNotification()
-            } else if (pendingDeath && (ownSpearDamage || (damageTarget === strikeTarget && player.tickCount <= lastStrikeTick + 5)) && !mixedDamage && !killNotified) {
-                ownSpearDamage = true
-                notifySpearKill()
-                clearDamageNotification()
-            }
-        }
 
         if (!trackSpearUse()) return
 
@@ -232,21 +120,7 @@ object SpearKillModule : Module(
         if (target == null) {
             target = findTarget()
         }
-        val currentTarget = target ?: return
-
-        lastTarget = currentTarget
-        lastTargetTick = player.tickCount
-
-        var spear = player.useItem
-        val kinetic = spear.get(DataComponents.KINETIC_WEAPON)
-        if (ready() && kinetic != null) {
-            val attackRange = player.getAttackRangeWith(spear)
-            val reach = attackRange.effectiveMaxRange(player) + 2.0
-            if (player.distanceTo(currentTarget) <= reach || phase == Phase.Strike) {
-                strikeTarget = currentTarget
-                lastStrikeTick = player.tickCount
-            }
-        }
+        if (target == null) return
 
         updatePrediction()
         lockAim()
@@ -269,7 +143,7 @@ object SpearKillModule : Module(
             return
         }
 
-        spear = player.useItem
+        val spear = player.useItem
         when (mode) {
             "Motion" -> {
                 val destination = straightStrikePosition(spear)
@@ -319,10 +193,6 @@ object SpearKillModule : Module(
         } else {
             phase = Phase.Strike
             arrivalTick = player.tickCount
-            target?.let {
-                strikeTarget = it
-                lastStrikeTick = player.tickCount
-            }
         }
     }
 

@@ -2,10 +2,7 @@ package meow.ancient.client.gui.material.components
 
 import meow.ancient.client.gui.material.AnimFloat
 import meow.ancient.client.gui.material.M3Theme
-import meow.ancient.client.util.other.color.Color4b
-import meow.ancient.client.util.render.RenderUtils
 import meow.ancient.client.util.render.engine.controls.ClientRenderPipeline
-import meow.ancient.client.util.render.font.Fonts
 import meow.ancient.module.setting.BooleanSetting
 import org.joml.Matrix4f
 
@@ -29,8 +26,8 @@ class BooleanComponent(private val boolSetting: BooleanSetting) : SettingCompone
 
         val palette = M3Theme.current
         val toggleProgress = toggleAnim.update(if (boolSetting.value) 1f else 0f, dt)
-        val switchW = 24f
-        val switchH = 14f
+        val switchW = ToggleSwitch.WIDTH
+        val switchH = ToggleSwitch.HEIGHT
         val switchX = x + width - switchW - 2f
         val switchY = y + (height - switchH) * 0.5f
         val maxTextW = switchX - (x + 2f) - 6f
@@ -50,43 +47,7 @@ class BooleanComponent(private val boolSetting: BooleanSetting) : SettingCompone
             pipeline = ClientRenderPipeline.WINDOW_TEXT
         )
 
-        val offTrackColor = palette.surfaceContainerHighest
-        val trackColor = offTrackColor.interpolateTo(palette.primary, toggleProgress.toDouble())
-        RenderUtils.roundedRect(
-            matrix = matrix,
-            x = switchX,
-            y = switchY,
-            width = switchW,
-            height = switchH,
-            color = trackColor,
-            radius = switchH * 0.5f,
-            pipeline = ClientRenderPipeline.WINDOW_RECT
-        )
-
-        val offThumbDiameter = 8f
-        val onThumbDiameter = 10f
-        val thumbDiameter = offThumbDiameter + (onThumbDiameter - offThumbDiameter) * toggleProgress
-        val trackCapRadius = switchH * 0.5f
-        val leftCapCenterX = switchX + trackCapRadius
-        val rightCapCenterX = switchX + switchW - trackCapRadius
-        val thumbCenterX = leftCapCenterX + (rightCapCenterX - leftCapCenterX) * toggleProgress
-        val thumbCenterY = switchY + trackCapRadius
-        val thumbX = thumbCenterX - thumbDiameter * 0.5f
-        val thumbY = thumbCenterY - thumbDiameter * 0.5f
-
-        val offThumbColor = palette.outline
-        val onThumbColor = palette.onPrimary
-        val thumbColor = offThumbColor.interpolateTo(onThumbColor, toggleProgress.toDouble())
-        RenderUtils.roundedRect(
-            matrix = matrix,
-            x = thumbX,
-            y = thumbY,
-            width = thumbDiameter,
-            height = thumbDiameter,
-            color = thumbColor,
-            radius = thumbDiameter * 0.5f,
-            pipeline = ClientRenderPipeline.WINDOW_RECT
-        )
+        ToggleSwitch.render(matrix, switchX, switchY, toggleProgress, ClientRenderPipeline.WINDOW_RECT)
 
         return height
     }

@@ -31,6 +31,7 @@
         "MixinAbstractContainerScreen",
         "MixinEntityRenderer",
         "MixinFireworkRocketEntity",
+        "FireworkRocketEntityAccessor",
         "MixinCamera",
         "MixinVisGraph",
         "MixinGuiRenderer",
