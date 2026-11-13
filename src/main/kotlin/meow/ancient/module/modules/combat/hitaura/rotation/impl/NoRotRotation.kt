@@ -5,6 +5,8 @@ import meow.ancient.client.extensions.mc
 import meow.ancient.client.util.rotation.RayTraceUtil
 import meow.ancient.client.util.rotation.Rotation
 import meow.ancient.client.util.rotation.RotationUtil
+import meow.ancient.module.modules.combat.HitAuraModule
+import meow.ancient.module.modules.combat.TpAuraModule
 import meow.ancient.module.modules.combat.hitaura.rotation.RotationStrategy
 import net.minecraft.util.Mth
 import net.minecraft.world.entity.LivingEntity
@@ -46,7 +48,10 @@ class NoRotRotation : RotationStrategy("NoRot") {
             }
         }
 
-        val targetVec = target.box.center.add(0.0, sinTime / 2.0, 0.0)
+        val preferredPoint = target.box.center.add(0.0, sinTime / 2.0, 0.0)
+        val targetVec = if (HitAuraModule.wallCheck && TpAuraModule.getRenderPosition(target) == null)
+            RayTraceUtil.findVisiblePoint(target, HitAuraModule.attackRange + HitAuraModule.aimRange, preferredPoint) ?: return current
+            else preferredPoint
         val angle = RotationUtil.getRotationToVec(targetVec).normalizeTo(current)
 
         val dYaw = Mth.wrapDegrees(angle.yaw - current.yaw)

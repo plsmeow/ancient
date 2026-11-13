@@ -3,6 +3,7 @@ package meow.ancient.client.util.rotation
 import meow.ancient.client.extensions.box
 import meow.ancient.client.extensions.inGame
 import meow.ancient.client.extensions.mc
+import meow.ancient.client.util.combat.HitboxPointResolver
 import meow.ancient.module.modules.combat.HitBoxesModule
 import net.minecraft.world.entity.Entity
 import net.minecraft.world.level.ClipContext
@@ -10,6 +11,21 @@ import net.minecraft.world.phys.HitResult
 import net.minecraft.world.phys.Vec3
 
 object RayTraceUtil {
+    /** Search the full reachable hitbox instead of checking only the entity's eye position. */
+    fun findVisiblePoint(target: Entity, range: Double, preferred: Vec3? = null): Vec3? {
+        val player = mc.player ?: return null
+        val level = mc.level ?: return null
+        val eyes = player.eyePosition
+        val expand = HitBoxesModule.expandAmount(target)
+        val box = target.boundingBox.inflate(target.pickRadius.toDouble().coerceAtLeast(expand))
+        val context = ClipContext(eyes, eyes, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, player)
+        return HitboxPointResolver.find(eyes, box, range + expand, preferred,
+            trace = { start, end ->
+                level.clip(ClipContext(start, end, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, player))
+                    .takeIf { it.type == HitResult.Type.BLOCK }
+            }, shapes = { pos -> context.getBlockShape(level.getBlockState(pos), level, pos).toAabbs().map { it.move(pos) } })
+    }
+
     fun isLookingAtEntity(
         target: Entity,
         rotation: Rotation = RotationManager.getServerRotation(),

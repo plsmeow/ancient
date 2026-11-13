@@ -190,8 +190,14 @@ class AuraActionQueue(private val owner: Any) {
                        wallCheck: Boolean = true): Boolean {
         val current = player ?: return false
         val reach = minOf(range, current.entityInteractionRange())
-        val point = visibleCrystalPoint(current, crystal, reach, wallCheck) ?: return false
-        if (rotations && !aim(point, moveFix) { hitsCrystal(serverEyes, it, crystal, reach, wallCheck) }) return false
+        var rotation: Rotation? = null
+        visibleCrystalPoint(current, crystal, reach, wallCheck, eyes = serverEyes, secondaryEyes = current.eyePosition) { point ->
+            if (!rotations) true else {
+                rotation = aimingRotation(point) { hitsCrystal(serverEyes, it, crystal, reach, wallCheck) }
+                rotation != null
+            }
+        } ?: return false
+        if (rotations) applyAim(rotation ?: return false, moveFix)
         return true
     }
 
@@ -235,12 +241,6 @@ class AuraActionQueue(private val owner: Any) {
         return next
     }
 
-    private fun aim(point: Vec3, moveFix: MoveFixMode, accepts: (Rotation) -> Boolean): Boolean {
-        val rotation = aimingRotation(point, accepts) ?: return false
-        applyAim(rotation, moveFix)
-        return true
-    }
-
     private fun applyAim(rotation: Rotation, moveFix: MoveFixMode) {
         ActionCoordinator.withOwner(ActionCoordinator.resolveOwner(owner)) {
             RotationManager.setRotation(rotation, moveFix = moveFix, gcd = false, keepTicks = 3)
@@ -265,22 +265,17 @@ class AuraActionQueue(private val owner: Any) {
     }
 
     companion object {
-        fun visibleCrystalPoint(player: LocalPlayer, crystal: EndCrystal, range: Double, wallCheck: Boolean = true): Vec3? {
+        fun visibleCrystalPoint(player: LocalPlayer, crystal: EndCrystal, range: Double, wallCheck: Boolean = true,
+                                eyes: Vec3 = player.eyePosition, secondaryEyes: Vec3? = null,
+                                accepts: (Vec3) -> Boolean = { true }): Vec3? {
             val level = mc.level ?: return null
-            val eyes = player.eyePosition
-            val box = crystal.boundingBox.deflate(0.05)
-            val center = box.center
+            val box = crystal.boundingBox
             val reach = minOf(range, player.entityInteractionRange())
-            val points = listOf(RotationUtil.getNearestPoint(eyes, box), center,
-                Vec3(box.minX, center.y, center.z), Vec3(box.maxX, center.y, center.z),
-                Vec3(center.x, box.minY, center.z), Vec3(center.x, box.maxY, center.z),
-                Vec3(center.x, center.y, box.minZ), Vec3(center.x, center.y, box.maxZ))
-            return points.firstOrNull { point ->
-                val intercept = crystal.boundingBox.clip(eyes, point).orElse(null)
-                val hit = if (wallCheck) level.clip(ClipContext(eyes, point, ClipContext.Block.OUTLINE, ClipContext.Fluid.NONE, player)) else null
-                crystal.boundingBox.contains(eyes) || intercept != null && eyes.distanceToSqr(intercept) <= reach * reach
-                    && (hit == null || hit.type != HitResult.Type.BLOCK || eyes.distanceToSqr(intercept) < eyes.distanceToSqr(hit.location))
-            }
+            return HitboxPointResolver.find(eyes, box, reach, RotationUtil.getNearestPoint(eyes, box.deflate(0.05)), secondaryEyes,
+                trace = { start, end ->
+                    if (!wallCheck) null else level.clip(ClipContext(start, end, ClipContext.Block.OUTLINE, ClipContext.Fluid.NONE, player))
+                        .takeIf { it.type == HitResult.Type.BLOCK }
+                }, shapes = { pos -> level.getBlockState(pos).getShape(level, pos).toAabbs().map { it.move(pos) } }, accepts = accepts)
         }
 
         fun visibleHit(player: LocalPlayer, pos: BlockPos, range: Double, face: Direction? = null,

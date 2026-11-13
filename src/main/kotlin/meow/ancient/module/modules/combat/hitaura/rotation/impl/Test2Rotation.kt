@@ -4,6 +4,9 @@ import meow.ancient.client.extensions.box
 import meow.ancient.client.extensions.mc
 import meow.ancient.client.util.rotation.Rotation
 import meow.ancient.client.util.rotation.RotationUtil
+import meow.ancient.client.util.rotation.RayTraceUtil
+import meow.ancient.module.modules.combat.HitAuraModule
+import meow.ancient.module.modules.combat.TpAuraModule
 import meow.ancient.module.modules.combat.hitaura.rotation.RotationStrategy
 import meow.ancient.module.modules.combat.hitaura.rotation.impl.test2.*
 import net.minecraft.util.Mth
@@ -96,7 +99,10 @@ open class Test2Rotation(name: String = "Test2") : RotationStrategy(name) {
             beginCycle(target, true, current)
         }
 
-        val hitPoint = resolveHitPoint(target, dtSec)
+        val preferredPoint = resolveHitPoint(target, dtSec)
+        val hitPoint = if (HitAuraModule.wallCheck && TpAuraModule.getRenderPosition(target) == null)
+            RayTraceUtil.findVisiblePoint(target, HitAuraModule.attackRange + HitAuraModule.aimRange, preferredPoint) ?: return current
+            else preferredPoint
         val actual = RotationUtil.getRotationToVec(hitPoint, player.eyePosition)
         val actualYaw = actual.yaw
         val actualPitch = actual.pitch

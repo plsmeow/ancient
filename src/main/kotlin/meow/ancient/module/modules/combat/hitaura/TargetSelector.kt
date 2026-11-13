@@ -8,6 +8,7 @@ import meow.ancient.module.modules.combat.TpAuraModule
 import meow.ancient.client.extensions.inGame
 import meow.ancient.client.extensions.mc
 import meow.ancient.client.util.rotation.RotationUtil
+import meow.ancient.client.util.rotation.RayTraceUtil
 import meow.ancient.module.modules.combat.HitAuraModule.TargetMode
 import meow.ancient.module.modules.combat.HitAuraModule.TargetPriority
 import meow.ancient.module.setting.TargetSetting
@@ -117,10 +118,6 @@ class TargetSelector {
         }
 
         val positionAuraReachable = TpAuraModule.getRenderPosition(entity) != null
-        if (!throughWalls && !positionAuraReachable && !localPlayer.hasLineOfSight(entity)) {
-            return false
-        }
-
         if (!allowedTargets.isSelected(entity)) return false
 
         val expand = HitBoxesModule.expandAmount(entity)
@@ -128,6 +125,8 @@ class TargetSelector {
         if (dist > maxRange + expand && !positionAuraReachable) return false
 
         if (!RotationUtil.isInFov(entity, fov)) return false
+
+        if (!throughWalls && !positionAuraReachable && RayTraceUtil.findVisiblePoint(entity, maxRange) == null) return false
 
         return true
     }

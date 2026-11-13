@@ -507,7 +507,8 @@ object HitAuraModule : Module(
                 gcdEnabled = gcdFix,
                 moveFixMode = moveFixMode,
                 shouldSnapNow = readyNextAttack,
-                overrideAimPoint = overrideAimPoint
+                overrideAimPoint = overrideAimPoint,
+                visibilityRange = effectiveAimRange
             )
 
             pendingTarget = target

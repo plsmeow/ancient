@@ -3,6 +3,8 @@ package meow.ancient.module.modules.combat.hitaura
 import meow.ancient.client.extensions.box
 import meow.ancient.client.extensions.mc
 import meow.ancient.client.util.rotation.*
+import meow.ancient.module.modules.combat.HitAuraModule
+import meow.ancient.module.modules.combat.TpAuraModule
 import meow.ancient.module.modules.combat.HitAuraModule.AimPointMode
 import meow.ancient.module.modules.combat.HitAuraModule.RotationMode
 import meow.ancient.module.modules.combat.hitaura.rotation.RotationStrategy
@@ -68,7 +70,8 @@ class AuraRotationProcessor(advancedSettings: AdvancedRotationSettings) {
         gcdEnabled: Boolean,
         moveFixMode: MoveFixMode,
         shouldSnapNow: Boolean,
-        overrideAimPoint: Vec3? = null
+        overrideAimPoint: Vec3? = null,
+        visibilityRange: Double = HitAuraModule.attackRange + HitAuraModule.aimRange
     ): Rotation {
         tickCounter++
         if (previousMode != rotationMode) {
@@ -80,8 +83,11 @@ class AuraRotationProcessor(advancedSettings: AdvancedRotationSettings) {
 
         val strategy = getStrategy(rotationMode)
         val currentRot = RotationManager.getServerRotation()
+        fun resolvePoint(preferred: Vec3): Vec3? =
+            if (HitAuraModule.wallCheck && TpAuraModule.getRenderPosition(target) == null)
+                RayTraceUtil.findVisiblePoint(target, visibilityRange, preferred) else preferred
         if (rotationMode == RotationMode.GRIM_1204) {
-            val aimPoint = overrideAimPoint ?: calculateAimPoint(target, aimPointMode)
+            val aimPoint = resolvePoint(overrideAimPoint ?: calculateAimPoint(target, aimPointMode)) ?: return currentRot
             val idealRotation = RotationUtil.getRotationToVec(aimPoint).normalizeTo(currentRot)
             val dYaw = Mth.wrapDegrees(idealRotation.yaw - currentRot.yaw)
             val dPitch = idealRotation.pitch - currentRot.pitch
@@ -100,7 +106,8 @@ class AuraRotationProcessor(advancedSettings: AdvancedRotationSettings) {
 
         if (rotationMode == RotationMode.NEURO) {
             val neuro = strategy as NeuroRotation
-            neuro.processNeuro(target, moveFixMode, gcdEnabled, overrideAimPoint)
+            val point = resolvePoint(overrideAimPoint ?: target.boundingBox.center) ?: return currentRot
+            neuro.processNeuro(target, moveFixMode, gcdEnabled, point)
             return RotationManager.getServerRotation()
         }
 
@@ -109,7 +116,10 @@ class AuraRotationProcessor(advancedSettings: AdvancedRotationSettings) {
         if (!strategy.shouldUpdateRotation(shouldSnapNow)) {
             return currentRot
         }
-        val aimPoint = advancedAimPoint ?: overrideAimPoint ?: calculateAimPoint(target, aimPointMode)
+        val preferredPoint = advancedAimPoint ?: overrideAimPoint ?: calculateAimPoint(target, aimPointMode)
+        val aimPoint = resolvePoint(preferredPoint) ?: return currentRot
+        // Keep Advanced's attack-readiness state aligned with the point actually used for aiming.
+        if (advanced != null && aimPoint != preferredPoint) advanced.resolveAimPoint(target, aimPoint)
         val idealRotation = RotationUtil.getRotationToVec(aimPoint).normalizeTo(currentRot)
 
         val dYaw = Mth.wrapDegrees(idealRotation.yaw - currentRot.yaw)
