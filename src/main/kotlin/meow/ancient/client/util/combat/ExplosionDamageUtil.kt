@@ -77,7 +77,7 @@ object ExplosionDamageUtil {
     }
 
     fun anchorDamage(target: LivingEntity, anchorPos: BlockPos, ignoreTerrain: Boolean = false, ignoreCreative: Boolean = false): Float {
-        val anchorCenter = Vec3(anchorPos.x + 0.5, anchorPos.y + 1.0, anchorPos.z + 0.5)
+        val anchorCenter = Vec3.atCenterOf(anchorPos)
         return explosionDamage(
             target,
             anchorCenter,
@@ -126,7 +126,7 @@ object ExplosionDamageUtil {
 
         val exposure = getExposure(explosionPos, targetBox, raycastFactory)
         val impact = (1.0 - (modDistance / power)) * exposure
-        val damage = (((impact * impact + impact) / 2.0 * 7.0 * 12.0) + 1.0).toFloat()
+        val damage = (((impact * impact + impact) / 2.0 * 7.0 * power) + 1.0).toFloat()
 
         return calculateReductions(damage, target, level.damageSources().explosion(null))
     }

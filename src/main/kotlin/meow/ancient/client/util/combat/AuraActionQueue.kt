@@ -14,15 +14,21 @@ import net.minecraft.client.multiplayer.ClientLevel
 import net.minecraft.client.player.LocalPlayer
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
+import net.minecraft.tags.BlockTags
 import net.minecraft.network.protocol.game.ServerboundMovePlayerPacket
 import net.minecraft.network.protocol.game.ServerboundUseItemOnPacket
 import net.minecraft.network.protocol.game.ServerboundClientTickEndPacket
 import net.minecraft.world.entity.boss.enderdragon.EndCrystal
 import net.minecraft.world.level.ClipContext
+import net.minecraft.world.level.block.state.BlockState
+import net.minecraft.world.level.block.Blocks
+import net.minecraft.world.level.block.CandleCakeBlock
+import net.minecraft.world.level.block.SweetBerryBushBlock
 import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.BlockHitResult
 import net.minecraft.world.phys.HitResult
 import net.minecraft.world.phys.Vec3
+import net.minecraft.world.phys.shapes.VoxelShape
 import sweetie.evaware.flora.api.Commando
 import net.minecraft.util.Mth
 import kotlin.math.abs
@@ -110,78 +116,109 @@ class AuraActionQueue(private val owner: Any) {
     }
 
     fun block(hit: BlockHitResult, range: Double, rotations: Boolean, moveFix: MoveFixMode,
-              exactFace: Boolean = false, action: (BlockHitResult) -> Unit): Boolean {
-        if (!prepareBlock(hit, range, rotations, moveFix, exactFace)) return false
-        pending = { blockHit(hit, range, exactFace)?.let(action) }
+              exactFace: Boolean = false, wallCheck: Boolean = true, action: (BlockHitResult) -> Unit): Boolean {
+        if (!prepareBlock(hit, range, rotations, moveFix, exactFace, wallCheck)) return false
+        pending = { blockHit(hit, range, exactFace, wallCheck)?.let(action) }
         return true
     }
 
     fun prepareBlock(hit: BlockHitResult, range: Double, rotations: Boolean, moveFix: MoveFixMode,
-                     exactFace: Boolean = false): Boolean {
+                     exactFace: Boolean = false, wallCheck: Boolean = true): Boolean {
         val current = player ?: return false
         val reach = minOf(range, current.blockInteractionRange())
-        val accepts: (BlockHitResult?) -> Boolean = {
-            it != null && it.blockPos == hit.blockPos && (!exactFace || it.direction == hit.direction)
+        val accepts: (Rotation) -> Boolean = { rotation ->
+            val actual = trace(serverEyes, rotation, reach, hit.blockPos.takeUnless { wallCheck })
+            actual != null && actual.blockPos == hit.blockPos && (!wallCheck || !exactFace || actual.direction == hit.direction)
+                && current.eyePosition.distanceToSqr(actual.location) <= reach * reach
         }
-        if (rotations) {
-            aim(blockAimPoint(hit), moveFix) { accepts(trace(serverEyes, it, reach)) }
-        }
+        if (!rotations) return true
+        var rotation: Rotation? = null
+        val selected = visibleHit(current, hit.blockPos, range, hit.direction.takeIf { exactFace }, wallCheck,
+            eyes = serverEyes, preferred = hit.location, secondaryEyes = current.eyePosition) { candidate ->
+            rotation = aimingRotation(blockAimPoint(candidate), accepts)
+            rotation != null
+        } ?: return false
+        if (!wallCheck) rotation = aimingRotation(blockAimPoint(selected), accepts)
+        applyAim(rotation ?: return false, moveFix)
         return true
     }
 
-    fun blockHit(hit: BlockHitResult, range: Double, exactFace: Boolean = false): BlockHitResult? {
+    /** Refresh supports from the same eye position that will be used to send the interaction. */
+    fun placementHit(pos: BlockPos, range: Double, wallCheck: Boolean = true, rotations: Boolean = false): BlockHitResult? {
+        val current = player ?: return null
+        val reach = minOf(range, current.blockInteractionRange())
+        return Companion.placementHit(current, pos, range, wallCheck, eyes = serverEyes,
+            secondaryEyes = current.eyePosition) { hit ->
+            !rotations || !wallCheck || aimingRotation(blockAimPoint(hit)) { rotation ->
+                val actual = trace(serverEyes, rotation, reach)
+                actual != null && actual.blockPos == hit.blockPos && actual.direction == hit.direction
+                    && current.eyePosition.distanceToSqr(actual.location) <= reach * reach
+            } != null
+        }
+    }
+
+    fun visibleHit(pos: BlockPos, range: Double, wallCheck: Boolean = true, preferred: Vec3? = null): BlockHitResult? {
+        val current = player ?: return null
+        return Companion.visibleHit(current, pos, range, wallCheck = wallCheck, eyes = serverEyes,
+            preferred = preferred, secondaryEyes = current.eyePosition)
+    }
+
+    fun blockHit(hit: BlockHitResult, range: Double, exactFace: Boolean = false, wallCheck: Boolean = true): BlockHitResult? {
         val current = player ?: return null
         if (!hasMovement || current !== mc.player || level !== mc.level) return null
         val reach = minOf(range, current.blockInteractionRange())
+        if (!wallCheck) {
+            val world = level ?: return null
+            if (world.getBlockState(hit.blockPos).getShape(world, hit.blockPos).isEmpty) return null
+            return hit.takeIf { serverEyes.distanceToSqr(it.location) <= reach * reach
+                && current.eyePosition.distanceToSqr(it.location) <= reach * reach }
+        }
         val actual = trace(serverEyes, sentRotation, reach) ?: return null
         // Use one position for the ray and its visible face, even while walking locally.
         return actual.takeIf { it.blockPos == hit.blockPos && (!exactFace || it.direction == hit.direction)
-            && withinReach(current.eyePosition, AABB(hit.blockPos), reach) }
+            && current.eyePosition.distanceToSqr(it.location) <= reach * reach }
     }
 
     fun crystal(crystal: EndCrystal, range: Double, rotations: Boolean, moveFix: MoveFixMode,
-                action: () -> Unit): Boolean {
-        if (!prepareCrystal(crystal, range, rotations, moveFix)) return false
-        pending = { if (crystalReady(crystal, range)) action() }
+                wallCheck: Boolean = true, action: () -> Unit): Boolean {
+        if (!prepareCrystal(crystal, range, rotations, moveFix, wallCheck)) return false
+        pending = { if (crystalReady(crystal, range, wallCheck)) action() }
         return true
     }
 
-    fun prepareCrystal(crystal: EndCrystal, range: Double, rotations: Boolean, moveFix: MoveFixMode): Boolean {
+    fun prepareCrystal(crystal: EndCrystal, range: Double, rotations: Boolean, moveFix: MoveFixMode,
+                       wallCheck: Boolean = true): Boolean {
         val current = player ?: return false
         val reach = minOf(range, current.entityInteractionRange())
-        val point = visibleCrystalPoint(current, crystal, reach) ?: return false
-        if (rotations) aim(point, moveFix) { hitsCrystal(serverEyes, it, crystal, reach) }
+        val point = visibleCrystalPoint(current, crystal, reach, wallCheck) ?: return false
+        if (rotations && !aim(point, moveFix) { hitsCrystal(serverEyes, it, crystal, reach, wallCheck) }) return false
         return true
     }
 
-    fun crystalReady(crystal: EndCrystal, range: Double): Boolean {
+    fun crystalReady(crystal: EndCrystal, range: Double, wallCheck: Boolean = true): Boolean {
         val current = player ?: return false
         val reach = minOf(range, current.entityInteractionRange())
         return hasMovement && current === mc.player && level === mc.level && crystal.isAlive
-            && hitsCrystal(serverEyes, sentRotation, crystal, reach)
+            && hitsCrystal(serverEyes, sentRotation, crystal, reach, wallCheck)
             && withinReach(current.eyePosition, crystal.boundingBox, reach)
     }
 
     private fun blockAimPoint(hit: BlockHitResult): Vec3 =
-        // A buried center aims through neighboring floor blocks. Retain the exposed face.
-        hit.location.add(-hit.direction.stepX * 0.001,
-            -hit.direction.stepY * 0.001, -hit.direction.stepZ * 0.001)
+        BlockFaceResolver.aimPoint(serverEyes, hit)
 
     private fun withinReach(eyes: Vec3, box: AABB, reach: Double) =
         eyes.distanceToSqr(RotationUtil.getNearestPoint(eyes, box)) <= reach * reach
 
-    private fun aim(point: Vec3, moveFix: MoveFixMode, accepts: (Rotation) -> Boolean) {
-        if (player == null) return
+    private fun aimingRotation(point: Vec3, accepts: (Rotation) -> Boolean): Rotation? {
+        if (player == null) return null
         val desired = RotationUtil.getRotationToVec(point, serverEyes).normalizeTo(sentRotation)
         val pitchOnly = Rotation(sentRotation.yaw, desired.pitch)
-        // Keep a ray that already hits. Base/crystal transitions usually only need pitch.
-        var next = when {
-            accepts(sentRotation) -> sentRotation
-            accepts(pitchOnly) -> pitchOnly
-            else -> desired
-        }
         val base = RotationManager.getServerRotation()
-        next = GCDUtil.applyGCD(next.normalizeTo(base), base)
+        val quantized = GCDUtil.applyGCD(desired.normalizeTo(base), base)
+        // Check the rounded ray too: near an exposed edge, rounding can move it into a wall.
+        var next = sequenceOf(sentRotation, pitchOnly, quantized)
+            .map { GCDUtil.applyGCD(it.normalizeTo(base), base) }.firstOrNull(accepts)
+            ?: quantizedNeighbors(quantized, GCDUtil.getGCD()).firstOrNull(accepts) ?: return null
         val delta = abs(Mth.wrapDegrees(next.yaw - sentRotation.yaw))
         // Resolve duplicate turns with another valid ray, never by indefinitely rejecting a site.
         if (lastPlaceYawDelta > 2f && (abs(delta - lastPlaceYawDelta) < 0.0001f
@@ -195,26 +232,40 @@ class AuraActionQueue(private val owner: Any) {
             }
             if (alternative != null) next = alternative
         }
+        return next
+    }
+
+    private fun aim(point: Vec3, moveFix: MoveFixMode, accepts: (Rotation) -> Boolean): Boolean {
+        val rotation = aimingRotation(point, accepts) ?: return false
+        applyAim(rotation, moveFix)
+        return true
+    }
+
+    private fun applyAim(rotation: Rotation, moveFix: MoveFixMode) {
         ActionCoordinator.withOwner(ActionCoordinator.resolveOwner(owner)) {
-            RotationManager.setRotation(next, moveFix = moveFix, gcd = false, keepTicks = 3)
+            RotationManager.setRotation(rotation, moveFix = moveFix, gcd = false, keepTicks = 3)
         }
     }
 
-    private fun hitsCrystal(eyes: Vec3, rotation: Rotation, crystal: EndCrystal, reach: Double): Boolean {
+    private fun hitsCrystal(eyes: Vec3, rotation: Rotation, crystal: EndCrystal, reach: Double, wallCheck: Boolean): Boolean {
         if (crystal.boundingBox.contains(eyes)) return true
         val end = eyes.add(rotation.toDirectionVec().scale(reach))
         val hit = crystal.boundingBox.clip(eyes, end).orElse(null) ?: return crystal.boundingBox.contains(eyes)
+        if (!wallCheck) return true
         val block = trace(eyes, rotation, reach)
         return block == null || eyes.distanceToSqr(hit) < eyes.distanceToSqr(block.location)
     }
 
-    private fun trace(eyes: Vec3, rotation: Rotation, reach: Double): BlockHitResult? =
-        level?.clip(ClipContext(eyes, eyes.add(rotation.toDirectionVec().scale(reach)),
-            ClipContext.Block.OUTLINE, ClipContext.Fluid.NONE, player!!))
-            ?.takeIf { it.type == HitResult.Type.BLOCK }
+    private fun trace(eyes: Vec3, rotation: Rotation, reach: Double, targetOnly: BlockPos? = null): BlockHitResult? {
+        val world = level ?: return null
+        val end = eyes.add(rotation.toDirectionVec().scale(reach))
+        if (targetOnly != null) return world.getBlockState(targetOnly).getShape(world, targetOnly).clip(eyes, end, targetOnly)
+        return world.clip(ClipContext(eyes, end, ClipContext.Block.OUTLINE, ClipContext.Fluid.NONE, player!!))
+            .takeIf { it.type == HitResult.Type.BLOCK }
+    }
 
     companion object {
-        fun visibleCrystalPoint(player: LocalPlayer, crystal: EndCrystal, range: Double): Vec3? {
+        fun visibleCrystalPoint(player: LocalPlayer, crystal: EndCrystal, range: Double, wallCheck: Boolean = true): Vec3? {
             val level = mc.level ?: return null
             val eyes = player.eyePosition
             val box = crystal.boundingBox.deflate(0.05)
@@ -226,53 +277,68 @@ class AuraActionQueue(private val owner: Any) {
                 Vec3(center.x, center.y, box.minZ), Vec3(center.x, center.y, box.maxZ))
             return points.firstOrNull { point ->
                 val intercept = crystal.boundingBox.clip(eyes, point).orElse(null)
-                val hit = level.clip(ClipContext(eyes, point, ClipContext.Block.OUTLINE, ClipContext.Fluid.NONE, player))
+                val hit = if (wallCheck) level.clip(ClipContext(eyes, point, ClipContext.Block.OUTLINE, ClipContext.Fluid.NONE, player)) else null
                 crystal.boundingBox.contains(eyes) || intercept != null && eyes.distanceToSqr(intercept) <= reach * reach
-                    && (hit.type != HitResult.Type.BLOCK || eyes.distanceToSqr(intercept) < eyes.distanceToSqr(hit.location))
+                    && (hit == null || hit.type != HitResult.Type.BLOCK || eyes.distanceToSqr(intercept) < eyes.distanceToSqr(hit.location))
             }
         }
 
-        fun visibleHit(player: LocalPlayer, pos: BlockPos, range: Double, face: Direction? = null): BlockHitResult? {
+        fun visibleHit(player: LocalPlayer, pos: BlockPos, range: Double, face: Direction? = null,
+                       wallCheck: Boolean = true, overrides: Map<BlockPos, BlockState> = emptyMap(),
+                       eyes: Vec3 = player.eyePosition, preferred: Vec3? = null, secondaryEyes: Vec3? = null,
+                       accepts: (BlockHitResult) -> Boolean = { true }): BlockHitResult? {
             val level = mc.level ?: return null
-            val shape = level.getBlockState(pos).getShape(level, pos)
-            if (shape.isEmpty) return null
-            val eyes = player.eyePosition
             val reach = minOf(range, player.blockInteractionRange())
-            val boxes = shape.toAabbs().map { it.move(pos) }
-            for (box in boxes) {
-                val center = box.center
-                val points = listOf(center,
-                    Vec3(box.minX + 0.001, center.y, center.z), Vec3(box.maxX - 0.001, center.y, center.z),
-                    Vec3(center.x, box.minY + 0.001, center.z), Vec3(center.x, box.maxY - 0.001, center.z),
-                    Vec3(center.x, center.y, box.minZ + 0.001), Vec3(center.x, center.y, box.maxZ - 0.001))
-                for (point in points) {
-                    val hit = level.clip(ClipContext(eyes, point, ClipContext.Block.OUTLINE, ClipContext.Fluid.NONE, player))
-                    if (hit.type == HitResult.Type.BLOCK && hit.blockPos == pos && (face == null || face == hit.direction)
-                        && eyes.distanceToSqr(hit.location) <= reach * reach && visibleFace(eyes, hit, box)) return hit
-                }
+            val shapes = HashMap<BlockPos, VoxelShape>()
+            val shapeCache = HashMap<BlockPos, List<AABB>>()
+            fun shape(block: BlockPos) = shapes.getOrPut(block.immutable()) {
+                (overrides[block] ?: level.getBlockState(block)).getShape(level, block)
             }
-            return null
+            fun boxes(block: BlockPos) = shapeCache.getOrPut(block.immutable()) {
+                shape(block).toAabbs().map { it.move(block) }
+            }
+            val targetBoxes = boxes(pos)
+            if (!wallCheck) return BlockFaceResolver.direct(eyes, pos, targetBoxes, reach, face, secondaryEyes)
+            return BlockFaceResolver.find(eyes, pos, targetBoxes, reach, face, preferred, secondaryEyes,
+                trace = { start, end ->
+                    if (overrides.isEmpty()) {
+                        level.clip(ClipContext(start, end, ClipContext.Block.OUTLINE, ClipContext.Fluid.NONE, player))
+                            .takeIf { it.type == HitResult.Type.BLOCK }
+                    } else MeteorDamageHelper.raycast(start, end, ExplosionDamageUtil.ExposureRaycastContext(start, end),
+                        ExplosionDamageUtil.RaycastFactory { ray, block ->
+                            shape(block).clip(ray.start, ray.end, block)
+                        })
+                }, shapes = ::boxes, accepts = accepts)
         }
 
-        private fun visibleFace(eyes: Vec3, hit: BlockHitResult, box: AABB): Boolean = when (hit.direction) {
-            Direction.UP -> eyes.y >= box.maxY
-            Direction.DOWN -> eyes.y <= box.minY
-            Direction.NORTH -> eyes.z <= box.minZ
-            Direction.SOUTH -> eyes.z >= box.maxZ
-            Direction.WEST -> eyes.x <= box.minX
-            Direction.EAST -> eyes.x >= box.maxX
+        private fun quantizedNeighbors(rotation: Rotation, step: Float): Sequence<Rotation> = sequence {
+            for (radius in 1..2) for (yaw in -radius..radius) for (pitch in -radius..radius) {
+                if (maxOf(abs(yaw), abs(pitch)) != radius) continue
+                val y = rotation.pitch + pitch * step
+                if (y in -90f..90f) yield(Rotation(rotation.yaw + yaw * step, y))
+            }
         }
 
-        fun placementHit(player: LocalPlayer, pos: BlockPos, range: Double): BlockHitResult? {
+        fun placementHit(player: LocalPlayer, pos: BlockPos, range: Double, wallCheck: Boolean = true,
+                         overrides: Map<BlockPos, BlockState> = emptyMap(), eyes: Vec3 = player.eyePosition,
+                         secondaryEyes: Vec3? = null, accepts: (BlockHitResult) -> Boolean = { true }): BlockHitResult? {
             val level = mc.level ?: return null
+            val hits = ArrayList<BlockHitResult>()
             for (side in Direction.entries) {
                 val neighbor = pos.relative(side.opposite)
-                val state = level.getBlockState(neighbor)
-                if (state.canBeReplaced() || state.hasBlockEntity()) continue
-                val hit = visibleHit(player, neighbor, range, side) ?: continue
-                if (hit.blockPos.relative(hit.direction) == pos) return hit
+                val state = overrides[neighbor] ?: level.getBlockState(neighbor)
+                if (state.canBeReplaced()) continue
+                // A right click must place the held block instead of opening/toggling the support.
+                if (!player.isSecondaryUseActive && (state.hasBlockEntity() || state.getMenuProvider(level, neighbor) != null
+                        || state.`is`(BlockTags.DOORS) || state.`is`(BlockTags.TRAPDOORS) || state.`is`(BlockTags.BUTTONS)
+                        || state.`is`(BlockTags.FENCE_GATES) || state.`is`(BlockTags.BEDS) || state.`is`(Blocks.LEVER)
+                        || state.`is`(Blocks.NOTE_BLOCK) || state.`is`(Blocks.RESPAWN_ANCHOR) || state.`is`(Blocks.CAKE)
+                        || state.block is CandleCakeBlock || state.block is SweetBerryBushBlock)) continue
+                val hit = visibleHit(player, neighbor, range, side, wallCheck, overrides, eyes = eyes,
+                    secondaryEyes = secondaryEyes, accepts = accepts) ?: continue
+                if (hit.blockPos.relative(hit.direction) == pos) hits.add(hit)
             }
-            return null
+            return hits.minByOrNull { eyes.distanceToSqr(it.location) }
         }
     }
 }

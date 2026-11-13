@@ -18,6 +18,7 @@ import meow.ancient.module.modules.combat.HitBoxesModule
 import meow.ancient.module.modules.combat.CrystalAuraModule
 import meow.ancient.module.modules.combat.CrystalAuraTestModule
 import meow.ancient.module.modules.combat.AnchorAuraModule
+import meow.ancient.module.modules.combat.SurroundModule
 import meow.ancient.module.modules.combat.TpAuraModule
 import meow.ancient.module.modules.combat.CrystalOptimizerModule
 import meow.ancient.module.modules.combat.AimAssistModule
@@ -92,6 +93,7 @@ object ModuleManager : ILoadable {
             CrystalAuraModule,
             CrystalAuraTestModule,
             AnchorAuraModule,
+            SurroundModule,
             TpAuraModule,
             CrystalOptimizerModule,
             AimAssistModule,

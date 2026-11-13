@@ -15,7 +15,7 @@ import kotlin.math.sin
 /** One moving marker per aura, with smooth position, dimensions, colour and visibility. */
 class AuraTargetRenderer(private val enabled: () -> Boolean, private val slideSpeed: () -> Double) {
     enum class Kind { PLACE, BASE, CHARGE, BREAK, MINE }
-    private data class Target(val box: AABB, val kind: Kind)
+    private data class Target(val box: AABB, val kind: Kind, val progress: Float)
     private var target: Target? = null
     private var lastTarget: Target? = null
     private var level: ClientLevel? = null
@@ -27,17 +27,20 @@ class AuraTargetRenderer(private val enabled: () -> Boolean, private val slideSp
     private var flash = 0.0
     private var lastFrame = 0L
     private var time = 0.0
+    private var miningProgress = 0.0
 
     init { LevelRenderEvents.BEFORE_GIZMOS.register { _ -> draw() } }
 
     fun beginTick() { target = null }
 
-    fun show(box: AABB, kind: Kind) {
+    fun show(box: AABB, kind: Kind, progress: Float = 0f) {
         if (level !== mc.level) {
             reset()
             level = mc.level
         }
-        target = Target(box, kind)
+        if (kind == Kind.MINE && (lastTarget?.kind != Kind.MINE || lastTarget?.box != box
+                || progress < (lastTarget?.progress ?: 0f))) miningProgress = 0.0
+        target = Target(box, kind, progress.coerceIn(0f, 1f))
         lastTarget = target
     }
 
@@ -55,6 +58,7 @@ class AuraTargetRenderer(private val enabled: () -> Boolean, private val slideSp
         flash = 0.0
         lastFrame = 0L
         time = 0.0
+        miningProgress = 0.0
     }
 
     private fun draw() {
@@ -110,6 +114,13 @@ class AuraTargetRenderer(private val enabled: () -> Boolean, private val slideSp
         Gizmos.cuboid(box.inflate(0.018 + breathe * 0.008),
             GizmoStyle.stroke(tint.alpha((20 * opacity).toInt()).argb, 4f)).setAlwaysOnTop()
 
+        if (desired.kind == Kind.MINE) {
+            miningProgress += (desired.progress - miningProgress) * (1.0 - exp(-20.0 * dt))
+            val progressBox = miningBox(currentCenter, size, miningProgress)
+            Gizmos.cuboid(progressBox, GizmoStyle.strokeAndFill(tint.alpha((210 * opacity).toInt()).argb, 1.5f,
+                tint.alpha((100 * opacity).toInt()).argb)).setAlwaysOnTop()
+        }
+
         val tail = trail!!
         if (tail.distanceToSqr(currentCenter) > 0.0025) {
             Gizmos.cuboid(box(tail, size), GizmoStyle.stroke(tint.alpha((28 * opacity).toInt()).argb, 1f)).setAlwaysOnTop()
@@ -118,5 +129,8 @@ class AuraTargetRenderer(private val enabled: () -> Boolean, private val slideSp
 
     private fun box(center: Vec3, half: Vec3) = AABB(center.x - half.x, center.y - half.y, center.z - half.z,
         center.x + half.x, center.y + half.y, center.z + half.z)
+
+    private fun miningBox(center: Vec3, half: Vec3, progress: Double) =
+        box(center, half.scale(0.08 + progress.coerceIn(0.0, 1.0) * 0.92))
 
 }

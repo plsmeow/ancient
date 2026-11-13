@@ -4,6 +4,9 @@ import meow.ancient.client.extensions.mc
 import meow.ancient.client.util.inventory.SilentSwapUtil
 import meow.ancient.module.Module
 import meow.ancient.module.modules.combat.HitAuraModule
+import meow.ancient.module.modules.combat.CrystalAuraModule
+import meow.ancient.module.modules.combat.AnchorAuraModule
+import meow.ancient.module.modules.combat.SurroundModule
 import meow.ancient.module.modules.combat.SpearKillModule
 import meow.ancient.module.modules.combat.TriggerBotModule
 import meow.ancient.module.modules.player.PacketMineModule
@@ -64,10 +67,14 @@ object ActionCoordinator {
         when {
             name in setOf("ClickPearl", "ElytraHelper", "Phase") -> ActionOwner(name, ActionGroup.MANUAL, 1000)
             name == "SpearKill" -> ActionOwner(name, ActionGroup.COMBAT, 330)
+            name == "Surround" -> ActionOwner(name, ActionGroup.COMBAT, 450)
+            name == "CrystalAura" -> ActionOwner(name, ActionGroup.COMBAT, 323)
+            name == "AnchorAura" -> ActionOwner(name, ActionGroup.COMBAT, 322)
+            name == "CrystalTerrain" -> ActionOwner(name, ActionGroup.COMBAT, 321)
             name == "HitAura" -> ActionOwner(name, ActionGroup.COMBAT, 320)
             name == "TriggerBot" -> ActionOwner(name, ActionGroup.COMBAT, 300)
             it.contains(".combat.") -> ActionOwner(name, ActionGroup.COMBAT, 310, helper)
-            name == "PacketMine" -> ActionOwner(name, ActionGroup.MINING, 200)
+            name == "PacketMine" -> ActionOwner(name, ActionGroup.MINING, 900)
             else -> ActionOwner(name, ActionGroup.UTILITY, 100)
         }
     }
@@ -79,13 +86,19 @@ object ActionCoordinator {
         return player.isUsingItem || mc.options.keyUse.isDown
     }
 
+    fun crystalTerrainOwner(): ActionOwner = ownerFor("meow.ancient.module.modules.combat.CrystalTerrainModule")
+
     private fun preferred(): ActionOwner? = when {
         manualUseActive() -> manual
         PhaseModule.isPreparingThrow() -> resolveOwner(PhaseModule)
+        PacketMineModule.hasPendingAction() -> resolveOwner(PacketMineModule)
+        SurroundModule.hasPendingAction() -> resolveOwner(SurroundModule)
         SpearKillModule.isEnabled() && SpearKillModule.target != null -> resolveOwner(SpearKillModule)
+        CrystalAuraModule.hasCombatAction() -> resolveOwner(CrystalAuraModule)
+        AnchorAuraModule.hasPendingAction() -> resolveOwner(AnchorAuraModule)
+        CrystalAuraModule.hasTerrainAction() -> crystalTerrainOwner()
         HitAuraModule.isEnabled() && HitAuraModule.currentTarget != null && !HitAuraModule.shouldIgnoreContext() -> resolveOwner(HitAuraModule)
         TriggerBotModule.isEnabled() && TriggerBotModule.target != null -> resolveOwner(TriggerBotModule)
-        PacketMineModule.hasPendingAction() -> resolveOwner(PacketMineModule)
         else -> null
     }
 

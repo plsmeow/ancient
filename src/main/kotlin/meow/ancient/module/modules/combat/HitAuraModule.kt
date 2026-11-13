@@ -6,6 +6,7 @@ import meow.ancient.client.extensions.mc
 import meow.ancient.client.gui.material.ClickGuiScreen
 import meow.ancient.client.gui.material.components.AdvancedSettingsWindow
 import meow.ancient.client.util.anticheat.AnticheatManager
+import meow.ancient.client.util.action.ActionCoordinator
 import meow.ancient.client.util.rotation.MoveFixMode
 import meow.ancient.client.util.rotation.RotationManager
 import meow.ancient.event.events.PlayerUpdateEvent
@@ -182,11 +183,12 @@ object HitAuraModule : Module(
         value = true,
         description = ""
     )
-    val throughWalls by boolean(
-        name = "Through Walls",
-        value = false,
-        description = ""
+    val wallCheck by boolean(
+        name = "WallCheck",
+        value = true,
+        description = "Requires a clear view before attacking, including when RayTrace is disabled"
     )
+    val throughWalls get() = !wallCheck
 
     val breakShield by boolean(
         name = "Break Shield",
@@ -412,6 +414,7 @@ object HitAuraModule : Module(
     fun onUpdate(event: PlayerUpdateEvent) {
         clearPendingAttack()
         predictedAimPoint = null
+        if (!ActionCoordinator.canAct(this)) return
         val sprintMode = SprintResetMode.fromName(AnticheatManager.sprintReset)
         sprintResetProcessor.prepareAttack(sprintMode, false)
         sprintResetProcessor.onUpdate()

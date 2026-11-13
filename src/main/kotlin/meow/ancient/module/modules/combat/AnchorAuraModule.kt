@@ -26,6 +26,7 @@ import net.minecraft.world.item.Items
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.block.Blocks
 import net.minecraft.world.level.block.RespawnAnchorBlock
+import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.BlockHitResult
 import net.minecraft.world.phys.Vec3
@@ -40,12 +41,13 @@ object AnchorAuraModule : Module(
     val range by number("Range", 4.5, 1.0, 6.0, 0.1, 1)
     val minDamage by number("Min Damage", 4.0, 1.0, 20.0, 0.5, 1)
     val maxSelfDamage by number("Max Self Damage", 8.0, 0.0, 20.0, 0.5, 1)
-    val delay by number("Delay", 1.0, 0.0, 10.0, 1.0, 0)
+    val delay by number("Delay", 0.0, 0.0, 10.0, 1.0, 0)
 
     val moveFixSetting = mode("MoveFix", "Silent", listOf("Silent", "Strict", "Free", "Off"))
     val moveFix by moveFixSetting
 
     val rotations by boolean("Rotations", true)
+    val wallCheck by boolean("WallCheck", true, "Requires a clear view to place, charge and detonate anchors")
     val silentSlots by boolean("Silent Slots", true)
     val ignoreTerrain by boolean("Ignore Terrain", false, "Treats all blocks as indestructible when calculating explosion damage")
     val lethalOverride by boolean("Lethal Override", true)
@@ -54,7 +56,16 @@ object AnchorAuraModule : Module(
     val renderSlideSpeed by number("Render Slide Speed", 14.0, 5.0, 30.0, 1.0, 0, isVisible = { render })
 
     private enum class SequenceStage { PLACE_SENT, CHARGE_SENT, DETONATE_SENT }
-    private data class AnchorSequence(val pos: BlockPos, val stage: SequenceStage, val sentTick: Int, val charges: Int)
+    private data class AnchorSequence(val pos: BlockPos, val stage: SequenceStage, val sentTick: Int, val charges: Int) {
+        fun confirmed(state: BlockState): Boolean {
+            val anchor = state.`is`(Blocks.RESPAWN_ANCHOR)
+            return when (stage) {
+                SequenceStage.PLACE_SENT -> anchor
+                SequenceStage.CHARGE_SENT -> anchor && state.getValue(RespawnAnchorBlock.CHARGE) > charges
+                SequenceStage.DETONATE_SENT -> !anchor
+            }
+        }
+    }
     private data class Plan(val pos: BlockPos, val hit: BlockHitResult, val stage: SequenceStage)
     private val actions = AuraActionQueue(this)
     private val visual = AuraTargetRenderer({ isEnabled() && render }, { renderSlideSpeed })
@@ -62,12 +73,16 @@ object AnchorAuraModule : Module(
     private var sequence: AnchorSequence? = null
     private var sequencePlayer: LocalPlayer? = null
     private var sequenceLevel: Level? = null
+    private var queuedPlan: Plan? = null
+    private var preferredPos: BlockPos? = null
     var currentTarget: Player? = null
         private set
 
     private fun reset() {
         tickTimer = 0
         sequence = null
+        queuedPlan = null
+        preferredPos = null
         sequencePlayer = null
         sequenceLevel = null
         currentTarget = null
@@ -79,14 +94,9 @@ object AnchorAuraModule : Module(
     private fun awaitingConfirmation(player: LocalPlayer, level: Level): Boolean {
         val current = sequence ?: return false
         val state = level.getBlockState(current.pos)
-        val anchor = state.`is`(Blocks.RESPAWN_ANCHOR)
-        val confirmed = when (current.stage) {
-            SequenceStage.PLACE_SENT -> anchor
-            SequenceStage.CHARGE_SENT -> anchor && state.getValue(RespawnAnchorBlock.CHARGE) > current.charges
-            SequenceStage.DETONATE_SENT -> !anchor
-        }
+        val confirmed = current.confirmed(state)
         val ping = player.connection.getPlayerInfo(player.uuid)?.latency ?: 150
-        val timeout = (ping.coerceAtLeast(0) / 50 + 10).coerceIn(10, 80)
+        val timeout = (ping.coerceAtLeast(0) / 50 + 5).coerceIn(5, 80)
         if (confirmed || player.tickCount - current.sentTick >= timeout) {
             sequence = null
             return false
@@ -96,9 +106,11 @@ object AnchorAuraModule : Module(
     }
 
     private fun getMoveFixMode() = MoveFixMode.fromName(moveFix)
+    fun hasPendingAction() = isEnabled() && (queuedPlan != null || sequence != null)
 
-    @Commando
+    @Commando(priority = 90)
     fun onUpdate(event: PlayerUpdateEvent) {
+        queuedPlan = null
         actions.beginTick()
         visual.beginTick()
         val player = mc.player
@@ -121,15 +133,22 @@ object AnchorAuraModule : Module(
             || player.containerMenu !== player.inventoryMenu || !player.containerMenu.carried.isEmpty
             || InventoryMoveModule.isInventoryActionSlowed()) return
         val target = currentTarget ?: return
-        if (tickTimer <= delay.toInt()) return
+        if (tickTimer < delay.toInt()) return
         val targetHp = AnticheatManager.getHealth(target)
-        val plan = findPlan(player, target, targetHp, SequenceStage.DETONATE_SENT)
+        val selected = findPlan(player, target, targetHp, SequenceStage.DETONATE_SENT)
             ?: findPlan(player, target, targetHp, SequenceStage.CHARGE_SENT)
             ?: findPlan(player, target, targetHp, SequenceStage.PLACE_SENT)
             ?: return
+        val refreshed = if (selected.stage == SequenceStage.PLACE_SENT)
+            actions.placementHit(selected.pos, range, wallCheck, rotations)
+            else actions.visibleHit(selected.pos, range, wallCheck, selected.hit.location)
+        if (refreshed == null) return
+        val plan = selected.copy(hit = refreshed)
         if (!preparePlan(player, plan)) return
+        queuedPlan = plan
         visual.show(AABB(plan.pos), renderKind(plan.stage))
-        actions.block(plan.hit, range, rotations, getMoveFixMode(), exactFace = plan.stage == SequenceStage.PLACE_SENT) { hit ->
+        val aimed = actions.block(plan.hit, range, rotations, getMoveFixMode(), exactFace = plan.stage == SequenceStage.PLACE_SENT,
+            wallCheck = wallCheck) { hit ->
             if (!validPlan(player, target, plan, hit)) return@block
             val state = level.getBlockState(plan.pos)
             val charges = if (state.`is`(Blocks.RESPAWN_ANCHOR)) state.getValue(RespawnAnchorBlock.CHARGE) else 0
@@ -139,11 +158,14 @@ object AnchorAuraModule : Module(
                 SequenceStage.DETONATE_SENT -> detonateAnchor(player, hit)
             }
             if (sent) {
+                queuedPlan = null
+                preferredPos = plan.pos
                 sequence = AnchorSequence(plan.pos, plan.stage, player.tickCount, charges)
                 tickTimer = 0
                 visual.pulse()
             }
         }
+        if (!aimed) queuedPlan = null
     }
 
     private fun renderKind(stage: SequenceStage) = when (stage) {
@@ -195,17 +217,24 @@ object AnchorAuraModule : Module(
     }
 
     private fun damageAllowed(player: LocalPlayer, target: Player, pos: BlockPos): Boolean {
-        if (!target.isAlive || ExplosionDamageUtil.anchorDamage(pos, player, ignoreTerrain) > maxSelfDamage.toFloat()) return false
-        val damage = ExplosionDamageUtil.anchorDamage(pos, target, ignoreTerrain, ignoreCreative = targetNPCs)
+        if (!target.isAlive || anchorDamage(pos, player) > maxSelfDamage.toFloat()) return false
+        val damage = anchorDamage(pos, target)
         return damage >= minDamage.toFloat() || lethalOverride && damage >= AnticheatManager.getHealth(target)
+    }
+
+    private fun anchorDamage(pos: BlockPos, target: Player): Float {
+        return ExplosionDamageUtil.anchorDamage(pos, target, ignoreTerrain, ignoreCreative = target !== mc.player && targetNPCs)
     }
 
     private fun validPlan(player: LocalPlayer, target: Player, plan: Plan, hit: BlockHitResult): Boolean {
         val level = mc.level ?: return false
+        if (mc.player !== player || currentTarget !== target || !target.isAlive || target.isRemoved
+            || FriendRepository.isFriend(target) || player.distanceToSqr(target) > targetRange * targetRange) return false
         if (!damageAllowed(player, target, plan.pos)) return false
         val state = level.getBlockState(plan.pos)
         return when (plan.stage) {
-            SequenceStage.PLACE_SENT -> state.canBeReplaced() && hit.blockPos.relative(hit.direction) == plan.pos
+            SequenceStage.PLACE_SENT -> InventoryUtil.findHotbarSlot(Items.GLOWSTONE) >= 0
+                && state.canBeReplaced() && hit.blockPos.relative(hit.direction) == plan.pos
                 && level.getEntities(null, AABB(plan.pos)).none { it.isAlive }
             SequenceStage.CHARGE_SENT -> state.`is`(Blocks.RESPAWN_ANCHOR) && state.getValue(RespawnAnchorBlock.CHARGE) == 0
             SequenceStage.DETONATE_SENT -> state.`is`(Blocks.RESPAWN_ANCHOR) && state.getValue(RespawnAnchorBlock.CHARGE) > 0
@@ -214,6 +243,7 @@ object AnchorAuraModule : Module(
 
     private fun findPlan(player: LocalPlayer, target: Player, targetHp: Float, stage: SequenceStage): Plan? {
         val level = mc.level ?: return null
+        if (stage == SequenceStage.PLACE_SENT && InventoryUtil.findHotbarSlot(Items.GLOWSTONE) < 0) return null
         if (stage == SequenceStage.PLACE_SENT && !player.offhandItem.`is`(Items.RESPAWN_ANCHOR)
             && InventoryUtil.findHotbarSlot(Items.RESPAWN_ANCHOR) < 0) return null
         if (stage == SequenceStage.CHARGE_SENT && !player.offhandItem.`is`(Items.GLOWSTONE)
@@ -222,8 +252,12 @@ object AnchorAuraModule : Module(
         val p = player.blockPosition()
         var best: Plan? = null
         var bestDamage = 0f
-        for (mutablePos in BlockPos.betweenClosed(p.x - r, maxOf(p.y - r, level.minY), p.z - r,
-            p.x + r, minOf(p.y + r, level.maxY - 1), p.z + r)) {
+        val candidates = sequence {
+            preferredPos?.let { yield(it) }
+            yieldAll(BlockPos.betweenClosed(p.x - r, maxOf(p.y - r, level.minY), p.z - r,
+                p.x + r, minOf(p.y + r, level.maxY - 1), p.z + r).asSequence().filter { it != preferredPos })
+        }
+        for (mutablePos in candidates) {
             val pos = mutablePos.immutable()
             val state = level.getBlockState(pos)
             when (stage) {
@@ -232,13 +266,15 @@ object AnchorAuraModule : Module(
                 SequenceStage.DETONATE_SENT -> if (!state.`is`(Blocks.RESPAWN_ANCHOR) || state.getValue(RespawnAnchorBlock.CHARGE) == 0) continue
             }
             if (player.eyePosition.distanceToSqr(Vec3.atCenterOf(pos)) > range * range) continue
-            val damage = ExplosionDamageUtil.anchorDamage(pos, target, ignoreTerrain, ignoreCreative = targetNPCs)
+            val damage = anchorDamage(pos, target)
             if (damage <= bestDamage || damage < minDamage.toFloat() && !(lethalOverride && damage >= targetHp)) continue
-            if (ExplosionDamageUtil.anchorDamage(pos, player, ignoreTerrain) > maxSelfDamage.toFloat()) continue
-            val hit = if (stage == SequenceStage.PLACE_SENT) AuraActionQueue.placementHit(player, pos, range)
-                else AuraActionQueue.visibleHit(player, pos, range)
+            if (anchorDamage(pos, player) > maxSelfDamage.toFloat()) continue
+            val hit = if (stage == SequenceStage.PLACE_SENT) AuraActionQueue.placementHit(player, pos, range, wallCheck)
+                else AuraActionQueue.visibleHit(player, pos, range, wallCheck = wallCheck)
             if (hit == null) continue
-            best = Plan(pos, hit, stage)
+            val plan = Plan(pos, hit, stage)
+            if (pos == preferredPos) return plan
+            best = plan
             bestDamage = damage
         }
         return best

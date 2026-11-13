@@ -41,6 +41,8 @@ class AttackExecutor(
         if (!ActionCoordinator.canAct(HitAuraModule)) return false
         if (TpAuraModule.isPendingVaultReturn()) return false
         if (RotationUtil.getDistanceToBox(target) > attackRange && TpAuraModule.getRenderPosition(target) == null) return false
+        if (HitAuraModule.wallCheck && TpAuraModule.getRenderPosition(target) == null
+            && mc.player?.hasLineOfSight(target) != true) return false
         if (BreachSwapModule.isActive() && !BreachSwapModule.isVirtualCooldownReady(ticksAhead)) return false
         if (!AutoMaceModule.isForceReady(target)
             && !clickerProcessor.isReadyToClick(clickMode, cps, randomizeCps, cpsSpread, ticksAhead > 0)) return false
@@ -57,6 +59,7 @@ class AttackExecutor(
         cpsSpread: Double
     ): Boolean {
         if (!inGame || HitAuraModule.shouldIgnoreContext()) return false
+        if (!ActionCoordinator.canAct(HitAuraModule)) return false
         if (TpAuraModule.isPendingVaultReturn()) return false
         if (RotationUtil.getDistanceToBox(target) > attackRange && TpAuraModule.getRenderPosition(target) == null) return false
         if (!AutoMaceModule.isForceReady(target)
@@ -121,6 +124,7 @@ class AttackExecutor(
             }
             tpAuraMoved = TpAuraModule.beforeAttack(target)
             if (positionAuraReachable && !tpAuraMoved) return false
+            if (!throughWalls && !localPlayer.hasLineOfSight(target)) return false
             if (MaceKillModule.isEnabled()) {
                 MaceKillModule.doCrit()
             }

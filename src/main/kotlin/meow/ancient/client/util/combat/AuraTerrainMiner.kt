@@ -7,14 +7,17 @@ import meow.ancient.client.util.inventory.SilentSwapUtil
 import meow.ancient.client.util.rotation.MoveFixMode
 import meow.ancient.event.EventManager
 import meow.ancient.event.events.PacketReceiveEvent
+import meow.ancient.event.events.PacketSentEvent
 import meow.ancient.event.events.PlayerPreMovementEvent
 import meow.ancient.module.modules.player.PacketMineProgress
+import meow.ancient.module.modules.player.PacketMineModule
 import meow.ancient.module.modules.player.PacketMineToolSpeed
 import net.minecraft.client.multiplayer.ClientLevel
 import net.minecraft.client.player.LocalPlayer
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.network.protocol.game.ClientboundBlockUpdatePacket
+import net.minecraft.network.protocol.Packet
 import net.minecraft.network.protocol.game.ClientboundSectionBlocksUpdatePacket
 import net.minecraft.network.protocol.game.ClientboundUpdateAttributesPacket
 import net.minecraft.network.protocol.game.ServerboundPlayerActionPacket
@@ -25,10 +28,10 @@ import net.minecraft.world.item.ItemStack
 import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.phys.AABB
 import sweetie.evaware.flora.api.Commando
-import kotlin.math.ceil
 
 /** A single temporary terrain target. It does not alter PacketMine's manual targets/settings. */
-class AuraTerrainMiner(private val owner: Any, private val actions: AuraActionQueue) {
+class AuraTerrainMiner(private val owner: Any, private val actions: AuraActionQueue,
+                       private val startAllowed: (BlockPos) -> Boolean = { true }) {
     private class Target(val player: LocalPlayer, val level: ClientLevel, val pos: BlockPos) {
         val progress = PacketMineProgress()
         var state = level.getBlockState(pos)
@@ -38,7 +41,6 @@ class AuraTerrainMiner(private val owner: Any, private val actions: AuraActionQu
         var started = false
         var direction = Direction.UP
         var startNanos = 0L
-        var warmup = 0
         var delta = 0f
         var ready = false
         var confirmed = false
@@ -50,13 +52,24 @@ class AuraTerrainMiner(private val owner: Any, private val actions: AuraActionQu
 
     private var target: Target? = null
     private var abort: Target? = null
+    private var sending: Packet<*>? = null
+    private var accepted = false
     val active get() = target != null
     val position get() = target?.pos
+    val progress: Float get() = target?.let {
+        when {
+            it.confirmed || it.stopTick > 0 || it.progress.phase == PacketMineProgress.Phase.CONFIRM -> 1f
+            it.packet -> it.progress.damage.coerceIn(0f, 1f)
+            it.started -> ((mc.gameMode?.destroyStage ?: -1) + 1).coerceIn(0, 10) / 10f
+            else -> 0f
+        }
+    } ?: 0f
 
     init { EventManager.register(this) }
 
     companion object {
         private var vanillaDepth = 0
+        private fun terrainHardness(hardness: Float) = hardness.isFinite() && hardness in 0f..3f
         @JvmStatic fun isVanillaCall() = vanillaDepth > 0
         private fun <T> vanilla(action: () -> T): T {
             vanillaDepth++
@@ -76,7 +89,7 @@ class AuraTerrainMiner(private val owner: Any, private val actions: AuraActionQu
         val gameMode = mc.gameMode ?: return false
         val reach = minOf(range, player.blockInteractionRange())
         return !state.isAir && !state.hasBlockEntity() && state.fluidState.isEmpty
-            && state.getDestroySpeed(level, pos) >= 0f && level.worldBorder.isWithinBounds(pos)
+            && terrainHardness(state.getDestroySpeed(level, pos)) && level.worldBorder.isWithinBounds(pos)
             && !player.blockActionRestricted(level, pos, gameMode.playerMode)
             && player.isAlive && !player.isSpectator && !player.isCreative && !player.isPassenger
             && player.abilities.mayBuild && player.eyePosition.distanceToSqr(
@@ -113,6 +126,9 @@ class AuraTerrainMiner(private val owner: Any, private val actions: AuraActionQu
         val current = abort ?: return
         abort = null
         if (!current.current()) return
+        // ABORT clears the server's mining state even when it names another position.
+        // The manual miner's START replaces our old target; never abort its new operation.
+        if (PacketMineModule.hasPendingAction() || mc.options.keyAttack.isDown) return
         ActionCoordinator.withOwner(ActionCoordinator.resolveOwner(owner)) {
             if (current.packet) current.player.connection.send(ServerboundPlayerActionPacket(
                 ServerboundPlayerActionPacket.Action.ABORT_DESTROY_BLOCK, current.pos, current.direction))
@@ -122,11 +138,12 @@ class AuraTerrainMiner(private val owner: Any, private val actions: AuraActionQu
 
     fun update(range: Double, packet: Boolean, rotations: Boolean, moveFix: MoveFixMode) {
         val current = target ?: return
-        if (!current.current() || current.confirmed || mc.options.keyAttack.isDown) {
+        if (!current.current() || current.confirmed && current.level.getBlockState(current.pos).isAir
+            || mc.options.keyAttack.isDown) {
             cancel()
             return
         }
-        val timeout = ((current.player.connection.getPlayerInfo(current.player.uuid)?.latency ?: 150).coerceAtLeast(0) / 50 + 20).coerceIn(20, 100)
+        val timeout = ((current.player.connection.getPlayerInfo(current.player.uuid)?.latency ?: 150).coerceAtLeast(0) / 50 + 5).coerceIn(5, 80)
         if (!current.packet && current.stopTick > 0) {
             if (current.player.tickCount - current.stopTick >= timeout) cancel()
             return
@@ -145,14 +162,12 @@ class AuraTerrainMiner(private val owner: Any, private val actions: AuraActionQu
         if (packet) {
             if (!SilentSwapUtil.prepareSlot(slot, 2, owner)) return
             if (!current.started) {
-                val ping = player.connection.getPlayerInfo(player.uuid)?.latency ?: 150
-                current.warmup = player.tickCount + (ceil(ping.coerceAtLeast(0) / 50.0).toInt() + 3).coerceIn(3, 20)
                 current.efficiency = minOf(player.getAttributeValue(Attributes.MINING_EFFICIENCY),
                     PacketMineToolSpeed.attributeValue(player.getAttribute(Attributes.MINING_EFFICIENCY)!!,
                         Attributes.MINING_EFFICIENCY, player.mainHandItem, tool))
             }
             if (current.progress.phase == PacketMineProgress.Phase.CONFIRM) return
-            if (current.started && player.tickCount >= current.warmup) {
+            if (current.started) {
                 current.delta = PacketMineToolSpeed.progress(player, tool, state, state.getDestroySpeed(current.level, current.pos),
                     current.efficiency, current.breakSpeed)
                 current.ready = current.progress.advance(current.delta, player.tickCount.toLong())
@@ -168,16 +183,17 @@ class AuraTerrainMiner(private val owner: Any, private val actions: AuraActionQu
         actions.block(hit, range, rotations, moveFix) { actualHit ->
             if (target !== current || !canMine(player, current.pos, range)
                 || !ItemStack.isSameItemSameComponents(player.inventory.getItem(slot), current.tool)) return@block
+            if (!current.started && !startAllowed(current.pos)) return@block
             current.direction = actualHit.direction
             if (packet) {
                 if (SilentSwapUtil.serverSlot != slot) return@block
                 if (!current.started) {
-                    send(current, ServerboundPlayerActionPacket.Action.START_DESTROY_BLOCK)
+                    if (!send(current, ServerboundPlayerActionPacket.Action.START_DESTROY_BLOCK)) return@block
                     current.started = true
                     current.startNanos = System.nanoTime()
                     current.progress.start()
                 } else if (current.ready) {
-                    send(current, ServerboundPlayerActionPacket.Action.STOP_DESTROY_BLOCK)
+                    if (!send(current, ServerboundPlayerActionPacket.Action.STOP_DESTROY_BLOCK)) return@block
                     current.progress.stop(player.tickCount.toLong())
                 }
             } else {
@@ -190,10 +206,20 @@ class AuraTerrainMiner(private val owner: Any, private val actions: AuraActionQu
         }
     }
 
-    private fun send(current: Target, action: ServerboundPlayerActionPacket.Action) {
-        mc.gameMode?.startPrediction(current.level) { sequence ->
-            ServerboundPlayerActionPacket(action, current.pos, current.direction, sequence)
-        }
+    private fun send(current: Target, action: ServerboundPlayerActionPacket.Action): Boolean {
+        val gameMode = mc.gameMode ?: return false
+        accepted = false
+        try {
+            gameMode.startPrediction(current.level) { sequence ->
+                ServerboundPlayerActionPacket(action, current.pos, current.direction, sequence).also { sending = it }
+            }
+            return accepted
+        } finally { sending = null }
+    }
+
+    @Commando
+    fun onPacketSent(event: PacketSentEvent) {
+        if (mc.isSameThread && event.packet === sending) accepted = true
     }
 
     @Commando

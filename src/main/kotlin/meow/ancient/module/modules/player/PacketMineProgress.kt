@@ -12,7 +12,6 @@ internal class PacketMineProgress {
     var rebreakPrimed = false
         private set
     private var miningTicks = 0
-    private var slowestDelta = Float.POSITIVE_INFINITY
     private var readyTick: Long? = null
     private var stopTick = 0L
 
@@ -25,9 +24,10 @@ internal class PacketMineProgress {
     fun advance(delta: Float, tick: Long, threshold: Float = 1f): Boolean {
         if (phase != Phase.MINING) return false
         miningTicks++
-        // Slower tools/effects must not finish using progress accumulated at a faster mining speed.
-        slowestDelta = minOf(slowestDelta, if (delta.isFinite()) delta.coerceAtLeast(0f) else 0f)
-        damage = (slowestDelta * miningTicks).coerceAtMost(1f)
+        // Vanilla recalculates elapsed damage with the current tool/effects at STOP. Recompute
+        // both slowdowns and acknowledged efficiency increases without a startup wait.
+        val currentDelta = if (delta.isFinite()) delta.coerceAtLeast(0f) else 0f
+        damage = (currentDelta * miningTicks).coerceAtMost(1f)
         val finishAt = if (threshold.isFinite()) threshold.coerceIn(0.7f, 1f) else 1f
         if (damage + 1.0E-6f < finishAt) {
             readyTick = null
@@ -81,7 +81,6 @@ internal class PacketMineProgress {
         damage = 0f
         rebreakPrimed = false
         miningTicks = 0
-        slowestDelta = Float.POSITIVE_INFINITY
         readyTick = null
         stopTick = 0L
     }

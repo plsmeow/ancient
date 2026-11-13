@@ -6,6 +6,7 @@ import meow.ancient.client.util.action.ActionCoordinator
 import meow.ancient.client.util.anticheat.AnticheatManager
 import meow.ancient.client.util.combat.AuraActionQueue
 import meow.ancient.client.util.combat.AuraTerrainMiner
+import meow.ancient.client.util.combat.CrystalTerrainPlan
 import meow.ancient.client.util.combat.ExplosionDamageUtil
 import meow.ancient.client.util.friend.FriendRepository
 import meow.ancient.client.util.target.TargetRepository
@@ -18,12 +19,17 @@ import meow.ancient.event.events.ClientDisconnectEvent
 import meow.ancient.event.events.PlayerUpdateEvent
 import meow.ancient.event.events.PlayerPreMovementEvent
 import meow.ancient.event.events.PacketSentEvent
+import meow.ancient.event.events.PacketReceiveEvent
 import meow.ancient.module.Module
 import meow.ancient.module.modules.movement.InventoryMoveModule
+import meow.ancient.module.modules.player.PacketMineModule
 import net.minecraft.client.multiplayer.ClientLevel
 import net.minecraft.client.player.LocalPlayer
 import net.minecraft.core.BlockPos
 import net.minecraft.network.protocol.game.ServerboundPunchPacket
+import net.minecraft.network.protocol.game.ServerboundPlayerActionPacket
+import net.minecraft.network.protocol.game.ClientboundBlockUpdatePacket
+import net.minecraft.network.protocol.game.ClientboundSectionBlocksUpdatePacket
 import net.minecraft.network.protocol.Packet
 import net.minecraft.network.protocol.game.ServerboundAttackPacket
 import net.minecraft.network.protocol.game.ServerboundUseItemOnPacket
@@ -56,15 +62,17 @@ object CrystalAuraModule : Module(
     val moveFix by moveFixSetting
 
     val rotations by boolean("Rotations", true)
+    val wallCheck by boolean("WallCheck", true, "Requires a clear view to place and break crystals")
     val silentSlots by boolean("Silent Slots", true)
     val ignoreTerrain by boolean("Ignore Terrain", false, "Treats all blocks as indestructible when calculating explosion damage")
     val basePlace by boolean("Base Place", true, "Places obsidian as base for crystals if none available")
     val lethalOverride by boolean("Lethal Override", true)
     val targetNPCs by boolean("Target NPCs", true, "Includes practice NPCs reported as creative players")
 
-    val autoMineTerrain by boolean("AutoMine Terrain", false, "Clears a crystal site only with a suitable hotbar tool")
+    val autoMineTerrain by boolean("AutoMine Terrain", false, "Clears soft terrain for Base Place with a suitable hotbar tool",
+        isVisible = { basePlace })
     val terrainPacketMine by boolean("Terrain PacketMine", false, "Uses packet mining instead of vanilla block breaking",
-        isVisible = { autoMineTerrain })
+        isVisible = { basePlace && autoMineTerrain })
     val render by boolean("Render", true, "Animated placement, crystal and terrain targets")
     val renderSlideSpeed by number("Render Slide Speed", 14.0, 5.0, 30.0, 1.0, 0, isVisible = { render })
 
@@ -74,11 +82,14 @@ object CrystalAuraModule : Module(
     private data class Site(val pos: BlockPos, val hit: BlockHitResult)
     private data class Prepared(val kind: PendingKind, val pos: BlockPos, val targetId: Int,
         val since: Int, val box: AABB, val hit: BlockHitResult? = null, val entityId: Int = -1,
-        val hand: InteractionHand = InteractionHand.MAIN_HAND, val slot: Int = -1)
+        val hand: InteractionHand = InteractionHand.MAIN_HAND, val slot: Int = -1, val terrainBase: Boolean = false)
     private val actions = AuraActionQueue(this)
-    private val miner = AuraTerrainMiner(this, actions)
+    private val terrainOwner = ActionCoordinator.crystalTerrainOwner()
+    private val terrainActions = AuraActionQueue(terrainOwner)
+    private val miner = AuraTerrainMiner(terrainOwner, terrainActions, ::allowedTerrainStart)
     private val visual = AuraTargetRenderer({ isEnabled() && render }, { renderSlideSpeed })
     private var preferredPos: BlockPos? = null
+    private var terrainPlan: CrystalTerrainPlan? = null
     private var pending: Pending? = null
     private var prepared: Prepared? = null
     private var sending: Packet<*>? = null
@@ -94,11 +105,24 @@ object CrystalAuraModule : Module(
 
     private fun getMoveFixMode() = MoveFixMode.fromName(moveFix)
 
-    fun shouldKeepTerrainMining() = isEnabled() && autoMineTerrain && miner.keepVanillaMining()
+    fun shouldKeepTerrainMining() = isEnabled() && basePlace && autoMineTerrain && miner.keepVanillaMining()
+    fun hasPendingAction() = isEnabled() && (prepared != null || pending != null || miner.active)
+    fun hasCombatAction() = isEnabled() && (prepared != null || pending != null)
+    fun hasTerrainAction() = isEnabled() && miner.active
 
-    @Commando
+    fun yieldToManualMining(pos: BlockPos) {
+        miner.cancel()
+        clearPrepared()
+        actions.beginTick()
+        terrainActions.beginTick()
+        // A manual selection of the same block replaces the automatic operation entirely.
+        if (terrainPlan?.pos == pos) terrainPlan = null
+    }
+
+    @Commando(priority = 100)
     fun onUpdate(event: PlayerUpdateEvent) {
         actions.beginTick()
+        terrainActions.beginTick()
         visual.beginTick()
         val player = mc.player
         val level = mc.level
@@ -124,12 +148,11 @@ object CrystalAuraModule : Module(
             clearPrepared()
             return
         }
-        val target = currentTarget ?: run { miner.cancel(); clearPrepared(); return }
-        val targetHp = AnticheatManager.getHealth(target)
+        val target = currentTarget
         // Never spend another crystal while spawn, base placement or destruction is unconfirmed.
         if (awaitingConfirmation(player, level)) return
 
-        val crystal = findCrystal(player, target, targetHp)
+        val crystal = target?.let { findCrystal(player, it, AnticheatManager.getHealth(it)) }
         if (crystal != null) {
             if (miner.active) miner.cancel()
             // A qualifying crystal retains priority even while its break delay/rotation is pending.
@@ -142,6 +165,10 @@ object CrystalAuraModule : Module(
             return
         }
         if (prepared?.kind == PendingKind.BREAK) clearPrepared()
+        // The approved replacement survives movement of the opponent, failed clicks and retries.
+        if (continueTerrain(player, level)) return
+        if (target == null) { miner.cancel(); clearPrepared(); return }
+        val targetHp = AnticheatManager.getHealth(target)
         val existing = prepared
         if (existing != null) {
             if (existing.targetId == target.id && validPrepared(player, target, existing) && tick - existing.since < 6) {
@@ -150,11 +177,6 @@ object CrystalAuraModule : Module(
             }
             if (tick - existing.since >= 6) failedSites[existing.pos] = tick + 2
             clearPrepared()
-        }
-        if (miner.active && autoMineTerrain) {
-            miner.position?.let { visual.show(AABB(it), AuraTargetRenderer.Kind.MINE) }
-            miner.update(placeRange, terrainPacketMine, rotations, getMoveFixMode())
-            return
         }
         miner.cancel()
         if (placeTimer < placeDelay.toInt()) return
@@ -172,11 +194,82 @@ object CrystalAuraModule : Module(
                 return
             }
         }
-        if (autoMineTerrain) {
+        if (basePlace && autoMineTerrain) {
             val site = findTerrainSite(player, target, targetHp) ?: return
-            visual.show(AABB(site), AuraTargetRenderer.Kind.MINE)
-            if (miner.select(site)) miner.update(placeRange, terrainPacketMine, rotations, getMoveFixMode())
+            startTerrain(site)
         }
+    }
+
+    private fun startTerrain(plan: CrystalTerrainPlan) {
+        preferredPos = plan.pos
+        terrainPlan = plan
+        val player = mc.player ?: return
+        val level = mc.level ?: return
+        continueTerrain(player, level)
+    }
+
+    private fun continueTerrain(player: LocalPlayer, level: ClientLevel): Boolean {
+        val plan = terrainPlan ?: return false
+        val state = level.getBlockState(plan.pos)
+        if (state.`is`(Blocks.OBSIDIAN)) plan.observeServerState(state)
+        if (plan.stage == CrystalTerrainPlan.Stage.DONE) {
+            miner.cancel()
+            if (prepared?.terrainBase == true) clearPrepared()
+            terrainPlan = null
+            preferredPos = plan.pos
+            return false
+        }
+        if (!basePlace || !autoMineTerrain) { miner.cancel(); clearPrepared(); return true }
+        val hasObsidian = player.offhandItem.`is`(Items.OBSIDIAN) || InventoryUtil.findHotbarSlot(Items.OBSIDIAN) >= 0
+        if (!hasObsidian) {
+            miner.cancel()
+            clearPrepared()
+            visual.show(AABB(plan.pos), AuraTargetRenderer.Kind.BASE)
+            return true
+        }
+        val ping = player.connection.getPlayerInfo(player.uuid)?.latency ?: 150
+        plan.retry(tick, (ping.coerceAtLeast(0) / 50 + 5).coerceIn(5, 80))
+        if (plan.stage == CrystalTerrainPlan.Stage.CONFIRM) {
+            visual.show(AABB(plan.pos), AuraTargetRenderer.Kind.BASE)
+            return true
+        }
+        if (plan.stage == CrystalTerrainPlan.Stage.MINE) {
+            clearPrepared()
+            if (!plan.miningStarted && !allowedTerrainStart(plan.pos)) {
+                miner.cancel()
+                terrainPlan = null
+                return false
+            }
+            if (!ActionCoordinator.canAct(terrainOwner)) {
+                miner.cancel()
+                return true
+            }
+            if (!state.isAir && miner.canMine(player, plan.pos, placeRange) && !miner.active) miner.select(plan.pos)
+            if (miner.active) miner.update(placeRange, terrainPacketMine, rotations, getMoveFixMode())
+            visual.show(AABB(plan.pos), AuraTargetRenderer.Kind.MINE, if (state.isAir) 1f else miner.progress)
+            return true
+        }
+        miner.cancel()
+        if (!state.canBeReplaced()) {
+            clearPrepared()
+            // A server correction may restore the original terrain. Retry this cell alone.
+            if (miner.canMine(player, plan.pos, placeRange)) {
+                plan.restartMining()
+                return continueTerrain(player, level)
+            }
+            visual.show(AABB(plan.pos), AuraTargetRenderer.Kind.BASE)
+            return true
+        }
+        val existing = prepared
+        if (existing?.terrainBase == true && existing.pos == plan.pos && validPrepared(player, currentTarget, existing)) {
+            prepare(player)
+            return true
+        }
+        clearPrepared()
+        visual.show(AABB(plan.pos), AuraTargetRenderer.Kind.BASE)
+        val hit = actions.placementHit(plan.pos, placeRange, wallCheck, rotations) ?: return true
+        schedulePlace(player, Site(plan.pos, hit), Items.OBSIDIAN, PendingKind.BASE, plan.targetId, terrainBase = true)
+        return true
     }
 
     private fun findTarget(player: Player): Player? {
@@ -212,7 +305,10 @@ object CrystalAuraModule : Module(
         val timeout = (ping.coerceAtLeast(0) / 50 + 5).coerceIn(5, 80)
         if (confirmed || tick - current.sentTick >= timeout) {
             pending = null
-            if (!confirmed && current.kind != PendingKind.BREAK) failedSites[current.pos] = tick + 2
+            if (current.kind == PendingKind.BASE && terrainPlan?.pos == current.pos) {
+                if (confirmed) terrainPlan?.observeServerState(level.getBlockState(current.pos))
+                else terrainPlan?.retry(tick, timeout)
+            } else if (!confirmed && current.kind != PendingKind.BREAK) failedSites[current.pos] = tick + 2
             return false
         }
         visual.show(current.box, when (current.kind) {
@@ -236,7 +332,7 @@ object CrystalAuraModule : Module(
         var bestDamage = 0f
         for (entity in level.entitiesForRendering()) {
             if (entity !is EndCrystal || !entity.isAlive) continue
-            if (AuraActionQueue.visibleCrystalPoint(player, entity, breakRange) == null) continue
+            if (AuraActionQueue.visibleCrystalPoint(player, entity, breakRange, wallCheck) == null) continue
             val damage = ExplosionDamageUtil.crystalDamage(entity.position(), target, ignoreTerrain = ignoreTerrain, ignoreCreative = targetNPCs)
             if (damage <= bestDamage || damage < minDamage.toFloat() && !(lethalOverride && damage >= targetHp)) continue
             if (ExplosionDamageUtil.crystalDamage(entity.position(), player, ignoreTerrain = ignoreTerrain) > maxSelfDamage.toFloat()) continue
@@ -257,16 +353,21 @@ object CrystalAuraModule : Module(
             p.x + r, minOf(p.y + r, level.maxY - 1), p.z + r)
     }
 
-    private fun findSite(player: LocalPlayer, target: Player, targetHp: Float, base: Boolean): Site? {
+    private fun findSite(player: LocalPlayer, target: Player, targetHp: Float, base: Boolean, onlyPos: BlockPos? = null): Site? {
         val level = mc.level ?: return null
         var best: Site? = null
         var bestDamage = 0f
-        var preferred: Site? = null
-        var preferredDamage = 0f
         val attackReach = minOf(breakRange, player.entityInteractionRange())
-        for (mutablePos in positions(player)) {
+        val candidates = sequence {
+            if (onlyPos != null) yield(onlyPos) else {
+                preferredPos?.let { yield(it) }
+                yieldAll(positions(player).asSequence().filter { it != preferredPos })
+            }
+        }
+        for (mutablePos in candidates) {
             val pos = mutablePos.immutable()
             if (pos in failedSites) continue
+            if (base && PacketMineModule.targetsPosition(pos)) continue
             val state = level.getBlockState(pos)
             if (base) {
                 if (pos.y >= target.blockPosition().y || !state.canBeReplaced()) continue
@@ -276,32 +377,32 @@ object CrystalAuraModule : Module(
             val futureCrystal = AABB(pos.x - 0.5, pos.y + 1.0, pos.z - 0.5, pos.x + 1.5, pos.y + 3.0, pos.z + 1.5)
             if (player.eyePosition.distanceToSqr(RotationUtil.getNearestPoint(player.eyePosition, futureCrystal)) > attackReach * attackReach) continue
             if (level.getEntities(null, crystalBox(pos)).any { it.isAlive }) continue
-            if (base && level.getEntities(null, AABB(pos)).any { it.isAlive }) continue
+            if (base && level.getEntities(null, AABB(pos)).any { !it.isRemoved && it.blocksBuilding }) continue
             val damage = ExplosionDamageUtil.crystalDamage(explosionPos(pos), target, if (base) pos else null, ignoreTerrain, ignoreCreative = targetNPCs)
             if (damage < minDamage.toFloat() && !(lethalOverride && damage >= targetHp)) continue
             if (damage <= bestDamage && pos != preferredPos) continue
             if (ExplosionDamageUtil.crystalDamage(explosionPos(pos), player, if (base) pos else null, ignoreTerrain) > maxSelfDamage.toFloat()) continue
-            val hit = if (base) AuraActionQueue.placementHit(player, pos, placeRange)
-                else AuraActionQueue.visibleHit(player, pos, placeRange)
+            val hit = if (base) AuraActionQueue.placementHit(player, pos, placeRange, wallCheck)
+                else AuraActionQueue.visibleHit(player, pos, placeRange, wallCheck = wallCheck)
             if (hit == null) continue
             val site = Site(pos, hit)
-            if (pos == preferredPos) { preferred = site; preferredDamage = damage }
+            // Reuse a validated site immediately; a full scan is only needed when it stops working.
+            if (pos == preferredPos) return site
             if (damage > bestDamage) { best = site; bestDamage = damage }
         }
-        // Keep aiming at a still-useful site rather than switching for tiny damage differences.
-        if (preferred != null && preferredDamage + 0.5f >= bestDamage) return preferred
         return best
     }
 
-    private fun schedulePlace(player: LocalPlayer, site: Site, item: Item, kind: PendingKind) {
+    private fun schedulePlace(player: LocalPlayer, site: Site, item: Item, kind: PendingKind,
+                              targetId: Int? = currentTarget?.id, terrainBase: Boolean = false) {
         val hand = if (player.offhandItem.`is`(item)) InteractionHand.OFF_HAND else InteractionHand.MAIN_HAND
         val slot = if (hand == InteractionHand.OFF_HAND) player.inventory.selectedSlot else InventoryUtil.findHotbarSlot(item)
         if (slot !in 0..8) return
-        val target = currentTarget ?: return
+        if (targetId == null) return
         preferredPos = site.pos
-        prepared = Prepared(kind, site.pos, target.id, tick,
+        prepared = Prepared(kind, site.pos, targetId, tick,
             AABB(if (kind == PendingKind.CRYSTAL) site.pos.above() else site.pos),
-            hit = site.hit, hand = hand, slot = slot)
+            hit = site.hit, hand = hand, slot = slot, terrainBase = terrainBase)
         prepare(player)
     }
 
@@ -325,9 +426,16 @@ object CrystalAuraModule : Module(
         }
         val aimed = if (action.kind == PendingKind.BREAK) {
             val crystal = mc.level?.getEntity(action.entityId) as? EndCrystal ?: return
-            actions.prepareCrystal(crystal, breakRange, rotations, getMoveFixMode())
-        } else actions.prepareBlock(action.hit ?: return, placeRange, rotations, getMoveFixMode(),
-            exactFace = action.kind == PendingKind.BASE)
+            actions.prepareCrystal(crystal, breakRange, rotations, getMoveFixMode(), wallCheck)
+        } else {
+            val hit = if (action.kind == PendingKind.BASE) actions.placementHit(action.pos, placeRange, wallCheck, rotations)
+                else actions.visibleHit(action.pos, placeRange, wallCheck, action.hit?.location)
+            if (hit == null) { clearPrepared(); return }
+            // A moving player can expose another support or another part of the same face.
+            prepared = action.copy(hit = hit)
+            actions.prepareBlock(hit, placeRange, rotations, getMoveFixMode(),
+                exactFace = action.kind == PendingKind.BASE, wallCheck = wallCheck)
+        }
         if (!aimed) return
         readyTick = tick
         visual.show(action.box, renderKind(action.kind))
@@ -339,8 +447,17 @@ object CrystalAuraModule : Module(
         PendingKind.CRYSTAL -> AuraTargetRenderer.Kind.PLACE
     }
 
-    private fun validPrepared(player: LocalPlayer, target: Player, action: Prepared): Boolean {
+    private fun validPrepared(player: LocalPlayer, target: Player?, action: Prepared): Boolean {
         val level = mc.level ?: return false
+        if (action.terrainBase) {
+            val stack = if (action.hand == InteractionHand.OFF_HAND) player.offhandItem else player.inventory.getItem(action.slot)
+            return action.kind == PendingKind.BASE && terrainPlan?.pos == action.pos
+                && terrainPlan?.stage == CrystalTerrainPlan.Stage.BASE && basePlace && autoMineTerrain
+                && stack.`is`(Items.OBSIDIAN) && level.worldBorder.isWithinBounds(action.pos)
+                && level.getBlockState(action.pos).canBeReplaced()
+                && level.getEntities(null, AABB(action.pos)).none { !it.isRemoved && it.blocksBuilding }
+        }
+        if (target == null) return false
         if (!target.isAlive || target.isRemoved || FriendRepository.isFriend(target)
             || player.distanceToSqr(target) > targetRange * targetRange) return false
         if (action.kind == PendingKind.BREAK) {
@@ -354,7 +471,7 @@ object CrystalAuraModule : Module(
                 action.pos.takeIf { action.kind == PendingKind.BASE })) return false
         val state = level.getBlockState(action.pos)
         if (action.kind == PendingKind.BASE) {
-            if (!state.canBeReplaced() || level.getEntities(null, AABB(action.pos)).any { it.isAlive }) return false
+            if (!basePlace || !state.canBeReplaced() || level.getEntities(null, AABB(action.pos)).any { !it.isRemoved && it.blocksBuilding }) return false
         } else if (!state.`is`(Blocks.OBSIDIAN) && !state.`is`(Blocks.BEDROCK)) return false
         return level.getBlockState(action.pos.above()).isAir
             && level.getEntities(null, crystalBox(action.pos)).none { it.isAlive }
@@ -365,7 +482,7 @@ object CrystalAuraModule : Module(
         val action = prepared ?: return
         val player = mc.player ?: return
         val level = mc.level ?: return
-        val target = level.getEntity(action.targetId) as? Player ?: return
+        val target = level.getEntity(action.targetId) as? Player
         if (readyTick != tick || player !== localPlayer || level !== world || pending != null
             || !ActionCoordinator.canAct(this) || player.isUsingItem || player.isSpectator
             || mc.gui.screen() != null || player.containerMenu !== player.inventoryMenu
@@ -378,7 +495,7 @@ object CrystalAuraModule : Module(
                 if (action.kind == PendingKind.BREAK) {
                     if (breakTimer < breakDelay.toInt()) return@withOwner
                     val crystal = level.getEntity(action.entityId) as? EndCrystal ?: return@withOwner
-                    if (!actions.crystalReady(crystal, breakRange)) return@withOwner
+                    if (!actions.crystalReady(crystal, breakRange, wallCheck)) return@withOwner
                     val packet = ServerboundAttackPacket(crystal.id)
                     sending = packet
                     player.connection.send(packet)
@@ -389,14 +506,14 @@ object CrystalAuraModule : Module(
                         breakTimer = 0
                     }
                 } else {
-                    if (placeTimer < placeDelay.toInt()) return@withOwner
+                    if (!action.terrainBase && placeTimer < placeDelay.toInt()) return@withOwner
                     // A crystal can spawn between selection and sending. It still wins over placement.
-                    if (findCrystal(player, target, AnticheatManager.getHealth(target)) != null) {
+                    if (!action.terrainBase && target != null && findCrystal(player, target, AnticheatManager.getHealth(target)) != null) {
                         clearPrepared()
                         return@withOwner
                     }
                     val hit = actions.blockHit(action.hit ?: return@withOwner, placeRange,
-                        exactFace = action.kind == PendingKind.BASE) ?: return@withOwner
+                        exactFace = action.kind == PendingKind.BASE, wallCheck = wallCheck) ?: return@withOwner
                     if (action.kind == PendingKind.BASE && hit.blockPos.relative(hit.direction) != action.pos) return@withOwner
                     val gameMode = mc.gameMode ?: return@withOwner
                     gameMode.startPrediction(level) { sequence ->
@@ -408,6 +525,7 @@ object CrystalAuraModule : Module(
                     }
                 }
                 if (accepted) {
+                    if (action.terrainBase) terrainPlan?.placementSent(tick)
                     pending = Pending(action.kind, action.pos, tick, action.entityId, action.box)
                     visual.pulse()
                     clearPrepared()
@@ -418,34 +536,79 @@ object CrystalAuraModule : Module(
 
     @Commando
     fun onPacketSent(event: PacketSentEvent) {
-        if (mc.isSameThread && event.packet === sending) accepted = true
+        if (!mc.isSameThread) return
+        if (event.packet === sending) accepted = true
+        val packet = event.packet as? ServerboundPlayerActionPacket ?: return
+        if (packet.action == ServerboundPlayerActionPacket.Action.START_DESTROY_BLOCK
+            && packet.pos == terrainPlan?.pos && ActionCoordinator.resolveOwner() == terrainOwner)
+            terrainPlan?.miningStartAccepted()
     }
 
-    private fun findTerrainSite(player: LocalPlayer, target: Player, targetHp: Float): BlockPos? {
+    private fun allowedTerrainStart(pos: BlockPos): Boolean {
+        val plan = terrainPlan ?: return false
+        if (plan.pos != pos) return false
+        if (plan.miningStarted) return true
+        val player = mc.player ?: return false
+        val target = mc.level?.getEntity(plan.targetId) as? Player ?: return false
+        return target.isAlive && !target.isRemoved && !FriendRepository.isFriend(target)
+            && player.distanceToSqr(target) <= targetRange * targetRange
+            && qualifies(explosionPos(pos), player, target, AnticheatManager.getHealth(target), base = pos)
+    }
+
+    @Commando(priority = -128)
+    fun onPacketReceive(event: PacketReceiveEvent) {
+        if (event.cancel) return
+        val plan = terrainPlan ?: return
+        val player = localPlayer ?: return
+        val level = world ?: return
+        fun block(pos: BlockPos, state: net.minecraft.world.level.block.state.BlockState) {
+            if (pos != plan.pos) return
+            mc.execute {
+                if (!event.cancel && terrainPlan === plan && mc.player === player && mc.level === level)
+                    plan.observeServerState(state)
+            }
+        }
+        when (val packet = event.packet) {
+            is ClientboundBlockUpdatePacket -> block(packet.pos, packet.blockState)
+            is ClientboundSectionBlocksUpdatePacket -> packet.runUpdates { pos, state -> block(pos.immutable(), state) }
+        }
+    }
+
+    private fun findTerrainSite(player: LocalPlayer, target: Player, targetHp: Float): CrystalTerrainPlan? {
         val level = mc.level ?: return null
-        var best: BlockPos? = null
+        var best: CrystalTerrainPlan? = null
         var bestScore = Double.NEGATIVE_INFINITY
-        val canBase = basePlace && InventoryUtil.findHotbarSlot(Items.OBSIDIAN) >= 0
-        for (mutablePos in positions(player)) {
+        val canBase = basePlace && (player.offhandItem.`is`(Items.OBSIDIAN) || InventoryUtil.findHotbarSlot(Items.OBSIDIAN) >= 0)
+        val attackReach = minOf(breakRange, player.entityInteractionRange())
+        val candidates = sequence {
+            preferredPos?.let { yield(it) }
+            yieldAll(positions(player).asSequence().filter { it != preferredPos })
+        }
+        for (mutablePos in candidates) {
             val pos = mutablePos.immutable()
+            if (pos in failedSites) continue
+            if (PacketMineModule.targetsPosition(pos)) continue
             if (pos.y >= target.blockPosition().y || player.eyePosition.distanceToSqr(Vec3.atCenterOf(pos)) > placeRange * placeRange) continue
             val state = level.getBlockState(pos)
-            val existingBase = state.`is`(Blocks.OBSIDIAN) || state.`is`(Blocks.BEDROCK)
-            if (!existingBase && !canBase) continue
-            val clear = buildList {
-                if (!existingBase && !state.canBeReplaced()) add(pos)
-                if (!level.getBlockState(pos.above()).isAir) add(pos.above())
-                if (!level.getBlockState(pos.above(2)).isAir) add(pos.above(2))
-            }
-            if (clear.isEmpty() || clear.any { !miner.canMine(player, it, placeRange) }) continue
+            if (!canBase || state.canBeReplaced() || !level.getBlockState(pos.above()).isAir
+                || !miner.canMine(player, pos, placeRange)) continue
+            val clear = listOf(pos)
+            val futureCrystal = AABB(pos.x - 0.5, pos.y + 1.0, pos.z - 0.5, pos.x + 1.5, pos.y + 3.0, pos.z + 1.5)
+            if (player.eyePosition.distanceToSqr(RotationUtil.getNearestPoint(player.eyePosition, futureCrystal)) > attackReach * attackReach) continue
             if (level.getEntities(null, crystalBox(pos)).any { it.isAlive }
-                || !existingBase && level.getEntities(null, AABB(pos)).any { it.isAlive }) continue
+                || level.getEntities(null, AABB(pos)).any { !it.isRemoved && it.blocksBuilding }) continue
+            val cleared = clear.associateWith { Blocks.AIR.defaultBlockState() }
+            if (AuraActionQueue.placementHit(player, pos, placeRange, wallCheck, cleared) == null) continue
+            if (AuraActionQueue.visibleHit(player, pos, placeRange, wallCheck = wallCheck,
+                    overrides = cleared + (pos to Blocks.OBSIDIAN.defaultBlockState())) == null) continue
             val damage = terrainDamage(pos, target, clear)
             if (damage < minDamage.toFloat() && !(lethalOverride && damage >= targetHp)
                 || terrainDamage(pos, player, clear) > maxSelfDamage.toFloat()) continue
-            val visible = clear.firstOrNull { AuraActionQueue.visibleHit(player, it, placeRange) != null } ?: continue
-            val score = damage - clear.size * 0.5 - player.eyePosition.distanceToSqr(Vec3.atCenterOf(visible)) * 0.01
-            if (score > bestScore) { best = visible; bestScore = score }
+            if (AuraActionQueue.visibleHit(player, pos, placeRange) == null) continue
+            val score = damage - player.eyePosition.distanceToSqr(Vec3.atCenterOf(pos)) * 0.01
+            val site = CrystalTerrainPlan(pos, target.id)
+            if (pos == preferredPos) return site
+            if (score > bestScore) { best = site; bestScore = score }
         }
         return best
     }
@@ -470,9 +633,11 @@ object CrystalAuraModule : Module(
         failedSites.clear()
         currentTarget = null
         preferredPos = null
+        terrainPlan = null
         world = null
         localPlayer = null
         actions.beginTick()
+        terrainActions.beginTick()
         visual.reset()
         miner.cancel()
     }

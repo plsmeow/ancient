@@ -1,7 +1,6 @@
 package meow.ancient.module.modules.player
 
 import com.mojang.blaze3d.platform.InputConstants
-import kotlin.math.ceil
 import meow.ancient.client.extensions.PLAYER
 import meow.ancient.client.extensions.mc
 import meow.ancient.client.util.action.ActionCoordinator
@@ -38,12 +37,10 @@ import net.minecraft.world.InteractionHand
 import net.minecraft.world.entity.ai.attributes.Attribute
 import net.minecraft.world.entity.ai.attributes.Attributes
 import net.minecraft.world.item.ItemStack
-import net.minecraft.world.level.ClipContext
 import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.BlockHitResult
 import net.minecraft.world.phys.HitResult
-import net.minecraft.world.phys.Vec3
 import sweetie.evaware.flora.api.Commando
 
 object PacketMineModule :
@@ -85,7 +82,7 @@ object PacketMineModule :
     private val rotate by boolean("Rotations", true)
     private val swing by boolean("Swing", true)
     private val render by boolean("Render", true)
-    private val postBreakDelay by number("Post Break Delay", 6.0, 0.0, 20.0, 1.0, 0, unit = "ticks")
+    private val postBreakDelay by number("Post Break Delay", 0.0, 0.0, 20.0, 1.0, 0, unit = "ticks")
     private val confirmTimeout by
         number("Confirm Timeout", 60.0, 20.0, 200.0, 1.0, 0, unit = "ticks")
 
@@ -102,7 +99,6 @@ object PacketMineModule :
         var toolSlot = player.inventory.selectedSlot
         var finishPending = false
         var secondary = false
-        var warmupUntilTick = 0L
         var startNanos = 0L
         var lastDelta = 0f
         var serverEfficiency = 0.0
@@ -220,11 +216,13 @@ object PacketMineModule :
     }
 
     fun hasTarget(): Boolean = isEnabled() && targets.isNotEmpty()
+    fun targetsPosition(pos: BlockPos): Boolean = isEnabled() && targets.any { it.pos == pos && it.isCurrent() }
 
-    fun hasPendingAction(): Boolean = isEnabled() && (prepared != null || targets.any {
+    fun hasPendingAction(): Boolean = isEnabled() && targets.any {
         it.progress.phase == PacketMineProgress.Phase.START || it.progress.phase == PacketMineProgress.Phase.MINING ||
             it.progress.phase == PacketMineProgress.Phase.CONFIRM
-    })
+            || it.progress.phase == PacketMineProgress.Phase.REBREAK && !it.level.getBlockState(it.pos).isAir
+    }
 
     data class DebugTarget(val x: Int, val y: Int, val z: Int, val phase: String,
         val progress: Float, val primed: Boolean, val confirmationTicks: Long, val toolSlot: Int)
@@ -254,6 +252,8 @@ object PacketMineModule :
                 }
             }
         targets = targets + Target(player, level, pos.immutable(), direction, state)
+        nextStartTick = tick
+        meow.ancient.module.modules.combat.CrystalAuraModule.yieldToManualMining(pos)
         return true
     }
 
@@ -280,7 +280,7 @@ object PacketMineModule :
         else if (selectBlock(hit.blockPos, hit.direction)) event.cancel = true
     }
 
-    @Commando
+    @Commando(priority = 110)
     fun onUpdate(event: PlayerUpdateEvent) {
         tick++
         prepared = null
@@ -327,15 +327,10 @@ object PacketMineModule :
             if (
                 current.progress.phase == PacketMineProgress.Phase.MINING && !current.finishPending
             ) {
-                // Keep the tool leased while damage advances, rather than restoring it at warmup.
+                // Keep the tool leased while damage advances.
                 if (!ActionCoordinator.canAct(this)
                     || !SilentSwapUtil.prepareSlot(current.toolSlot, 2, this)) continue
-                // Efficiency is acknowledged through server attributes on 1.21+, not inferred
-                // from a newly packet-selected tool. Sample it while the tool remains selected.
-                if (tick < current.warmupUntilTick) {
-                    swing(current.player)
-                    continue
-                }
+                // Begin immediately with conservative attributes; server updates refine the speed.
                 current.lastDelta =
                     PacketMineToolSpeed.progress(
                         current.player,
@@ -373,7 +368,7 @@ object PacketMineModule :
         // Prepare before movement to respect SilentSwap's packet order; the camera slot is
         // untouched.
         val slot = if (autoTool) current.toolSlot else current.player.inventory.selectedSlot
-        if (!SilentSwapUtil.prepareSlot(slot, toolWarmup(current.player, slot), this)) return
+        if (!SilentSwapUtil.prepareSlot(slot, 2, this)) return
         prepared = Prepared(current, current.progress.phase, slot, tick)
     }
 
@@ -438,7 +433,6 @@ object PacketMineModule :
                     )
                 current.serverBreakSpeed =
                     current.player.getAttributeValue(Attributes.BLOCK_BREAK_SPEED)
-                current.warmupUntilTick = tick + toolWarmup(current.player, action.slot)
                 current.startNanos = System.nanoTime()
                 if (doubleBreak)
                     sendAction(current, ServerboundPlayerActionPacket.Action.STOP_DESTROY_BLOCK)
@@ -463,12 +457,6 @@ object PacketMineModule :
             PacketMineProgress.Phase.CONFIRM -> Unit
         }
         lastAction = current
-    }
-
-    private fun toolWarmup(player: LocalPlayer, slot: Int): Int {
-        if (!autoTool || player.inventory.selectedSlot == slot) return 2
-        val ping = player.connection.getPlayerInfo(player.uuid)?.latency ?: 150
-        return (ceil(ping.coerceAtLeast(0) / 50.0).toInt() + 3).coerceIn(3, 20)
     }
 
     private fun enoughTime(current: Target): Boolean {
@@ -601,11 +589,8 @@ object PacketMineModule :
         if (lastAction === current) lastAction = null
         if (abort) abort(current)
         if (
-            targets.none {
-                it.progress.phase == PacketMineProgress.Phase.CONFIRM ||
-                    it.progress.phase == PacketMineProgress.Phase.MINING &&
-                        tick < it.warmupUntilTick
-            }
+            targets.none { it.progress.phase == PacketMineProgress.Phase.CONFIRM ||
+                it.progress.phase == PacketMineProgress.Phase.MINING }
         )
             SilentSwapUtil.releasePreparedSlot(this)
     }
@@ -721,37 +706,6 @@ object PacketMineModule :
     }
 
     private fun visibleHit(current: Target): BlockHitResult? {
-        val shape = current.state.getShape(current.level, current.pos)
-        if (shape.isEmpty) return null
-        val box = shape.bounds().move(current.pos)
-        val center = box.center
-        val points =
-            listOf(
-                center,
-                Vec3(box.minX + 0.001, center.y, center.z),
-                Vec3(box.maxX - 0.001, center.y, center.z),
-                Vec3(center.x, box.minY + 0.001, center.z),
-                Vec3(center.x, box.maxY - 0.001, center.z),
-                Vec3(center.x, center.y, box.minZ + 0.001),
-                Vec3(center.x, center.y, box.maxZ - 0.001),
-            )
-        val reach = minOf(range, current.player.blockInteractionRange())
-        return points
-            .asSequence()
-            .mapNotNull { trace(current, it) }
-            .firstOrNull { current.player.eyePosition.distanceToSqr(it.location) <= reach * reach }
+        return AuraActionQueue.visibleHit(current.player, current.pos, range)
     }
-
-    private fun trace(current: Target, end: Vec3): BlockHitResult? =
-        current.level
-            .clip(
-                ClipContext(
-                    current.player.eyePosition,
-                    end,
-                    ClipContext.Block.OUTLINE,
-                    ClipContext.Fluid.NONE,
-                    current.player,
-                )
-            )
-            .takeIf { it.type == HitResult.Type.BLOCK && it.blockPos == current.pos }
 }
