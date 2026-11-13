@@ -11,9 +11,12 @@ internal class CrystalTerrainPlan(val pos: BlockPos, val targetId: Int) {
         private set
     var miningStarted = false
         private set
+    var priorityBoosted = false
+        private set
     private var sentTick = 0
 
     fun miningStartAccepted() { miningStarted = true }
+    fun boostPriority() { priorityBoosted = true }
 
     fun observeServerState(state: BlockState) {
         if (state.`is`(Blocks.OBSIDIAN)) stage = Stage.DONE

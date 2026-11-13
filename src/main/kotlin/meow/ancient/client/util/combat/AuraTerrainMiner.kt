@@ -16,6 +16,7 @@ import net.minecraft.client.multiplayer.ClientLevel
 import net.minecraft.client.player.LocalPlayer
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
+import net.minecraft.core.Holder
 import net.minecraft.network.protocol.game.ClientboundBlockUpdatePacket
 import net.minecraft.network.protocol.Packet
 import net.minecraft.network.protocol.game.ClientboundSectionBlocksUpdatePacket
@@ -24,13 +25,15 @@ import net.minecraft.network.protocol.game.ServerboundPlayerActionPacket
 import net.minecraft.network.protocol.game.ServerboundPunchPacket
 import net.minecraft.world.InteractionHand
 import net.minecraft.world.entity.ai.attributes.Attributes
+import net.minecraft.world.entity.ai.attributes.Attribute
 import net.minecraft.world.item.ItemStack
 import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.phys.AABB
 import sweetie.evaware.flora.api.Commando
+import kotlin.math.ceil
 
 /** A single temporary terrain target. It does not alter PacketMine's manual targets/settings. */
-class AuraTerrainMiner(private val owner: Any, private val actions: AuraActionQueue,
+class AuraTerrainMiner(private var owner: Any, private val actions: AuraActionQueue,
                        private val startAllowed: (BlockPos) -> Boolean = { true }) {
     private class Target(val player: LocalPlayer, val level: ClientLevel, val pos: BlockPos) {
         val progress = PacketMineProgress()
@@ -66,6 +69,28 @@ class AuraTerrainMiner(private val owner: Any, private val actions: AuraActionQu
     } ?: 0f
 
     init { EventManager.register(this) }
+
+    internal fun changeOwner(newOwner: Any) {
+        if (owner == newOwner) return
+        SilentSwapUtil.releasePreparedSlot(owner)
+        owner = newOwner
+        actions.changeOwner(newOwner)
+    }
+
+    fun estimatedMiningTicks(player: LocalPlayer, pos: BlockPos): Int {
+        val level = mc.level ?: return Int.MAX_VALUE
+        val state = level.getBlockState(pos)
+        val slot = toolSlot(player, state, pos)
+        if (slot < 0) return Int.MAX_VALUE
+        val tool = player.inventory.getItem(slot)
+        fun attribute(type: Holder<Attribute>): Double {
+            val actual = player.getAttribute(type) ?: return type.value().defaultValue
+            return PacketMineToolSpeed.attributeValue(actual, type, player.mainHandItem, tool)
+        }
+        val delta = PacketMineToolSpeed.progress(player, tool, state, state.getDestroySpeed(level, pos),
+            attribute(Attributes.MINING_EFFICIENCY), attribute(Attributes.BLOCK_BREAK_SPEED))
+        return if (delta > 0f) ceil(1.0 / delta).toInt().coerceAtLeast(1) else Int.MAX_VALUE
+    }
 
     companion object {
         private var vanillaDepth = 0

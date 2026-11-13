@@ -107,6 +107,21 @@ object AnchorAuraModule : Module(
 
     private fun getMoveFixMode() = MoveFixMode.fromName(moveFix)
     fun hasPendingAction() = isEnabled() && (queuedPlan != null || sequence != null)
+    fun hasInFlightAction() = isEnabled() && sequence != null
+
+    /** Read-only comparison against the action the anchor aura can actually perform. */
+    fun availableDamage(): Float {
+        if (!isEnabled()) return 0f
+        val player = mc.player ?: return 0f
+        if (mc.level?.dimension() == Level.NETHER || hasInFlightAction()) return 0f
+        val target = findTarget(player) ?: return 0f
+        val hp = AnticheatManager.getHealth(target)
+        val plan = findPlan(player, target, hp, SequenceStage.DETONATE_SENT)
+            ?: findPlan(player, target, hp, SequenceStage.CHARGE_SENT)
+            ?: findPlan(player, target, hp, SequenceStage.PLACE_SENT) ?: return 0f
+        if (plan.stage == SequenceStage.DETONATE_SENT && detonationSlot(player) == null) return 0f
+        return anchorDamage(plan.pos, target)
+    }
 
     @Commando(priority = 90)
     fun onUpdate(event: PlayerUpdateEvent) {

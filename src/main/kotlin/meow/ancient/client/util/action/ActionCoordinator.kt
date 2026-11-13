@@ -71,6 +71,7 @@ object ActionCoordinator {
             name == "CrystalAura" -> ActionOwner(name, ActionGroup.COMBAT, 323)
             name == "AnchorAura" -> ActionOwner(name, ActionGroup.COMBAT, 322)
             name == "CrystalTerrain" -> ActionOwner(name, ActionGroup.COMBAT, 321)
+            name == "CrystalTerrainBoost" -> ActionOwner(name, ActionGroup.COMBAT, 324)
             name == "HitAura" -> ActionOwner(name, ActionGroup.COMBAT, 320)
             name == "TriggerBot" -> ActionOwner(name, ActionGroup.COMBAT, 300)
             it.contains(".combat.") -> ActionOwner(name, ActionGroup.COMBAT, 310, helper)
@@ -87,6 +88,7 @@ object ActionCoordinator {
     }
 
     fun crystalTerrainOwner(): ActionOwner = ownerFor("meow.ancient.module.modules.combat.CrystalTerrainModule")
+    fun boostedCrystalTerrainOwner(): ActionOwner = ownerFor("meow.ancient.module.modules.combat.CrystalTerrainBoostModule")
 
     private fun preferred(): ActionOwner? = when {
         manualUseActive() -> manual
@@ -95,6 +97,7 @@ object ActionCoordinator {
         SurroundModule.hasPendingAction() -> resolveOwner(SurroundModule)
         SpearKillModule.isEnabled() && SpearKillModule.target != null -> resolveOwner(SpearKillModule)
         CrystalAuraModule.hasCombatAction() -> resolveOwner(CrystalAuraModule)
+        CrystalAuraModule.hasBoostedTerrainAction() -> boostedCrystalTerrainOwner()
         AnchorAuraModule.hasPendingAction() -> resolveOwner(AnchorAuraModule)
         CrystalAuraModule.hasTerrainAction() -> crystalTerrainOwner()
         HitAuraModule.isEnabled() && HitAuraModule.currentTarget != null && !HitAuraModule.shouldIgnoreContext() -> resolveOwner(HitAuraModule)

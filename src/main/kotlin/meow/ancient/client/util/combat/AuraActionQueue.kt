@@ -34,7 +34,7 @@ import net.minecraft.util.Mth
 import kotlin.math.abs
 
 /** Before flying, interactions use the position and look the server already knows. */
-class AuraActionQueue(private val owner: Any) {
+class AuraActionQueue(private var owner: Any) {
     private var player: LocalPlayer? = null
     private var level: ClientLevel? = null
     private var sentRotation = Rotation(0f, 0f)
@@ -52,6 +52,12 @@ class AuraActionQueue(private val owner: Any) {
     fun beginTick() {
         pending = null
         syncContext()
+    }
+
+    internal fun changeOwner(newOwner: Any) {
+        if (owner == newOwner) return
+        pending = null
+        owner = newOwner
     }
 
     private fun syncContext() {

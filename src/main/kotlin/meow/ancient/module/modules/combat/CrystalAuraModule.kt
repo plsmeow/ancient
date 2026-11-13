@@ -7,6 +7,7 @@ import meow.ancient.client.util.anticheat.AnticheatManager
 import meow.ancient.client.util.combat.AuraActionQueue
 import meow.ancient.client.util.combat.AuraTerrainMiner
 import meow.ancient.client.util.combat.CrystalTerrainPlan
+import meow.ancient.client.util.combat.CrystalTerrainPriority
 import meow.ancient.client.util.combat.ExplosionDamageUtil
 import meow.ancient.client.util.friend.FriendRepository
 import meow.ancient.client.util.target.TargetRepository
@@ -73,23 +74,31 @@ object CrystalAuraModule : Module(
         isVisible = { basePlace })
     val terrainPacketMine by boolean("Terrain PacketMine", false, "Uses packet mining instead of vanilla block breaking",
         isVisible = { basePlace && autoMineTerrain })
+    val terrainDamageGain by number("Terrain Damage Gain", 3.0, 1.0, 12.0, 0.5, 1,
+        description = "Minimum damage gain to prioritize quick terrain mining; also requires at least 25% more damage",
+        isVisible = { basePlace && autoMineTerrain })
     val render by boolean("Render", true, "Animated placement, crystal and terrain targets")
     val renderSlideSpeed by number("Render Slide Speed", 14.0, 5.0, 30.0, 1.0, 0, isVisible = { render })
 
     private enum class PendingKind { CRYSTAL, BASE, BREAK }
     private data class Pending(val kind: PendingKind, val pos: BlockPos, val sentTick: Int, val entityId: Int = -1,
                                val box: AABB = AABB(pos))
-    private data class Site(val pos: BlockPos, val hit: BlockHitResult)
+    private data class Site(val pos: BlockPos, val hit: BlockHitResult, val damage: Float = 0f)
+    private data class TerrainCandidate(val plan: CrystalTerrainPlan, val damage: Float, val miningTicks: Int)
     private data class Prepared(val kind: PendingKind, val pos: BlockPos, val targetId: Int,
         val since: Int, val box: AABB, val hit: BlockHitResult? = null, val entityId: Int = -1,
         val hand: InteractionHand = InteractionHand.MAIN_HAND, val slot: Int = -1, val terrainBase: Boolean = false)
     private val actions = AuraActionQueue(this)
-    private val terrainOwner = ActionCoordinator.crystalTerrainOwner()
+    private var terrainOwner = ActionCoordinator.crystalTerrainOwner()
     private val terrainActions = AuraActionQueue(terrainOwner)
     private val miner = AuraTerrainMiner(terrainOwner, terrainActions, ::allowedTerrainStart)
     private val visual = AuraTargetRenderer({ isEnabled() && render }, { renderSlideSpeed })
     private var preferredPos: BlockPos? = null
     private var terrainPlan: CrystalTerrainPlan? = null
+    private var nextTerrainComparison = 0
+    private var terrainSearchTick = -1
+    private var terrainSearchResult: TerrainCandidate? = null
+    private var terrainSearchQuickResult: TerrainCandidate? = null
     private var pending: Pending? = null
     private var prepared: Prepared? = null
     private var sending: Packet<*>? = null
@@ -109,6 +118,9 @@ object CrystalAuraModule : Module(
     fun hasPendingAction() = isEnabled() && (prepared != null || pending != null || miner.active)
     fun hasCombatAction() = isEnabled() && (prepared != null || pending != null)
     fun hasTerrainAction() = isEnabled() && miner.active
+    fun hasBoostedTerrainAction() = isEnabled() && basePlace && autoMineTerrain
+        && terrainPlan?.priorityBoosted == true && terrainPlan?.stage == CrystalTerrainPlan.Stage.MINE
+        && prepared == null && pending == null && !AnchorAuraModule.hasInFlightAction()
 
     fun yieldToManualMining(pos: BlockPos) {
         miner.cancel()
@@ -141,7 +153,8 @@ object CrystalAuraModule : Module(
         tick++
         failedSites.entries.removeIf { tick >= it.value }
         currentTarget = findTarget(player)
-        if (!ActionCoordinator.canAct(this) || player.isUsingItem || player.isSpectator || mc.gui.screen() != null
+        val updateOwner = if (hasBoostedTerrainAction()) ActionCoordinator.boostedCrystalTerrainOwner() else this
+        if (!ActionCoordinator.canAct(updateOwner) || player.isUsingItem || player.isSpectator || mc.gui.screen() != null
             || player.containerMenu !== player.inventoryMenu || !player.containerMenu.carried.isEmpty
             || InventoryMoveModule.isInventoryActionSlowed()) {
             miner.cancel()
@@ -172,6 +185,7 @@ object CrystalAuraModule : Module(
         val existing = prepared
         if (existing != null) {
             if (existing.targetId == target.id && validPrepared(player, target, existing) && tick - existing.since < 6) {
+                if (maybeImproveTerrain(player, target, targetHp)) return
                 prepare(player)
                 return
             }
@@ -182,22 +196,71 @@ object CrystalAuraModule : Module(
         if (placeTimer < placeDelay.toInt()) return
         val hasCrystal = player.offhandItem.`is`(Items.END_CRYSTAL) || InventoryUtil.findHotbarSlot(Items.END_CRYSTAL) >= 0
         if (!hasCrystal) return
-        val crystalSite = findSite(player, target, targetHp, base = false)
+        val compareTerrain = canCompareTerrain(player) && tick >= nextTerrainComparison
+        val crystalSite = findSite(player, target, targetHp, base = false, preferCached = !compareTerrain)
+        val hasObsidian = basePlace && (player.offhandItem.`is`(Items.OBSIDIAN) || InventoryUtil.findHotbarSlot(Items.OBSIDIAN) >= 0)
+        val baseSite = if (hasObsidian && (crystalSite == null || compareTerrain))
+            findSite(player, target, targetHp, base = true, preferCached = !compareTerrain) else null
+        if (maybeImproveTerrain(player, target, targetHp, maxOf(crystalSite?.damage ?: 0f, baseSite?.damage ?: 0f))) return
         if (crystalSite != null) {
             schedulePlace(player, crystalSite, Items.END_CRYSTAL, PendingKind.CRYSTAL)
             return
         }
-        if (basePlace && (player.offhandItem.`is`(Items.OBSIDIAN) || InventoryUtil.findHotbarSlot(Items.OBSIDIAN) >= 0)) {
-            val baseSite = findSite(player, target, targetHp, base = true)
-            if (baseSite != null) {
-                schedulePlace(player, baseSite, Items.OBSIDIAN, PendingKind.BASE)
-                return
-            }
+        if (baseSite != null) {
+            schedulePlace(player, baseSite, Items.OBSIDIAN, PendingKind.BASE)
+            return
         }
         if (basePlace && autoMineTerrain) {
             val site = findTerrainSite(player, target, targetHp) ?: return
-            startTerrain(site)
+            startTerrain(site.plan)
         }
+    }
+
+    private fun canCompareTerrain(player: LocalPlayer): Boolean = basePlace && autoMineTerrain
+        && (player.offhandItem.`is`(Items.OBSIDIAN) || InventoryUtil.findHotbarSlot(Items.OBSIDIAN) >= 0)
+        && (player.offhandItem.`is`(Items.END_CRYSTAL) || InventoryUtil.findHotbarSlot(Items.END_CRYSTAL) >= 0)
+
+    private fun availableCrystalDamage(player: LocalPlayer, target: Player, hp: Float): Float = maxOf(
+        findSite(player, target, hp, base = false, preferCached = false)?.damage ?: 0f,
+        findSite(player, target, hp, base = true, preferCached = false)?.damage ?: 0f)
+
+    private fun gainJustifiesMining(damage: Float, immediateDamage: Float, hp: Float, miningTicks: Int): Boolean {
+        if (AnchorAuraModule.hasInFlightAction() || immediateDamage >= hp || miningTicks > 20) return false
+        if (immediateDamage > 0f && !CrystalTerrainPriority.shouldBoost(damage, immediateDamage, hp,
+                terrainDamageGain.toFloat(), miningTicks)) return false
+        val availableDamage = maxOf(immediateDamage, AnchorAuraModule.availableDamage())
+        return CrystalTerrainPriority.shouldBoost(damage, availableDamage, hp, terrainDamageGain.toFloat(), miningTicks)
+    }
+
+    private fun maybeImproveTerrain(player: LocalPlayer, target: Player, hp: Float, immediateDamage: Float? = null): Boolean {
+        if (!canCompareTerrain(player) || tick < nextTerrainComparison || AnchorAuraModule.hasInFlightAction()) return false
+        nextTerrainComparison = tick + 4
+        val damage = immediateDamage ?: availableCrystalDamage(player, target, hp)
+        if (damage >= hp) return false
+        val candidate = findTerrainSite(player, target, hp, quickOnly = true) ?: return false
+        if (!gainJustifiesMining(candidate.damage, damage, hp, candidate.miningTicks)) return false
+        clearPrepared()
+        candidate.plan.boostPriority()
+        startTerrain(candidate.plan)
+        return true
+    }
+
+    private fun refreshTerrainPriority(player: LocalPlayer, plan: CrystalTerrainPlan) {
+        if (!plan.priorityBoosted && canCompareTerrain(player) && tick >= nextTerrainComparison
+            && !AnchorAuraModule.hasInFlightAction()) {
+            nextTerrainComparison = tick + 4
+            val target = mc.level?.getEntity(plan.targetId) as? Player
+            if (target != null && target.isAlive && !target.isRemoved) {
+                val hp = AnticheatManager.getHealth(target)
+                val immediate = availableCrystalDamage(player, target, hp)
+                if (gainJustifiesMining(terrainDamage(plan.pos, target, listOf(plan.pos)), immediate, hp,
+                        miner.estimatedMiningTicks(player, plan.pos))) plan.boostPriority()
+            }
+        }
+        // A promoted operation keeps its cell and progress; never restart it to change priority.
+        terrainOwner = if (plan.priorityBoosted && !AnchorAuraModule.hasInFlightAction())
+            ActionCoordinator.boostedCrystalTerrainOwner() else ActionCoordinator.crystalTerrainOwner()
+        miner.changeOwner(terrainOwner)
     }
 
     private fun startTerrain(plan: CrystalTerrainPlan) {
@@ -240,6 +303,7 @@ object CrystalAuraModule : Module(
                 terrainPlan = null
                 return false
             }
+            refreshTerrainPriority(player, plan)
             if (!ActionCoordinator.canAct(terrainOwner)) {
                 miner.cancel()
                 return true
@@ -353,7 +417,8 @@ object CrystalAuraModule : Module(
             p.x + r, minOf(p.y + r, level.maxY - 1), p.z + r)
     }
 
-    private fun findSite(player: LocalPlayer, target: Player, targetHp: Float, base: Boolean, onlyPos: BlockPos? = null): Site? {
+    private fun findSite(player: LocalPlayer, target: Player, targetHp: Float, base: Boolean, onlyPos: BlockPos? = null,
+                         preferCached: Boolean = true): Site? {
         val level = mc.level ?: return null
         var best: Site? = null
         var bestDamage = 0f
@@ -385,9 +450,9 @@ object CrystalAuraModule : Module(
             val hit = if (base) AuraActionQueue.placementHit(player, pos, placeRange, wallCheck)
                 else AuraActionQueue.visibleHit(player, pos, placeRange, wallCheck = wallCheck)
             if (hit == null) continue
-            val site = Site(pos, hit)
+            val site = Site(pos, hit, damage)
             // Reuse a validated site immediately; a full scan is only needed when it stops working.
-            if (pos == preferredPos) return site
+            if (preferCached && pos == preferredPos) return site
             if (damage > bestDamage) { best = site; bestDamage = damage }
         }
         return best
@@ -574,10 +639,16 @@ object CrystalAuraModule : Module(
         }
     }
 
-    private fun findTerrainSite(player: LocalPlayer, target: Player, targetHp: Float): CrystalTerrainPlan? {
+    private fun findTerrainSite(player: LocalPlayer, target: Player, targetHp: Float, quickOnly: Boolean = false): TerrainCandidate? {
+        if (terrainSearchTick == tick) return if (quickOnly) terrainSearchQuickResult else terrainSearchResult
+        terrainSearchTick = tick
+        terrainSearchResult = null
+        terrainSearchQuickResult = null
         val level = mc.level ?: return null
-        var best: CrystalTerrainPlan? = null
+        var best: TerrainCandidate? = null
+        var bestQuick: TerrainCandidate? = null
         var bestScore = Double.NEGATIVE_INFINITY
+        var bestQuickScore = Double.NEGATIVE_INFINITY
         val canBase = basePlace && (player.offhandItem.`is`(Items.OBSIDIAN) || InventoryUtil.findHotbarSlot(Items.OBSIDIAN) >= 0)
         val attackReach = minOf(breakRange, player.entityInteractionRange())
         val candidates = sequence {
@@ -597,20 +668,24 @@ object CrystalAuraModule : Module(
             if (player.eyePosition.distanceToSqr(RotationUtil.getNearestPoint(player.eyePosition, futureCrystal)) > attackReach * attackReach) continue
             if (level.getEntities(null, crystalBox(pos)).any { it.isAlive }
                 || level.getEntities(null, AABB(pos)).any { !it.isRemoved && it.blocksBuilding }) continue
+            val damage = terrainDamage(pos, target, clear)
+            if (damage < minDamage.toFloat() && !(lethalOverride && damage >= targetHp)
+                || terrainDamage(pos, player, clear) > maxSelfDamage.toFloat()) continue
+            val miningTicks = miner.estimatedMiningTicks(player, pos)
+            if (damage <= (best?.damage ?: 0f) && (miningTicks > 20 || damage <= (bestQuick?.damage ?: 0f))) continue
             val cleared = clear.associateWith { Blocks.AIR.defaultBlockState() }
             if (AuraActionQueue.placementHit(player, pos, placeRange, wallCheck, cleared) == null) continue
             if (AuraActionQueue.visibleHit(player, pos, placeRange, wallCheck = wallCheck,
                     overrides = cleared + (pos to Blocks.OBSIDIAN.defaultBlockState())) == null) continue
-            val damage = terrainDamage(pos, target, clear)
-            if (damage < minDamage.toFloat() && !(lethalOverride && damage >= targetHp)
-                || terrainDamage(pos, player, clear) > maxSelfDamage.toFloat()) continue
             if (AuraActionQueue.visibleHit(player, pos, placeRange) == null) continue
             val score = damage - player.eyePosition.distanceToSqr(Vec3.atCenterOf(pos)) * 0.01
-            val site = CrystalTerrainPlan(pos, target.id)
-            if (pos == preferredPos) return site
+            val site = TerrainCandidate(CrystalTerrainPlan(pos, target.id), damage, miningTicks)
             if (score > bestScore) { best = site; bestScore = score }
+            if (miningTicks <= 20 && score > bestQuickScore) { bestQuick = site; bestQuickScore = score }
         }
-        return best
+        terrainSearchResult = best
+        terrainSearchQuickResult = bestQuick
+        return if (quickOnly) bestQuick else best
     }
 
     private fun terrainDamage(pos: BlockPos, target: Player, clear: List<BlockPos>): Float {
@@ -634,12 +709,18 @@ object CrystalAuraModule : Module(
         currentTarget = null
         preferredPos = null
         terrainPlan = null
+        nextTerrainComparison = 0
+        terrainSearchTick = -1
+        terrainSearchResult = null
+        terrainSearchQuickResult = null
         world = null
         localPlayer = null
         actions.beginTick()
         terrainActions.beginTick()
         visual.reset()
         miner.cancel()
+        terrainOwner = ActionCoordinator.crystalTerrainOwner()
+        miner.changeOwner(terrainOwner)
     }
 
     override fun onEnable() = reset()
