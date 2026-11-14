@@ -5,9 +5,8 @@ import meow.ancient.client.extensions.PLAYER
 import meow.ancient.client.extensions.mc
 import meow.ancient.client.util.action.ActionCoordinator
 import meow.ancient.client.util.combat.AuraActionQueue
-import meow.ancient.client.gui.material.AnimFloat
-import meow.ancient.client.gui.material.M3Theme
 import meow.ancient.client.util.inventory.SilentSwapUtil
+import meow.ancient.client.util.render.AuraTargetRenderer
 import meow.ancient.client.util.rotation.MoveFixMode
 import meow.ancient.client.util.rotation.RotationUtil
 import meow.ancient.event.events.ClientDisconnectEvent
@@ -19,14 +18,11 @@ import meow.ancient.event.events.PlayerUpdateEvent
 import meow.ancient.module.Module
 import meow.ancient.module.modules.movement.InventoryMoveModule
 import meow.ancient.module.setting.KeybindSetting
-import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents
 import net.minecraft.client.multiplayer.ClientLevel
 import net.minecraft.client.player.LocalPlayer
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.core.Holder
-import net.minecraft.gizmos.GizmoStyle
-import net.minecraft.gizmos.Gizmos
 import net.minecraft.network.protocol.game.ClientboundBlockUpdatePacket
 import net.minecraft.network.protocol.game.ClientboundSectionBlocksUpdatePacket
 import net.minecraft.network.protocol.game.ClientboundUpdateAttributesPacket
@@ -82,6 +78,7 @@ object PacketMineModule :
     private val rotate by boolean("Rotations", true)
     private val swing by boolean("Swing", true)
     private val render by boolean("Render", true)
+    private val renderSlideSpeed by number("Render Slide Speed", 14.0, 5.0, 30.0, 1.0, 0, isVisible = { render })
     private val postBreakDelay by number("Post Break Delay", 0.0, 0.0, 20.0, 1.0, 0, unit = "ticks")
     private val confirmTimeout by
         number("Confirm Timeout", 60.0, 20.0, 200.0, 1.0, 0, unit = "ticks")
@@ -104,8 +101,6 @@ object PacketMineModule :
         var serverEfficiency = 0.0
         var serverBreakSpeed = player.getAttributeValue(Attributes.BLOCK_BREAK_SPEED)
         var retryAfterTick = 0L
-        val renderSize = AnimFloat(0.08f, speed = 22f)
-        var lastRenderNanos = System.nanoTime()
 
         fun isCurrent(): Boolean =
             mc.player === player && mc.level === level && player.connection.connection.isConnected
@@ -121,12 +116,13 @@ object PacketMineModule :
     @Volatile private var targets = emptyList<Target>()
     private var prepared: Prepared? = null
     private val actions = AuraActionQueue(this)
+    private val primaryVisual = AuraTargetRenderer({ isEnabled() && render }, { renderSlideSpeed })
+    private val secondaryVisual = AuraTargetRenderer({ isEnabled() && render }, { renderSlideSpeed })
     private var sending: Packet<*>? = null
     private var accepted = false
     private var lastAction: Target? = null
     private var tick = 0L
     private var nextStartTick = 0L
-    private var renderRegistered = false
     private var pendingAborts = emptyList<Target>()
 
     init {
@@ -144,50 +140,6 @@ object PacketMineModule :
         tick = 0L
         nextStartTick = 0L
         mc.gameMode?.stopDestroyBlock()
-        if (!renderRegistered) {
-            LevelRenderEvents.BEFORE_GIZMOS.register { _ ->
-                if (!isEnabled() || !render) return@register
-                for (current in targets) {
-                    if (!current.isCurrent()) continue
-                    val color =
-                        if (current.progress.phase == PacketMineProgress.Phase.REBREAK)
-                            M3Theme.current.tertiary
-                        else M3Theme.current.primary
-                    val box = AABB(current.pos)
-                    Gizmos.cuboid(
-                            box.inflate(0.002),
-                            GizmoStyle.strokeAndFill(
-                                color.alpha(210).argb,
-                                3f,
-                                color.alpha(28).argb,
-                            ),
-                        )
-                        .setAlwaysOnTop()
-                    val progress =
-                        if (
-                            current.progress.phase == PacketMineProgress.Phase.CONFIRM ||
-                                current.progress.rebreakPrimed
-                        )
-                            1f
-                        else (current.progress.damage / breakProgress.toFloat()).coerceIn(0f, 1f)
-                    val now = System.nanoTime()
-                    val dt = ((now - current.lastRenderNanos) / 1.0E9).toFloat()
-                    current.lastRenderNanos = now
-                    val size =
-                        current.renderSize.update(0.08f + progress * 0.92f, dt).coerceIn(0.08f, 1f)
-                    Gizmos.cuboid(
-                            box.inflate((size.toDouble() - 1.0) * 0.5),
-                            GizmoStyle.strokeAndFill(
-                                color.alpha(245).argb,
-                                3f,
-                                color.alpha(85).argb,
-                            ),
-                        )
-                        .setAlwaysOnTop()
-                }
-            }
-            renderRegistered = true
-        }
     }
 
     override fun onDisable() = clearTargets(true)
@@ -285,6 +237,8 @@ object PacketMineModule :
         tick++
         prepared = null
         actions.beginTick()
+        primaryVisual.beginTick()
+        secondaryVisual.beginTick()
         for (current in targets) {
             if (
                 !current.isCurrent() ||
@@ -345,6 +299,9 @@ object PacketMineModule :
             }
         }
 
+        targets.lastOrNull()?.let { showMiningTarget(primaryVisual, it) }
+        targets.dropLast(1).firstOrNull()?.let { showMiningTarget(secondaryVisual, it) }
+
         // One tool and one aimed action per movement interval. Both block timers continue
         // independently.
         val candidates =
@@ -370,6 +327,13 @@ object PacketMineModule :
         val slot = if (autoTool) current.toolSlot else current.player.inventory.selectedSlot
         if (!SilentSwapUtil.prepareSlot(slot, 2, this)) return
         prepared = Prepared(current, current.progress.phase, slot, tick)
+    }
+
+    private fun showMiningTarget(visual: AuraTargetRenderer, current: Target) {
+        if (!current.isCurrent()) return
+        val progress = if (current.progress.phase == PacketMineProgress.Phase.CONFIRM || current.progress.rebreakPrimed)
+            1f else (current.progress.damage / breakProgress.toFloat()).coerceIn(0f, 1f)
+        visual.show(AABB(current.pos), AuraTargetRenderer.Kind.MINE, progress)
     }
 
     private fun needsAction(current: Target): Boolean {
@@ -569,7 +533,6 @@ object PacketMineModule :
 
     private fun resetMining(current: Target) {
         current.progress.restart()
-        current.renderSize.setImmediate(0.08f)
         current.tool = ItemStack.EMPTY
         current.finishPending = false
         current.lastDelta = 0f
@@ -580,6 +543,8 @@ object PacketMineModule :
         targets.forEach { clearTarget(it, abort) }
         prepared = null
         lastAction = null
+        primaryVisual.reset()
+        secondaryVisual.reset()
         SilentSwapUtil.releasePreparedSlot(this)
     }
 

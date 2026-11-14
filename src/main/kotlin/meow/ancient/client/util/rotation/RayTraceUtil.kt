@@ -30,13 +30,14 @@ object RayTraceUtil {
         target: Entity,
         rotation: Rotation = RotationManager.getServerRotation(),
         range: Double,
-        throughWalls: Boolean = true
+        throughWalls: Boolean = true,
+        eyes: Vec3? = null
     ): Boolean {
         if (!inGame) return false
         val localPlayer = mc.player ?: return false
         val currentLevel = mc.level ?: return false
 
-        val eyePos = localPlayer.eyePosition
+        val eyePos = eyes ?: localPlayer.eyePosition
         val expand = HitBoxesModule.expandAmount(target)
         val targetBox = target.boundingBox.inflate(target.pickRadius.toDouble().coerceAtLeast(expand))
 

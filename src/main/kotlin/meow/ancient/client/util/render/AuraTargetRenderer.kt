@@ -109,21 +109,21 @@ class AuraTargetRenderer(private val enabled: () -> Boolean, private val slideSp
         val outlineAlpha = ((175.0 + breathe * 35.0 + flash * 45.0) * opacity).toInt().coerceIn(0, 255)
 
         // Low-opacity fill and halo leave the entity and terrain readable.
-        Gizmos.cuboid(box, GizmoStyle.strokeAndFill(tint.alpha(outlineAlpha).argb, 1.5f,
+        Gizmos.cuboid(box, GizmoStyle.strokeAndFill(tint.alpha(outlineAlpha).argb, 1f,
             tint.alpha(((18 + breathe * 7 + flash * 22) * opacity).toInt()).argb)).setAlwaysOnTop()
         Gizmos.cuboid(box.inflate(0.018 + breathe * 0.008),
-            GizmoStyle.stroke(tint.alpha((20 * opacity).toInt()).argb, 4f)).setAlwaysOnTop()
+            GizmoStyle.stroke(tint.alpha((20 * opacity).toInt()).argb, 2f)).setAlwaysOnTop()
 
         if (desired.kind == Kind.MINE) {
             miningProgress += (desired.progress - miningProgress) * (1.0 - exp(-20.0 * dt))
             val progressBox = miningBox(currentCenter, size, miningProgress)
-            Gizmos.cuboid(progressBox, GizmoStyle.strokeAndFill(tint.alpha((210 * opacity).toInt()).argb, 1.5f,
+            Gizmos.cuboid(progressBox, GizmoStyle.strokeAndFill(tint.alpha((210 * opacity).toInt()).argb, 1f,
                 tint.alpha((100 * opacity).toInt()).argb)).setAlwaysOnTop()
         }
 
         val tail = trail!!
         if (tail.distanceToSqr(currentCenter) > 0.0025) {
-            Gizmos.cuboid(box(tail, size), GizmoStyle.stroke(tint.alpha((28 * opacity).toInt()).argb, 1f)).setAlwaysOnTop()
+            Gizmos.cuboid(box(tail, size), GizmoStyle.stroke(tint.alpha((28 * opacity).toInt()).argb, 0.75f)).setAlwaysOnTop()
         }
     }
 

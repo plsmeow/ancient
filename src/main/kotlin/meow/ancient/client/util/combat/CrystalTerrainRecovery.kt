@@ -1,5 +1,7 @@
 package meow.ancient.client.util.combat
 
+import net.minecraft.core.BlockPos
+
 /** Bounds retries without replacing a still usable selected cell on every failed click. */
 internal class CrystalTerrainRecovery {
     enum class Decision { CONTINUE, SUSPEND, BACKOFF, ABANDON }
@@ -9,6 +11,7 @@ internal class CrystalTerrainRecovery {
         private set
     private var unreachableSince: Int? = null
     private var lastStage: CrystalTerrainPlan.Stage? = null
+    private var lastMiningPos: BlockPos? = null
     private var lastProgress = 0f
     private var advancedAt = 0
     private var placementAttempts = 0
@@ -21,13 +24,14 @@ internal class CrystalTerrainRecovery {
     fun miningFailed(tick: Int) { miningFailures++; advancedAt = tick; lastProgress = 0f; retryAt = tick + 4 }
 
     fun observe(tick: Int, stage: CrystalTerrainPlan.Stage, reachable: Boolean, progress: Float,
-                stallTimeout: Int): Decision {
+                stallTimeout: Int, miningPos: BlockPos? = null): Decision {
         if (stage == CrystalTerrainPlan.Stage.DONE) { suspended = false; return Decision.CONTINUE }
         activeTicks += observedAt?.let { (tick - it).coerceAtLeast(0) } ?: 0
         observedAt = tick
-        if (stage != lastStage) {
-            lastStage = stage; advancedAt = tick; lastProgress = 0f
-            if (stage == CrystalTerrainPlan.Stage.BASE) { miningFailures = 0; retryAt = tick }
+        if (stage != lastStage || miningPos != lastMiningPos) {
+            val changedBlock = miningPos != lastMiningPos
+            lastStage = stage; lastMiningPos = miningPos; advancedAt = tick; lastProgress = 0f
+            if (stage == CrystalTerrainPlan.Stage.BASE || changedBlock) { miningFailures = 0; retryAt = tick }
         }
         if (progress > lastProgress + 0.001f) { advancedAt = tick; lastProgress = progress }
         suspended = !reachable

@@ -57,9 +57,13 @@ object AutoMaceModule : Module(
     private var inventoryTransaction: InventoryActionSource? = null
     private var preparingInventory = false
 
-    fun isForceReady(target: LivingEntity): Boolean = force
-        && (!syncHurtTime || target.hurtTime <= 1)
-        && findReadyMaceSlot() != -1
+    fun isForceReady(target: LivingEntity, ticksAhead: Int = 0): Boolean = force
+        && (!syncHurtTime || target.hurtTime <= 1 + ticksAhead.coerceIn(0, 1))
+        && isSmashReady(ticksAhead)
+
+    fun isSmashReady(ticksAhead: Int = 0): Boolean = readyMaceSlot(ticksAhead) != -1
+
+    fun readyMaceSlot(ticksAhead: Int = 0): Int = findReadyMaceSlot(ticksAhead)
 
     fun beforeAttack(): AttackPreparation {
         chestSwappedThisAttack = false
@@ -208,12 +212,14 @@ object AutoMaceModule : Module(
         }
     }
 
-    private fun findReadyMaceSlot(): Int {
+    private fun findReadyMaceSlot(ticksAhead: Int = 0): Int {
         if (!isEnabled()) return -1
         val player = mc.player ?: return -1
         if (mc.level == null || !player.connection.connection.isConnected) return -1
         if (player.isFallFlying && !elytraHandling) return -1
-        if (!GroundSpoofModule.isEnabled() && player.fallDistance <= 1.5) return -1
+        val predictedFall = player.fallDistance + if (ticksAhead > 0 && !player.onGround())
+            (-player.deltaMovement.y).coerceAtLeast(0.0) else 0.0
+        if (!GroundSpoofModule.isSpoofingAir() && predictedFall <= 1.5) return -1
         return findBestMaceSlot(player)
     }
 

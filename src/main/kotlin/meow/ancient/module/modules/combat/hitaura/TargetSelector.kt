@@ -13,7 +13,6 @@ import meow.ancient.module.modules.combat.HitAuraModule.TargetMode
 import meow.ancient.module.modules.combat.HitAuraModule.TargetPriority
 import meow.ancient.module.setting.TargetSetting
 import net.minecraft.world.entity.Entity
-import net.minecraft.world.entity.EntityType
 import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.entity.decoration.ArmorStand
 import net.minecraft.world.entity.player.Player
@@ -30,6 +29,7 @@ class TargetSelector {
     fun reset() {
         currentTarget = null
         switchIndex = 0
+        lastSwitchTime = 0L
         candidateList.clear()
     }
 
@@ -40,26 +40,13 @@ class TargetSelector {
         targetMode: TargetMode,
         allowedTargets: TargetSetting,
         throughWalls: Boolean,
-        ignoreFriends: Boolean = true
+        ignoreFriends: Boolean = true,
+        attackRange: Double = aimRange
     ): LivingEntity? {
         if (!inGame) {
             currentTarget = null
             candidateList.clear()
             return null
-        }
-
-        if (targetMode == TargetMode.SINGLE) {
-            val locked = currentTarget
-            if (locked != null && isValidTarget(locked, aimRange, fov, allowedTargets, throughWalls, ignoreFriends)) {
-                val lockedIsTarget = locked is Player && TargetRepository.isTarget(locked)
-                val hasAnyPriorityTarget = mc.level?.entitiesForRendering()?.any {
-                    it is Player && TargetRepository.isTarget(it) && isValidTarget(it, aimRange, fov, allowedTargets, throughWalls, ignoreFriends)
-                } ?: false
-
-                if (lockedIsTarget || !hasAnyPriorityTarget) {
-                    return locked
-                }
-            }
         }
 
         val currentLevel = mc.level ?: run {
@@ -80,18 +67,28 @@ class TargetSelector {
             return null
         }
 
+        fun reachable(entity: LivingEntity) = RotationUtil.getDistanceToBox(entity) <= attackRange
+            || TpAuraModule.getRenderPosition(entity) != null
+        val attackable = candidateList.filter(::reachable)
+        val pool = if (attackable.isNotEmpty()) attackable else candidateList
+        val locked = currentTarget
+        if (targetMode == TargetMode.SINGLE && locked in pool) {
+            val priorityTarget = pool.any { it is Player && TargetRepository.isTarget(it) }
+            if (!priorityTarget || locked is Player && TargetRepository.isTarget(locked)) return locked
+        }
         val comparator = getComparator(priority)
 
         currentTarget = when (targetMode) {
-            TargetMode.SINGLE -> candidateList.minWithOrNull(comparator)
+            TargetMode.SINGLE -> pool.minWithOrNull(comparator)
             TargetMode.SWITCH -> {
-                candidateList.sortWith(comparator)
-                val now = System.currentTimeMillis()
-                if (now - lastSwitchTime >= 350L) {
-                    switchIndex = (switchIndex + 1) % candidateList.size
+                val ordered = pool.sortedWith(comparator)
+                val now = System.nanoTime()
+                if (lastSwitchTime == 0L) lastSwitchTime = now
+                else if (now - lastSwitchTime >= 350_000_000L) {
+                    switchIndex = (switchIndex + 1) % ordered.size
                     lastSwitchTime = now
                 }
-                candidateList[switchIndex % candidateList.size]
+                ordered[switchIndex % ordered.size]
             }
         }
 

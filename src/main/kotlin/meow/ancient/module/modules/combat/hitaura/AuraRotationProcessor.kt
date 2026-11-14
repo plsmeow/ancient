@@ -101,7 +101,10 @@ class AuraRotationProcessor(advancedSettings: AdvancedRotationSettings) {
                 speed = rotationSpeed,
                 tickCounter = tickCounter
             )
-            return currentRot
+            val grim = strategy as Grim1204Rotation
+            // Publish through normal movement, so the next attack never needs a movement/attack burst.
+            RotationManager.setRotation(Rotation(grim.rotationYaw, grim.rotationPitch), moveFixMode, gcdEnabled)
+            return RotationManager.getServerRotation()
         }
 
         if (rotationMode == RotationMode.NEURO) {

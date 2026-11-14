@@ -4,8 +4,15 @@ import net.minecraft.core.BlockPos
 import net.minecraft.world.level.block.Blocks
 import net.minecraft.world.level.block.state.BlockState
 
-/** A damage-approved terrain block must be replaced before another site may be mined. */
-internal class CrystalTerrainPlan(val pos: BlockPos, val targetId: Int) {
+/** Clears a base cell and, when needed, the cell above it before placing obsidian. */
+internal class CrystalTerrainPlan(val pos: BlockPos, val targetId: Int, miningOrder: List<BlockPos> = listOf(pos)) {
+    private val miningOrder = miningOrder.toMutableList()
+    private val cleared = HashSet<BlockPos>()
+    private var basePlaced = false
+    val miningPos: BlockPos? get() = miningOrder.firstOrNull { it !in cleared }
+    val miningBlocks: List<BlockPos> get() = miningOrder
+    val clearedStates = mapOf(pos to Blocks.AIR.defaultBlockState(), pos.above() to Blocks.AIR.defaultBlockState())
+    val builtStates = clearedStates + (pos to Blocks.OBSIDIAN.defaultBlockState())
     val recovery = CrystalTerrainRecovery()
     enum class Stage { MINE, BASE, CONFIRM, DONE }
     var stage = Stage.MINE
@@ -19,9 +26,18 @@ internal class CrystalTerrainPlan(val pos: BlockPos, val targetId: Int) {
     fun miningStartAccepted() { miningStarted = true }
     fun boostPriority() { priorityBoosted = true }
 
-    fun observeServerState(state: BlockState) {
-        if (state.`is`(Blocks.OBSIDIAN)) stage = Stage.DONE
-        else if (state.isAir && stage == Stage.MINE) stage = Stage.BASE
+    fun observeServerState(blockPos: BlockPos, state: BlockState) {
+        if (blockPos == pos) basePlaced = state.`is`(Blocks.OBSIDIAN)
+        if (blockPos in miningOrder) {
+            if (state.isAir || blockPos == pos && basePlaced) cleared.add(blockPos)
+            else cleared.remove(blockPos)
+        }
+        stage = when {
+            miningPos != null -> Stage.MINE
+            basePlaced -> Stage.DONE
+            stage == Stage.MINE || stage == Stage.DONE -> Stage.BASE
+            else -> stage
+        }
     }
 
     fun placementSent(tick: Int) {
@@ -34,8 +50,10 @@ internal class CrystalTerrainPlan(val pos: BlockPos, val targetId: Int) {
         if (stage == Stage.CONFIRM && tick - sentTick >= timeout) stage = Stage.BASE
     }
 
-    fun restartMining() {
+    fun restartMining(blockPos: BlockPos = pos) {
         check(stage == Stage.BASE)
+        if (blockPos !in miningOrder) miningOrder.add(0, blockPos)
+        cleared.remove(blockPos)
         stage = Stage.MINE
     }
 }

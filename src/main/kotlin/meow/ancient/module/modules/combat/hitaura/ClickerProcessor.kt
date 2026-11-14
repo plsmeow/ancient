@@ -2,18 +2,36 @@ package meow.ancient.module.modules.combat.hitaura
 
 import meow.ancient.client.extensions.inGame
 import meow.ancient.client.extensions.mc
-import meow.ancient.client.util.other.TimerUtil
+import meow.ancient.mixin.LivingEntityAccessor
+import meow.ancient.module.modules.player.PacketMineToolSpeed
 import meow.ancient.module.modules.combat.HitAuraModule.ClickMode
+import net.minecraft.world.entity.ai.attributes.Attributes
+import net.minecraft.world.item.ItemStack
+import net.minecraft.network.protocol.Packet
+import net.minecraft.network.protocol.game.ServerboundAttackPacket
+import net.minecraft.network.protocol.game.ServerboundPunchPacket
+import net.minecraft.network.protocol.game.ServerboundSetCarriedItemPacket
 import java.util.concurrent.ThreadLocalRandom
 import kotlin.math.roundToLong
 
-class ClickerProcessor {
-    private val clickTimer = TimerUtil()
-    private var nextDelayMs: Long = 80L
+class ClickerProcessor(private val thunderHackTiming: Boolean = false) {
+    private val clock = AttackClickClock()
+    private val cooldown = AttackCooldownClock()
+    private val hitDelay = AttackTickClock()
 
     fun reset() {
-        clickTimer.reset()
-        nextDelayMs = 50L
+        clock.reset()
+        cooldown.reset()
+        hitDelay.reset()
+    }
+
+    fun onUpdate() {
+        hitDelay.tick()
+    }
+
+    fun onPacketSent(packet: Packet<*>) {
+        if (packet is ServerboundAttackPacket || packet is ServerboundPunchPacket
+            || packet is ServerboundSetCarriedItemPacket) cooldown.restart(System.nanoTime())
     }
 
     fun isReadyToClick(
@@ -21,19 +39,33 @@ class ClickerProcessor {
         cps: Double,
         randomize: Boolean,
         randomSpread: Double,
-        preparingNextAttack: Boolean = false
+        preparingNextAttack: Boolean = false,
+        weapon: ItemStack? = null,
+        predictionTicks: Int = AttackTiming.ATTACK_PREPARATION_TICKS
     ): Boolean {
         if (!inGame) return false
         val localPlayer = mc.player ?: return false
-        val lookaheadMs = if (preparingNextAttack) 50L else 0L
+        val ticksAhead = if (preparingNextAttack)
+            predictionTicks.coerceIn(1, AttackTiming.SPRINT_PREPARATION_TICKS) else 0
+        val lookahead = ticksAhead * 50_000_000L
+        val now = System.nanoTime()
+        if (!clock.ready(now, lookahead)) return false
 
         return when (clickMode) {
             ClickMode.MODE_1_9 -> {
-                val cooldownReady = localPlayer.getAttackStrengthScale(if (preparingNextAttack) 2.0f else 0.0f) >= 0.95f
-                cooldownReady && clickTimer.isComplete((45L - lookaheadMs).coerceAtLeast(0L))
+                if (thunderHackTiming && !hitDelay.ready(ticksAhead)) return false
+                val actual = localPlayer.getAttribute(Attributes.ATTACK_SPEED) ?: return false
+                val speed = if (weapon == null || ItemStack.matches(weapon, localPlayer.mainHandItem)) actual.value else {
+                    PacketMineToolSpeed.attributeValue(actual, Attributes.ATTACK_SPEED, localPlayer.mainHandItem, weapon)
+                }
+                val localTicks = (localPlayer as LivingEntityAccessor).`ancient$getAttackStrengthTicker`()
+                    + ticksAhead
+                val ticks = minOf(localTicks, cooldown.elapsedTicks(now, lookahead))
+                if (thunderHackTiming) ThunderHackTiming.charged(ticks, speed)
+                else AttackTiming.charge(ticks, speed) >= AttackTiming.COOLDOWN_THRESHOLD
             }
             ClickMode.MODE_1_8 -> {
-                clickTimer.isComplete((nextDelayMs - lookaheadMs).coerceAtLeast(0L))
+                true
             }
         }
     }
@@ -44,13 +76,9 @@ class ClickerProcessor {
         randomize: Boolean,
         randomSpread: Double
     ) {
-        clickTimer.reset()
-        if (clickMode == ClickMode.MODE_1_8) {
-            nextDelayMs = computeNext18Delay(cps, randomize, randomSpread)
-        } else {
-            val rng = ThreadLocalRandom.current()
-            nextDelayMs = rng.nextLong(40L, 65L)
-        }
+        val delay = if (clickMode == ClickMode.MODE_1_8) computeNext18Delay(cps, randomize, randomSpread) else 45L
+        clock.clicked(System.nanoTime(), delay)
+        if (thunderHackTiming && clickMode == ClickMode.MODE_1_9) hitDelay.clicked(ThunderHackTiming.HIT_TICKS)
     }
 
     private fun computeNext18Delay(cps: Double, randomize: Boolean, randomSpread: Double): Long {

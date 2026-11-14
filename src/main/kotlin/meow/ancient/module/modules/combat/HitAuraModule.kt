@@ -9,19 +9,17 @@ import meow.ancient.client.util.anticheat.AnticheatManager
 import meow.ancient.client.util.action.ActionCoordinator
 import meow.ancient.client.util.rotation.MoveFixMode
 import meow.ancient.client.util.rotation.RotationManager
+import meow.ancient.client.util.rotation.RotationUtil
 import meow.ancient.event.events.PlayerUpdateEvent
 import meow.ancient.event.events.ClientDisconnectEvent
-import meow.ancient.event.events.PlayerMovementSentEvent
 import meow.ancient.event.events.PlayerPreMovementEvent
-import meow.ancient.event.events.PacketSendEvent
+import meow.ancient.event.events.PacketSentEvent
 import net.minecraft.client.player.LocalPlayer
-import net.minecraft.client.multiplayer.ClientLevel
 import meow.ancient.module.Module
 import meow.ancient.module.modules.combat.hitaura.*
 import meow.ancient.module.modules.combat.hitaura.rotation.AdvancedRotationSettings
 import meow.ancient.module.modules.combat.hitaura.rotation.impl.AdvancedRotation
 import meow.ancient.module.setting.ActionSetting
-import meow.ancient.module.setting.MinecraftPickerCatalogs
 import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.item.ItemUseAnimation
 import net.minecraft.world.phys.Vec3
@@ -30,7 +28,7 @@ import sweetie.evaware.flora.api.Commando
 object HitAuraModule : Module(
     name = "HitAura",
     category = COMBAT,
-    description = "Aim and recheck attacks before movement; 1.9 cooldown threshold is 95%"
+    description = "Attacks before player physics using ThunderHack crit timing"
 ) {
     enum class TargetPriority(val displayName: String) {
         DISTANCE("Distance"),
@@ -319,12 +317,12 @@ object HitAuraModule : Module(
     val onlyCrits by boolean(
         name = "Only Crits",
         value = true,
-        description = "Wait for at least 0.08 blocks of descent or ready packet crits; allow attacks when crits are impossible"
+        description = "Wait for airborne fall distance; allow ordinary attacks when crits are blocked"
     )
     val smartCrits by boolean(
         name = "Smart Crits",
         value = true,
-        description = "Allow ground attacks without holding jump; disabling waits for a real fall when crits are possible",
+        description = "Allow attacks without holding jump; disabling waits for a real fall when crits are possible",
         isVisible = { onlyCrits }
     )
     val advancedSettings = AdvancedRotationSettings(this)
@@ -339,8 +337,8 @@ object HitAuraModule : Module(
     // Modular processors
     val targetSelector = TargetSelector()
     val rotationProcessor = AuraRotationProcessor(advancedSettings)
-    val criticalProcessor = CriticalProcessor()
-    val clickerProcessor = ClickerProcessor()
+    val criticalProcessor = CriticalProcessor(thunderHackTiming = true)
+    val clickerProcessor = ClickerProcessor(thunderHackTiming = true)
     val sprintResetProcessor = SprintResetProcessor()
     val attackExecutor = AttackExecutor(
         clickerProcessor = clickerProcessor,
@@ -349,20 +347,8 @@ object HitAuraModule : Module(
         rotationProcessor = rotationProcessor
     )
 
-    private var pendingTarget: LivingEntity? = null
-    private var pendingPlayer: LocalPlayer? = null
-    private var pendingLevel: ClientLevel? = null
-    private var pendingTick = -1
-
     var predictedAimPoint: Vec3? = null
         private set
-
-    private fun clearPendingAttack() {
-        pendingTarget = null
-        pendingPlayer = null
-        pendingLevel = null
-        pendingTick = -1
-    }
 
     val currentTarget: LivingEntity?
         get() = targetSelector.currentTarget
@@ -378,12 +364,26 @@ object HitAuraModule : Module(
         return "Use" in ignoreOn && player.isUsingItem && player.useItem.useAnimation != ItemUseAnimation.NONE
     }
 
+    private fun canUseContext(player: LocalPlayer): Boolean = !player.isDeadOrDying && !player.isSpectator
+        && player.connection.connection.isConnected && player.connection.hasClientLoaded() && mc.gameMode != null
+        && player.containerMenu === player.inventoryMenu
+        && player.inventoryMenu.carried.isEmpty && !shouldIgnoreContext()
+
+    @Commando
+    fun onPacketSent(event: PacketSentEvent) {
+        if (mc.isSameThread) {
+            attackExecutor.onPacketSent(event.packet)
+            clickerProcessor.onPacketSent(event.packet)
+        }
+    }
+
     @Commando
     fun onDisconnect(event: ClientDisconnectEvent) {
-        clearPendingAttack()
+        attackExecutor.cancelPreparation()
         targetSelector.reset()
         rotationProcessor.reset()
         clickerProcessor.reset()
+        attackExecutor.reset()
         criticalProcessor.reset()
         sprintResetProcessor.reset()
         predictedAimPoint = null
@@ -391,19 +391,21 @@ object HitAuraModule : Module(
     }
 
     override fun onEnable() {
-        clearPendingAttack()
+        attackExecutor.cancelPreparation()
         targetSelector.reset()
         rotationProcessor.reset()
         clickerProcessor.reset()
+        attackExecutor.reset()
         criticalProcessor.reset()
         sprintResetProcessor.reset()
     }
 
     override fun onDisable() {
-        clearPendingAttack()
+        attackExecutor.cancelPreparation()
         targetSelector.reset()
         rotationProcessor.reset()
         clickerProcessor.reset()
+        attackExecutor.reset()
         criticalProcessor.reset()
         sprintResetProcessor.reset()
         predictedAimPoint = null
@@ -412,20 +414,21 @@ object HitAuraModule : Module(
 
     @Commando
     fun onUpdate(event: PlayerUpdateEvent) {
-        clearPendingAttack()
+        attackExecutor.cancelPreparation(releaseWeapon = false)
         predictedAimPoint = null
-        if (!ActionCoordinator.canAct(this)) return
+        clickerProcessor.onUpdate()
+        sprintResetProcessor.onUpdate()
+        if (!ActionCoordinator.canAct(this)) {
+            attackExecutor.cancelPreparation()
+            return
+        }
         val sprintMode = SprintResetMode.fromName(AnticheatManager.sprintReset)
         sprintResetProcessor.prepareAttack(sprintMode, false)
-        sprintResetProcessor.onUpdate()
         safeRun {
-            if (player.isDeadOrDying) {
+            if (!canUseContext(player)) {
+                attackExecutor.cancelPreparation()
                 targetSelector.reset()
-                return@safeRun
-            }
-
-            if (shouldIgnoreContext()) {
-                targetSelector.reset()
+                sprintResetProcessor.reset()
                 rotationProcessor.reset()
                 RotationManager.resetImmediate()
                 return@safeRun
@@ -446,9 +449,11 @@ object HitAuraModule : Module(
                 priority = priorityMode,
                 targetMode = tMode,
                 allowedTargets = targets,
-                throughWalls = throughWalls,
-                ignoreFriends = friendProtection
+                throughWalls = throughWalls && !wallCheck,
+                ignoreFriends = friendProtection,
+                attackRange = maxReach
             ) ?: run {
+                attackExecutor.cancelPreparation()
                 sprintResetProcessor.reset()
                 if (rotMode == RotationMode.ADVANCED) {
                     (rotationProcessor.getStrategy(rotMode) as AdvancedRotation).onTargetLost()
@@ -462,9 +467,12 @@ object HitAuraModule : Module(
             val moveFixMode = moveFix
             val cMode = clickMode
 
-            val readyNextAttack = if (rotMode == RotationMode.ADVANCED) {
-                attackExecutor.willClickNextTick(target, maxReach, cMode, cps, cpsRandomization, cpsSpread)
-            } else attackExecutor.shouldPrepareAttack(
+            // Hold the selected weapon while it charges; swapping it back every tick restarts server charge.
+            if (RotationUtil.getDistanceToBox(target) <= maxReach
+                || TpAuraModule.getRenderPosition(target) != null) attackExecutor.prepareWeapon(target, 1)
+            else attackExecutor.cancelPreparation()
+
+            val readyNextAttack = attackExecutor.shouldPrepareAttack(
                 target = target,
                 attackRange = maxReach,
                 clickMode = cMode,
@@ -473,14 +481,12 @@ object HitAuraModule : Module(
                 cpsSpread = cpsSpread,
                 onlyCrits = onlyCrits,
                 smartCrits = smartCrits,
-                ticksAhead = 1
+                ticksAhead = ThunderHackTiming.PREPARATION_TICKS
             )
             sprintResetProcessor.prepareAttack(
                 sprintMode,
-                criticalProcessor.shouldStopSprinting(
-                    onlyCrits,
-                    attackExecutor.willClickNextTick(target, maxReach, cMode, cps, cpsRandomization, cpsSpread)
-                )
+                criticalProcessor.shouldPrepareSprintReset(onlyCrits, smartCrits, readyNextAttack,
+                    AutoMaceModule.isSmashReady(ThunderHackTiming.PREPARATION_TICKS))
             )
             val overrideAimPoint = if (elytraTarget && player.isFallFlying && elytraPredict) {
                 val targetVel = target.deltaMovement
@@ -511,50 +517,43 @@ object HitAuraModule : Module(
                 visibilityRange = effectiveAimRange
             )
 
-            pendingTarget = target
-            pendingPlayer = player
-            pendingLevel = level
-            pendingTick = player.tickCount
-        }
-    }
-
-    @Commando
-    fun onPreMovement(event: PlayerPreMovementEvent) {
-        val target = pendingTarget
-        val expectedPlayer = pendingPlayer
-        val expectedLevel = pendingLevel
-        val expectedTick = pendingTick
-        clearPendingAttack()
-        try {
-            if (target == null) return
-            if (!isEnabled()) return
-            safeRun {
-                if (player !== expectedPlayer || level !== expectedLevel || player.isDeadOrDying) return@safeRun
-                if (player.tickCount != expectedTick && player.tickCount != expectedTick + 1) return@safeRun
-                if (currentTarget !== target || level.getEntity(target.id) !== target || shouldIgnoreContext()) return@safeRun
-
-                val rotMode = rotationMode
-                val maxReach = if (rotMode == RotationMode.GRIM_1204) attackRange.coerceAtMost(3.0) else attackRange
-                if (!targetSelector.isValidTarget(target, maxReach, fov.toFloat(), targets, throughWalls, friendProtection)) return@safeRun
-                val enforceRayTrace = rayTrace && !player.isFallFlying && rotMode != RotationMode.NO_ROT && rotMode != RotationMode.GRIM_1204
-                val sResetMode = SprintResetMode.fromName(AnticheatManager.sprintReset)
+            // ThunderHack runs Aura in tick HEAD: the short fall under a ceiling is still present here.
+            // Only the last accepted rotation/position authorizes the attack; this tick's aim is sent later.
+            if (level.getEntity(target.id) !== target || !targetSelector.isValidTarget(target, maxReach,
+                    fov.toFloat(), targets, throughWalls && !wallCheck, friendProtection)) return@safeRun
+            try {
+                if (!attackExecutor.shouldPrepareAttack(target, maxReach, cMode, cps, cpsRandomization,
+                        cpsSpread, onlyCrits, smartCrits, 0, sprintMode)) return@safeRun
+                if (!attackExecutor.prepareAttack(target, maxReach)) return@safeRun
                 attackExecutor.tryAttack(
                     target = target,
                     attackRange = maxReach,
-                    clickMode = clickMode,
+                    clickMode = cMode,
                     cps = cps,
                     randomizeCps = cpsRandomization,
                     cpsSpread = cpsSpread,
                     onlyCrits = onlyCrits,
                     smartCrits = smartCrits,
-                    sprintResetMode = sResetMode,
-                    rayTrace = enforceRayTrace,
+                    sprintResetMode = sprintMode,
+                    rayTrace = rayTrace && !player.isFallFlying && rotMode != RotationMode.NO_ROT
+                        && rotMode != RotationMode.GRIM_1204,
                     throughWalls = throughWalls
                 )
+            } finally {
+                attackExecutor.cancelPreparation(releaseWeapon = false)
             }
-        } finally {
-            sprintResetProcessor.onPreMovement()
         }
+    }
+
+    @Commando
+    fun onPreMovement(event: PlayerPreMovementEvent) {
+        val player = mc.player ?: return
+        if (!canUseContext(player) || currentTarget == null || !ActionCoordinator.canAct(this)) {
+            sprintResetProcessor.reset()
+            return
+        }
+        // Publish the stop for next tick's attack; attacks themselves run before physics.
+        sprintResetProcessor.onPreMovement()
     }
 
 

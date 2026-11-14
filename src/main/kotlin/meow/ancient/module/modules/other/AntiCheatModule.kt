@@ -12,7 +12,7 @@ object AntiCheatModule : Module(
         name = "Sprint Reset",
         value = "Packet",
         modes = listOf("Legit", "Packet", "LB"),
-        description = "Legit stops sprint before movement and resumes naturally; Packet stops before attack and restarts after; LB stops sprint at the exact attack moment"
+        description = "Legit holds sprint off for two ticks after a hit; Packet prepares the stop and resumes next tick; LB holds for one tick"
     )
 
     val swapBypass by mode(
