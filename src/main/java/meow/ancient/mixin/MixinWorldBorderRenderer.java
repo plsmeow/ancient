@@ -15,6 +15,7 @@ public class MixinWorldBorderRenderer {
     @Inject(method = "extract", at = @At("HEAD"), cancellable = true)
     private void onWorldBorder(WorldBorder worldBorder, float f, Vec3 vec3, double d, WorldBorderRenderState worldBorderRenderState, CallbackInfo ci) {
         if (NoRenderModule.INSTANCE.noWorldBorder()) {
+            worldBorderRenderState.reset();
             ci.cancel();
         }
     }

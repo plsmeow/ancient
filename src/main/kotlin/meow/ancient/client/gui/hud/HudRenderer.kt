@@ -309,7 +309,7 @@ class HudRenderer(private val serverStats: HudServerStats) {
         val screenWidth = graphics.guiWidth().toFloat()
         val screenHeight = graphics.guiHeight().toFloat()
         val controller = module.dragController
-        controller.beginFrame(screenWidth, screenHeight, delta)
+        controller.beginFrame(screenWidth, screenHeight)
         var i = 0
         while (i < cards.size) cards[i++].animate(delta, chat,
             (screenWidth - 14f) / scale, (screenHeight - 14f) / scale)
@@ -320,17 +320,35 @@ class HudRenderer(private val serverStats: HudServerStats) {
         while (i < cards.size) {
             val card = cards[i]
             val drag = controller.place(elements[i], card.width * scale, card.height * scale,
-                card.defaultX, card.defaultY, card.isVisible, delta)
+                card.defaultX, card.defaultY, card.isVisible)
             drag.hitTest = card.hitTest
-            card.draw(matrix, drag.x, drag.y, scale, drag.alignment)
-            if (chat && card.isVisible && (drag.hovered || drag.dragging)) drawEditBounds(matrix, drag, scale)
             i++
         }
         val notificationWidth = notifications.width * scale
         val notificationHeight = notifications.height * scale
         val notificationDrag = controller.place(HudElement.NOTIFICATIONS, notificationWidth, notificationHeight,
             screenWidth - 7f - notificationWidth, screenHeight - 57f - notificationHeight,
-            module.isElementEnabled(HudElement.NOTIFICATIONS) && notifications.isVisible, delta)
+            module.isElementEnabled(HudElement.NOTIFICATIONS) && notifications.isVisible)
+        controller.layoutFrame(delta)
+        if (chat) {
+            val guideColor = M3Theme.current.primary.alpha(130)
+            controller.snapGuideX?.let { x ->
+                RenderUtils.rect(matrix, x.coerceIn(0f, (screenWidth - 0.6f).coerceAtLeast(0f)), 0f,
+                    0.6f, screenHeight, guideColor, ClientRenderPipeline.HUD_RECT)
+            }
+            controller.snapGuideY?.let { y ->
+                RenderUtils.rect(matrix, 0f, y.coerceIn(0f, (screenHeight - 0.6f).coerceAtLeast(0f)),
+                    screenWidth, 0.6f, guideColor, ClientRenderPipeline.HUD_RECT)
+            }
+        }
+        i = 0
+        while (i < cards.size) {
+            val card = cards[i]
+            val drag = controller[elements[i]]
+            card.draw(matrix, drag.x, drag.y, scale, drag.alignment)
+            if (chat && card.isVisible && (drag.hovered || drag.dragging)) drawEditBounds(matrix, drag, scale)
+            i++
+        }
         if (module.isElementEnabled(HudElement.NOTIFICATIONS) && notifications.isVisible) {
             notifications.draw(matrix, notificationDrag.x, notificationDrag.y, scale, notificationDrag.alignment)
             if (chat && (notificationDrag.hovered || notificationDrag.dragging)) drawEditBounds(matrix, notificationDrag, scale)
@@ -432,7 +450,7 @@ class HudRenderer(private val serverStats: HudServerStats) {
         val palette = M3Theme.current
         val color = palette.primary.alpha(if (drag.dragging) 185 else 95)
         RenderUtils.roundedRectWithBorder(matrix, drag.x, drag.y, drag.width, drag.height,
-            palette.stateHover.alpha(if (drag.dragging) 14 else 8), 5f * scale, 0.7f * scale,
+            palette.stateHover.alpha(if (drag.dragging) 14 else 8), HUD_CARD_RADIUS * scale, 0.7f * scale,
             color, ClientRenderPipeline.HUD_RECT)
         var i = 0
         while (i < 3) {

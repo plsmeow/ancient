@@ -638,23 +638,21 @@ object CrystalAuraTestModule : Module(
         val pos = anchorPos
         if (pos != null) {
             val state = level.getBlockState(pos)
-            if (!state.`is`(Blocks.RESPAWN_ANCHOR)) {
+            if (!state.`is`(Blocks.RESPAWN_ANCHOR) || !ExplosionDamageUtil.anchorExplodes(level, pos)) {
                 anchorPos = null
                 return false
             }
             val hit = findHitOnBlock(level, player, pos) ?: return false
             val charge = state.getValue(RespawnAnchorBlock.CHARGE)
-            if (charge >= anchorCharges.toInt()) {
-                if (!canDetonate(player)) {
-                    anchorPos = null
-                    return false
-                }
-                return detonateAnchor(player, hit, pos)
-            }
             if (!anchorWorth(pos, player, target)) {
                 anchorPos = null
                 return false
             }
+            if (charge >= anchorCharges.toInt()) {
+                if (!canDetonate(player, charge)) return false
+                return detonateAnchor(player, hit, pos)
+            }
+            if (player.isSecondaryUseActive) return false
             return placeItem(player, Items.GLOWSTONE, hit)
         }
         val spot = findAnchorSpot(player, level, target) ?: return false
@@ -674,6 +672,7 @@ object CrystalAuraTestModule : Module(
                 for (dz in -radius..radius) {
                     val pos = origin.offset(dx, dy, dz)
                     if (!level.worldBorder.isWithinBounds(pos) || level.isOutsideBuildHeight(pos)) continue
+                    if (!ExplosionDamageUtil.anchorExplodes(level, pos)) continue
                     if (!level.getBlockState(pos).canBeReplaced() || !level.getFluidState(pos).isEmpty) continue
                     if (eyes.distanceToSqr(Vec3.atCenterOf(pos)) > rangeSq) continue
                     if (level.getEntities(null, AABB(pos)).any { it.isAlive }) continue
@@ -699,18 +698,27 @@ object CrystalAuraTestModule : Module(
         return ExplosionDamageUtil.anchorDamage(pos, target) >= minDamage
     }
 
-    private fun canDetonate(player: LocalPlayer): Boolean = (0..8).any {
-        val stack = player.inventory.getItem(it)
-        !stack.isEmpty && !stack.`is`(Items.GLOWSTONE)
-    }
+    private fun canDetonate(player: LocalPlayer, charges: Int): Boolean =
+        (charges == 4 || !player.offhandItem.`is`(Items.GLOWSTONE))
+            && (!player.isSecondaryUseActive || player.offhandItem.isEmpty)
+            && (0..8).any {
+                val stack = player.inventory.getItem(it)
+                (charges == 4 || !stack.`is`(Items.GLOWSTONE)) && (!player.isSecondaryUseActive || stack.isEmpty)
+            }
 
     private fun detonateAnchor(player: LocalPlayer, hit: BlockHitResult, pos: BlockPos): Boolean {
+        val state = mc.level?.getBlockState(pos) ?: return false
+        if (!state.`is`(Blocks.RESPAWN_ANCHOR)) return false
+        val charges = state.getValue(RespawnAnchorBlock.CHARGE)
+        if (charges == 0 || !canDetonate(player, charges)) return false
         val saved = player.inventory.selectedSlot
+        fun usable(slot: Int): Boolean {
+            val stack = player.inventory.getItem(slot)
+            return (charges == 4 || !stack.`is`(Items.GLOWSTONE)) && (!player.isSecondaryUseActive || stack.isEmpty)
+        }
         val slot = (0..8).firstOrNull {
-            it != saved && !player.inventory.getItem(it).isEmpty && !player.inventory.getItem(it).`is`(Items.GLOWSTONE)
-        } ?: saved.takeIf {
-            !player.inventory.getItem(it).isEmpty && !player.inventory.getItem(it).`is`(Items.GLOWSTONE)
-        } ?: return false
+            it != saved && usable(it)
+        } ?: saved.takeIf(::usable) ?: return false
 
         val used = if (slot == saved) {
             detonateInHand(player, hit)
@@ -918,9 +926,11 @@ object CrystalAuraTestModule : Module(
         val factory = ExplosionDamageUtil.getOverridingHitFactory(
             obsidianPos,
             if (obsidianPos != null) Blocks.OBSIDIAN.defaultBlockState() else null,
-            false
+            false,
+            victim
         )
-        return ExplosionDamageUtil.explosionDamage(victim, box.center, box, explosion, CRYSTAL_POWER, factory)
+        val feet = Vec3((box.minX + box.maxX) * 0.5, box.minY, (box.minZ + box.maxZ) * 0.5)
+        return ExplosionDamageUtil.explosionDamage(victim, feet, box, explosion, CRYSTAL_POWER, factory)
     }
 
     private fun isSafeSelf(selfDamage: Float): Boolean {

@@ -1,9 +1,13 @@
 package meow.ancient.module.modules.render
 
 import meow.ancient.client.extensions.RENDER
+import meow.ancient.client.util.render.NoRenderParticleState
 import meow.ancient.module.Module
 import meow.ancient.module.setting.MinecraftPickerCatalogs
+import net.minecraft.client.particle.Particle
+import net.minecraft.client.particle.TerrainParticle
 import net.minecraft.core.particles.ParticleType
+import net.minecraft.core.particles.ParticleTypes
 import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.world.entity.Entity
 import net.minecraft.world.level.block.entity.BlockEntityType
@@ -120,7 +124,16 @@ object NoRenderModule : Module(
             || (noFallingBlocks() && entity is net.minecraft.world.entity.item.FallingBlockEntity))
 
     fun noParticle(particle: ParticleType<*>): Boolean =
-        isEnabled() && BuiltInRegistries.PARTICLE_TYPE.getKey(particle).toString() in particles
+        isEnabled() && (BuiltInRegistries.PARTICLE_TYPE.getKey(particle).toString() in particles
+            || (noFireworkExplosions() && (particle === ParticleTypes.FIREWORK || particle === ParticleTypes.FLASH)))
+
+    fun noParticle(particle: Particle): Boolean {
+        if (!isEnabled()) return false
+        // Breaking/hitting blocks and firework trails can bypass the particle factory.
+        val type = (particle as NoRenderParticleState).`ancient$getParticleType`()
+            ?: if (particle is TerrainParticle) ParticleTypes.BLOCK else return false
+        return noParticle(type)
+    }
 
     fun noBlockEntity(blockEntity: BlockEntityType<*>): Boolean =
         isEnabled() && BuiltInRegistries.BLOCK_ENTITY_TYPE.getKey(blockEntity).toString() in blockEntities

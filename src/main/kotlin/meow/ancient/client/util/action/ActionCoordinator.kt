@@ -61,24 +61,7 @@ object ActionCoordinator {
         }
     }
 
-    private fun ownerFor(className: String): ActionOwner = owners.computeIfAbsent(className) {
-        val name = it.substringAfterLast('.').substringBefore('$').removeSuffix("Module")
-        val helper = name in setOf("AutoMace", "BreachSwap", "MaceKill", "TpAura")
-        when {
-            name in setOf("ClickPearl", "ElytraHelper", "Phase") -> ActionOwner(name, ActionGroup.MANUAL, 1000)
-            name == "SpearKill" -> ActionOwner(name, ActionGroup.COMBAT, 330)
-            name == "Surround" -> ActionOwner(name, ActionGroup.COMBAT, 450)
-            name == "CrystalAura" -> ActionOwner(name, ActionGroup.COMBAT, 323)
-            name == "AnchorAura" -> ActionOwner(name, ActionGroup.COMBAT, 322)
-            name == "CrystalTerrain" -> ActionOwner(name, ActionGroup.COMBAT, 321)
-            name == "CrystalTerrainBoost" -> ActionOwner(name, ActionGroup.COMBAT, 324)
-            name == "HitAura" -> ActionOwner(name, ActionGroup.COMBAT, 320)
-            name == "TriggerBot" -> ActionOwner(name, ActionGroup.COMBAT, 300)
-            it.contains(".combat.") -> ActionOwner(name, ActionGroup.COMBAT, 310, helper)
-            name == "PacketMine" -> ActionOwner(name, ActionGroup.MINING, 900)
-            else -> ActionOwner(name, ActionGroup.UTILITY, 100)
-        }
-    }
+    private fun ownerFor(className: String): ActionOwner = owners.computeIfAbsent(className, ActionOwner::forModule)
 
     fun manualUseActive(): Boolean {
         val player = mc.player ?: return false

@@ -8,9 +8,17 @@ import meow.ancient.module.modules.combat.HitBoxesModule
 import net.minecraft.world.entity.Entity
 import net.minecraft.world.level.ClipContext
 import net.minecraft.world.phys.HitResult
+import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.Vec3
 
 object RayTraceUtil {
+    fun hitBox(box: AABB, rotation: Rotation, eyes: Vec3, range: Double): Vec3? {
+        if (box.contains(eyes)) return eyes
+        val end = eyes.add(rotation.toDirectionVec().scale(range + 2.0))
+        val hit = box.clip(eyes, end).orElse(null) ?: return null
+        return hit.takeIf { eyes.distanceToSqr(it) <= range * range }
+    }
+
     /** Search the full reachable hitbox instead of checking only the entity's eye position. */
     fun findVisiblePoint(target: Entity, range: Double, preferred: Vec3? = null): Vec3? {
         val player = mc.player ?: return null
@@ -45,21 +53,9 @@ object RayTraceUtil {
             return true
         }
 
-        val direction = rotation.toDirectionVec()
         val maxReach = range + expand
-        val traceRange = maxReach + 2.0
-        val endPos = eyePos.add(direction.scale(traceRange))
-
-        val hitOptional = targetBox.clip(eyePos, endPos)
-        if (hitOptional.isEmpty) {
-            return false
-        }
-
-        val hitVec: Vec3 = hitOptional.get()
+        val hitVec = hitBox(targetBox, rotation, eyePos, maxReach) ?: return false
         val entityDistSq = eyePos.distanceToSqr(hitVec)
-        if (entityDistSq > maxReach * maxReach) {
-            return false
-        }
 
         if (!throughWalls) {
             val blockHit = currentLevel.clip(

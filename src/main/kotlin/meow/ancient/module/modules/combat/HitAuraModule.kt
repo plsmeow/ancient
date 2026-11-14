@@ -420,6 +420,7 @@ object HitAuraModule : Module(
         sprintResetProcessor.onUpdate()
         if (!ActionCoordinator.canAct(this)) {
             attackExecutor.cancelPreparation()
+            sprintResetProcessor.cancelPreparation()
             return
         }
         val sprintMode = SprintResetMode.fromName(AnticheatManager.sprintReset)
@@ -468,9 +469,12 @@ object HitAuraModule : Module(
             val cMode = clickMode
 
             // Hold the selected weapon while it charges; swapping it back every tick restarts server charge.
-            if (RotationUtil.getDistanceToBox(target) <= maxReach
+            val weaponPrepared = if (RotationUtil.getDistanceToBox(target) <= maxReach
                 || TpAuraModule.getRenderPosition(target) != null) attackExecutor.prepareWeapon(target, 1)
-            else attackExecutor.cancelPreparation()
+            else {
+                attackExecutor.cancelPreparation()
+                false
+            }
 
             val readyNextAttack = attackExecutor.shouldPrepareAttack(
                 target = target,
@@ -482,11 +486,6 @@ object HitAuraModule : Module(
                 onlyCrits = onlyCrits,
                 smartCrits = smartCrits,
                 ticksAhead = ThunderHackTiming.PREPARATION_TICKS
-            )
-            sprintResetProcessor.prepareAttack(
-                sprintMode,
-                criticalProcessor.shouldPrepareSprintReset(onlyCrits, smartCrits, readyNextAttack,
-                    AutoMaceModule.isSmashReady(ThunderHackTiming.PREPARATION_TICKS))
             )
             val overrideAimPoint = if (elytraTarget && player.isFallFlying && elytraPredict) {
                 val targetVel = target.deltaMovement
@@ -517,11 +516,26 @@ object HitAuraModule : Module(
                 visibilityRange = effectiveAimRange
             )
 
+            val enforceRayTrace = rayTrace && !player.isFallFlying && rotMode != RotationMode.NO_ROT
+                && rotMode != RotationMode.GRIM_1204
+            // The same accepted pose/ray must allow the attack before we sacrifice chase speed.
+            val geometryReady = attackExecutor.geometryReady(target, maxReach, enforceRayTrace, throughWalls)
+            val prepareSprint = weaponPrepared && geometryReady && criticalProcessor.shouldPrepareSprintReset(
+                onlyCrits, smartCrits, readyNextAttack,
+                AutoMaceModule.isSmashReady(ThunderHackTiming.PREPARATION_TICKS)
+            )
+            if (prepareSprint) sprintResetProcessor.prepareAttack(sprintMode, true)
+            else sprintResetProcessor.cancelPreparation()
+
             // ThunderHack runs Aura in tick HEAD: the short fall under a ceiling is still present here.
             // Only the last accepted rotation/position authorizes the attack; this tick's aim is sent later.
             if (level.getEntity(target.id) !== target || !targetSelector.isValidTarget(target, maxReach,
-                    fov.toFloat(), targets, throughWalls && !wallCheck, friendProtection)) return@safeRun
+                    fov.toFloat(), targets, throughWalls && !wallCheck, friendProtection)) {
+                sprintResetProcessor.cancelPreparation()
+                return@safeRun
+            }
             try {
+                if (!geometryReady) return@safeRun
                 if (!attackExecutor.shouldPrepareAttack(target, maxReach, cMode, cps, cpsRandomization,
                         cpsSpread, onlyCrits, smartCrits, 0, sprintMode)) return@safeRun
                 if (!attackExecutor.prepareAttack(target, maxReach)) return@safeRun
@@ -535,12 +549,17 @@ object HitAuraModule : Module(
                     onlyCrits = onlyCrits,
                     smartCrits = smartCrits,
                     sprintResetMode = sprintMode,
-                    rayTrace = rayTrace && !player.isFallFlying && rotMode != RotationMode.NO_ROT
-                        && rotMode != RotationMode.GRIM_1204,
+                    rayTrace = enforceRayTrace,
                     throughWalls = throughWalls
                 )
             } finally {
                 attackExecutor.cancelPreparation(releaseWeapon = false)
+                when (attackExecutor.waitReason) {
+                    AttackExecutor.WaitReason.CONTEXT, AttackExecutor.WaitReason.PRIORITY, AttackExecutor.WaitReason.RANGE,
+                    AttackExecutor.WaitReason.WALL, AttackExecutor.WaitReason.ROTATION, AttackExecutor.WaitReason.SLOT ->
+                        sprintResetProcessor.cancelPreparation()
+                    else -> Unit
+                }
             }
         }
     }

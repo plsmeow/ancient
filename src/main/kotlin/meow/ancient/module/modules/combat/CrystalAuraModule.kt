@@ -9,6 +9,7 @@ import meow.ancient.client.util.combat.AuraTerrainMiner
 import meow.ancient.client.util.combat.CrystalTerrainPlan
 import meow.ancient.client.util.combat.CrystalTerrainPriority
 import meow.ancient.client.util.combat.ExplosionDamageUtil
+import meow.ancient.client.util.combat.SurroundExplosion
 import meow.ancient.client.util.combat.AuraMotionPrediction
 import meow.ancient.client.util.combat.AuraDamageCache
 import meow.ancient.client.util.combat.AuraEntityOccupancy
@@ -75,7 +76,7 @@ object CrystalAuraModule : Module(
     val rotations by boolean("Rotations", true)
     val wallCheck by boolean("WallCheck", true, "Requires a clear view to place and break crystals")
     val silentSlots by boolean("Silent Slots", true)
-    val ignoreTerrain by boolean("Ignore Terrain", false, "Treats all blocks as indestructible when calculating explosion damage")
+    val ignoreTerrain by boolean("Ignore Terrain", false, "Ignores blocks with blast resistance below 600; disabled uses vanilla exposure")
     val basePlace by boolean("Base Place", true, "Places obsidian as base for crystals if none available")
     val lethalOverride by boolean("Lethal Override", true)
     val targetNPCs by boolean("Target NPCs", true, "Includes practice NPCs reported as creative players")
@@ -170,7 +171,8 @@ object CrystalAuraModule : Module(
     private fun damageAt(pos: Vec3, target: Player, base: BlockPos?, lead: Double, cleared: Set<BlockPos> = emptySet()): Float {
         if (target.isSpectator || target.isCreative && (target === mc.player || !targetNPCs)) return 0f
         val predicted = forecast(target, lead)
-        return damageCache.damage(target, predicted, pos, base, cleared = cleared)
+        return damageCache.damage(target, predicted, pos, base, cleared = cleared,
+            ignoreCreative = targetNPCs && target !== mc.player)
     }
 
     private fun selfDamageAt(pos: Vec3, player: LocalPlayer, base: BlockPos?, lead: Double): Float =
@@ -251,6 +253,11 @@ object CrystalAuraModule : Module(
 
         val crystal = target?.let { findCrystal(player, it, AnticheatManager.getHealth(it)) }
         if (crystal != null) {
+            if (requestProtection(target, crystal.position())) {
+                clearPrepared()
+                diagnosticState.status(Reason.PRIORITY, "Surround готовит укрытие", crystal.blockPosition())
+                return
+            }
             terrainPlan?.recovery?.pause(tick)
             if (miner.active) miner.cancel()
             // A qualifying crystal retains priority even while its break delay/rotation is pending.
@@ -716,11 +723,28 @@ object CrystalAuraModule : Module(
         val slot = if (hand == InteractionHand.OFF_HAND) player.inventory.selectedSlot else InventoryUtil.findHotbarSlot(item)
         if (slot !in 0..8) return
         if (targetId == null) return
+        val target = mc.level?.getEntity(targetId) as? Player ?: return
+        if (requestProtection(target, explosionPos(site.pos), site.pos.takeIf { kind == PendingKind.BASE }, prospective = true)) {
+            clearPrepared()
+            diagnosticState.status(Reason.PRIORITY, "Surround готовит укрытие", site.pos)
+            return
+        }
         preferredPos = site.pos
         prepared = Prepared(kind, site.pos, targetId, tick,
             AABB(if (kind == PendingKind.CRYSTAL) site.pos.above() else site.pos),
             hit = site.hit, hand = hand, slot = slot, terrainBase = terrainBase)
         prepare(player)
+    }
+
+    private fun requestProtection(target: Player, explosion: Vec3, base: BlockPos? = null, prospective: Boolean = false): Boolean {
+        val spawn = BlockPos.containing(explosion)
+        val reserved = buildSet {
+            add(spawn); add(spawn.above())
+            base?.let { add(it) }
+        }
+        return SurroundModule.requestProtection("CrystalAura", SurroundExplosion(explosion, ExplosionDamageUtil.CRYSTAL_DIAMETER,
+            base, prospective = prospective, reserved = reserved, targetId = target.id,
+            minTargetDamage = minDamage.toFloat(), lethalOverride = lethalOverride, immediate = !prospective))
     }
 
     private var readyTick = -1
@@ -821,9 +845,20 @@ object CrystalAuraModule : Module(
             return
         }
         if (SilentSwapUtil.serverSlot != action.slot) { diagnosticState.status(Reason.TOOL_SWAP, pos = action.pos); return }
+        // Equipment or terrain may change after selection but before the movement hook.
+        damageCache.beginTick(level, ignoreTerrain)
         if (!validPrepared(player, target, action)) {
             diagnosticState.status(Reason.CONTEXT, "Позиция или прогноз изменились; повторный поиск", action.pos)
             clearPrepared(); return
+        }
+        if (target != null) {
+            val explosion = if (action.kind == PendingKind.BREAK) level.getEntity(action.entityId)?.position() ?: return
+                else explosionPos(action.pos)
+            if (requestProtection(target, explosion, action.pos.takeIf { action.kind == PendingKind.BASE }, action.kind != PendingKind.BREAK)) {
+                clearPrepared()
+                diagnosticState.status(Reason.PRIORITY, "Surround готовит укрытие", action.pos)
+                return
+            }
         }
         ActionCoordinator.withOwner(ActionCoordinator.resolveOwner(this)) {
             accepted = false
@@ -864,6 +899,7 @@ object CrystalAuraModule : Module(
                     }
                 }
                 if (accepted) {
+                    if (action.kind == PendingKind.BREAK) SurroundModule.clearProtectionRequest("CrystalAura")
                     if (action.terrainBase) terrainPlan?.let { it.placementSent(tick); it.recovery.placementSent() }
                     pending = Pending(action.kind, action.pos, tick, action.entityId, action.box)
                     visual.pulse()
@@ -1044,6 +1080,7 @@ object CrystalAuraModule : Module(
     }
 
     private fun reset() {
+        SurroundModule.clearProtectionRequest("CrystalAura")
         placeTimer = 0
         breakTimer = 0
         pending = null

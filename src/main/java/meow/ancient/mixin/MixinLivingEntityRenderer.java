@@ -1,5 +1,6 @@
 package meow.ancient.mixin;
 
+import meow.ancient.module.modules.render.NoRenderModule;
 import meow.ancient.client.util.rotation.Rotation;
 import meow.ancient.client.util.rotation.RotationManager;
 import net.minecraft.client.Minecraft;
@@ -19,6 +20,10 @@ public abstract class MixinLivingEntityRenderer<T extends LivingEntity, S extend
         at = @At("TAIL")
     )
     private void onExtractRenderState(T entity, S state, float partialTick, CallbackInfo ci) {
+        if (NoRenderModule.INSTANCE.noInvisibility()) {
+            state.isInvisible = false;
+            state.isInvisibleToPlayer = false;
+        }
         if (entity == Minecraft.getInstance().player && RotationManager.INSTANCE.isActive()) {
             Rotation prev = RotationManager.INSTANCE.getPreviousServerRotation();
             Rotation curr = RotationManager.INSTANCE.getServerRotation();

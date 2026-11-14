@@ -15,6 +15,7 @@ public class MixinWeatherEffectRenderer {
     @Inject(method = "extractRenderState", at = @At("HEAD"), cancellable = true)
     private void onWeather(ClientLevel clientLevel, float f, Vec3 vec3, WeatherRenderState weatherRenderState, CallbackInfo ci) {
         if (NoRenderModule.INSTANCE.noWeather()) {
+            weatherRenderState.reset();
             ci.cancel();
         }
     }

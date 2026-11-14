@@ -73,6 +73,18 @@ class AttackExecutor(
         return RotationUtil.getDistanceToBox(target, eyes) <= range
     }
 
+    fun geometryReady(target: LivingEntity, range: Double, rayTrace: Boolean, throughWalls: Boolean): Boolean {
+        if (TpAuraModule.getRenderPosition(target) != null) return true
+        if (!serverRange(target, range)) return wait(WaitReason.RANGE)
+        val mode = HitAuraModule.rotationMode
+        val strategy = rotationProcessor.getStrategy(mode)
+        if (strategy is NeuroRotation && !strategy.isAttackReady()
+            || strategy is AdvancedRotation && !strategy.isAttackReady()) return wait(WaitReason.ROTATION)
+        if ((rayTrace || mode == HitAuraModule.RotationMode.GRIM_1204)
+            && !lookingAt(target, range, throughWalls && !HitAuraModule.wallCheck)) return wait(WaitReason.ROTATION)
+        return true
+    }
+
     fun cancelPreparation(releaseWeapon: Boolean = true) {
         if (macePreparation != null) {
             macePreparation = null
@@ -166,9 +178,8 @@ class AttackExecutor(
         val neuro = rotationProcessor.getStrategy(rotationMode) as? NeuroRotation
         val advanced = rotationProcessor.getStrategy(rotationMode) as? AdvancedRotation
         val grim = rotationProcessor.getStrategy(rotationMode) as? Grim1204Rotation
-        if (neuro != null && !neuro.isAttackReady() || advanced != null && !advanced.isAttackReady()) return wait(WaitReason.ROTATION)
         val walls = throughWalls && !HitAuraModule.wallCheck
-        if ((rayTrace || grim != null) && !teleport && !lookingAt(target, attackRange, walls)) return wait(WaitReason.ROTATION)
+        if (!geometryReady(target, attackRange, rayTrace, throughWalls)) return false
 
         val player = mc.player ?: return false
         val level = mc.level ?: return false

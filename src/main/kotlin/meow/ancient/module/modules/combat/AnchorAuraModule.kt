@@ -9,6 +9,8 @@ import meow.ancient.client.util.combat.AuraActionQueue
 import meow.ancient.client.util.combat.AuraDamageCache
 import meow.ancient.client.util.combat.AuraEntityOccupancy
 import meow.ancient.client.util.combat.AuraMotionPrediction
+import meow.ancient.client.util.combat.ExplosionDamageUtil
+import meow.ancient.client.util.combat.SurroundExplosion
 import meow.ancient.client.util.friend.FriendRepository
 import meow.ancient.client.util.target.TargetRepository
 import meow.ancient.client.util.inventory.InventoryActionSource
@@ -24,6 +26,7 @@ import net.minecraft.client.player.LocalPlayer
 import net.minecraft.core.BlockPos
 import net.minecraft.world.InteractionHand
 import net.minecraft.world.entity.player.Player
+import net.minecraft.world.item.Item
 import net.minecraft.world.item.Items
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.block.Blocks
@@ -43,6 +46,7 @@ object AnchorAuraModule : Module(
     val range by number("Range", 4.5, 1.0, 6.0, 0.1, 1)
     val minDamage by number("Min Damage", 4.0, 1.0, 20.0, 0.5, 1)
     val maxSelfDamage by number("Max Self Damage", 8.0, 0.0, 20.0, 0.5, 1)
+    val antiSuicide by boolean("Anti Suicide", true, "Rejects explosions lethal to your health and absorption")
     val delay by number("Delay", 0.0, 0.0, 10.0, 1.0, 0)
 
     val moveFixSetting = mode("MoveFix", "Silent", listOf("Silent", "Strict", "Free", "Off"))
@@ -51,7 +55,7 @@ object AnchorAuraModule : Module(
     val rotations by boolean("Rotations", true)
     val wallCheck by boolean("WallCheck", true, "Requires a clear view to place, charge and detonate anchors")
     val silentSlots by boolean("Silent Slots", true)
-    val ignoreTerrain by boolean("Ignore Terrain", false, "Treats all blocks as indestructible when calculating explosion damage")
+    val ignoreTerrain by boolean("Ignore Terrain", false, "Ignores blocks with blast resistance below 600; disabled uses vanilla exposure")
     val lethalOverride by boolean("Lethal Override", true)
     val targetNPCs by boolean("Target NPCs", true, "Includes practice NPCs reported as creative players")
     val render by boolean("Render", true, "Animated placement, charge and detonation targets")
@@ -88,6 +92,7 @@ object AnchorAuraModule : Module(
         private set
 
     private fun reset() {
+        SurroundModule.clearProtectionRequest("AnchorAura")
         tickTimer = 0
         sequence = null
         queuedPlan = null
@@ -125,13 +130,12 @@ object AnchorAuraModule : Module(
     fun availableDamage(): Float {
         if (!isEnabled()) return 0f
         val player = mc.player ?: return 0f
-        if (mc.level?.dimension() == Level.NETHER || hasInFlightAction()) return 0f
+        if (mc.level == null || hasInFlightAction()) return 0f
         val target = findTarget(player) ?: return 0f
         val hp = AnticheatManager.getHealth(target)
         val plan = findPlan(player, target, hp, SequenceStage.DETONATE_SENT)
             ?: findPlan(player, target, hp, SequenceStage.CHARGE_SENT)
             ?: findPlan(player, target, hp, SequenceStage.PLACE_SENT) ?: return 0f
-        if (plan.stage == SequenceStage.DETONATE_SENT && detonationSlot(player) == null) return 0f
         return anchorDamage(plan.pos, target)
     }
 
@@ -153,7 +157,6 @@ object AnchorAuraModule : Module(
             actions.beginTick()
         }
         currentTarget = findTarget(player)
-        if (level.dimension() == Level.NETHER) { currentTarget = null; return }
         tickTimer++
         if (awaitingConfirmation(player, level) || !ActionCoordinator.canAct(this)) return
         if (player.isUsingItem || player.isSpectator
@@ -166,6 +169,10 @@ object AnchorAuraModule : Module(
             ?: findPlan(player, target, targetHp, SequenceStage.CHARGE_SENT)
             ?: findPlan(player, target, targetHp, SequenceStage.PLACE_SENT)
             ?: return
+        if (SurroundModule.requestProtection("AnchorAura", protectionExplosion(selected.pos, target))) {
+            SilentSwapUtil.releasePreparedSlot(this)
+            return
+        }
         val refreshed = if (selected.stage == SequenceStage.PLACE_SENT)
             actions.placementHit(selected.pos, range, wallCheck, rotations)
             else actions.visibleHit(selected.pos, range, wallCheck, selected.hit.location)
@@ -177,6 +184,11 @@ object AnchorAuraModule : Module(
         val aimed = actions.block(plan.hit, range, rotations, getMoveFixMode(), exactFace = plan.stage == SequenceStage.PLACE_SENT,
             wallCheck = wallCheck) { hit ->
             if (!validPlan(player, target, plan, hit)) return@block
+            if (SurroundModule.requestProtection("AnchorAura", protectionExplosion(plan.pos, target))) {
+                queuedPlan = null
+                SilentSwapUtil.releasePreparedSlot(this)
+                return@block
+            }
             val state = level.getBlockState(plan.pos)
             val charges = if (state.`is`(Blocks.RESPAWN_ANCHOR)) state.getValue(RespawnAnchorBlock.CHARGE) else 0
             val sent = when (plan.stage) {
@@ -188,11 +200,20 @@ object AnchorAuraModule : Module(
                 queuedPlan = null
                 preferredPos = plan.pos
                 sequence = AnchorSequence(plan.pos, plan.stage, player.tickCount, charges)
+                if (plan.stage == SequenceStage.DETONATE_SENT) SurroundModule.clearProtectionRequest("AnchorAura")
                 tickTimer = 0
                 visual.pulse()
             }
         }
         if (!aimed) queuedPlan = null
+    }
+
+    private fun protectionExplosion(pos: BlockPos, target: Player): SurroundExplosion {
+        val state = mc.level?.getBlockState(pos)
+        val charged = state?.`is`(Blocks.RESPAWN_ANCHOR) == true && state.getValue(RespawnAnchorBlock.CHARGE) > 0
+        return SurroundExplosion(Vec3.atCenterOf(pos), ExplosionDamageUtil.ANCHOR_DIAMETER, pos, anchor = true,
+            prospective = !charged, reserved = setOf(pos), targetId = target.id,
+            minTargetDamage = minDamage.toFloat(), lethalOverride = lethalOverride, immediate = charged)
     }
 
     private fun renderKind(stage: SequenceStage) = when (stage) {
@@ -201,9 +222,30 @@ object AnchorAuraModule : Module(
         SequenceStage.DETONATE_SENT -> AuraTargetRenderer.Kind.BREAK
     }
 
-    private fun detonationSlot(player: LocalPlayer): Int? =
-        player.inventory.selectedSlot.takeIf { !player.inventory.getItem(it).`is`(Items.GLOWSTONE) }
-            ?: (0..8).firstOrNull { !player.inventory.getItem(it).`is`(Items.GLOWSTONE) }
+    private fun detonationSlot(player: LocalPlayer, charges: Int): Int? {
+        if (player.isSecondaryUseActive && !player.offhandItem.isEmpty) return null
+        return (sequenceOf(player.inventory.selectedSlot) + (0..8).asSequence()).firstOrNull { slot ->
+            val stack = player.inventory.getItem(slot)
+            (charges == 4 || !stack.`is`(Items.GLOWSTONE))
+                && (!player.isSecondaryUseActive || stack.isEmpty)
+                && (charges == 4 || !player.offhandItem.`is`(Items.GLOWSTONE) || offhandSwapSlot(player, slot) != null)
+        }
+    }
+
+    private fun offhandSwapSlot(player: LocalPlayer, slot: Int): Int? {
+        val menu = player.containerMenu
+        if (menu !== player.inventoryMenu || !menu.carried.isEmpty) return null
+        val offhandSlot = menu.getSlot(45)
+        return (0..35).firstOrNull {
+            if (it == slot || player.inventory.getItem(it).`is`(Items.GLOWSTONE)) return@firstOrNull false
+            val candidate = menu.getSlot(if (it in 0..8) it + 36 else it)
+            candidate.mayPickup(player) && candidate.mayPlace(player.offhandItem)
+                && offhandSlot.mayPickup(player) && offhandSlot.mayPlace(candidate.item)
+        }
+    }
+
+    private fun hasItem(player: LocalPlayer, item: Item) =
+        player.offhandItem.`is`(item) || InventoryUtil.findHotbarSlot(item) >= 0
 
     private fun preparePlan(player: LocalPlayer, plan: Plan): Boolean {
         val item = when (plan.stage) {
@@ -211,7 +253,11 @@ object AnchorAuraModule : Module(
             SequenceStage.CHARGE_SENT -> Items.GLOWSTONE
             SequenceStage.DETONATE_SENT -> null
         }
-        val slot = if (item == null) detonationSlot(player) ?: return false
+        val slot = if (item == null) {
+            val state = mc.level?.getBlockState(plan.pos) ?: return false
+            if (!state.`is`(Blocks.RESPAWN_ANCHOR)) return false
+            detonationSlot(player, state.getValue(RespawnAnchorBlock.CHARGE)) ?: return false
+        }
             else if (player.offhandItem.`is`(item)) player.inventory.selectedSlot
             else InventoryUtil.findHotbarSlot(item)
         if (slot !in 0..8) return false
@@ -244,15 +290,22 @@ object AnchorAuraModule : Module(
     }
 
     private fun damageAllowed(player: LocalPlayer, target: Player, pos: BlockPos): Boolean {
-        if (!target.isAlive || anchorDamage(pos, player) > maxSelfDamage.toFloat()) return false
-        val damage = anchorDamage(pos, target)
-        return damage >= minDamage.toFloat() || lethalOverride && damage >= AnticheatManager.getHealth(target)
+        if (!target.isAlive || !safeSelfDamage(player, anchorDamage(pos, player, fresh = true))) return false
+        val damage = anchorDamage(pos, target, fresh = true)
+        val hp = AnticheatManager.getHealth(target)
+        return damage > 0f && (damage >= minDamage.toFloat() || lethalOverride && hp > 0f && damage >= hp)
     }
 
-    private fun anchorDamage(pos: BlockPos, target: Player): Float {
+    private fun safeSelfDamage(player: LocalPlayer, damage: Float): Boolean =
+        damage.isFinite() && damage <= maxSelfDamage.toFloat()
+            && (!antiSuicide || damage == 0f || damage < player.health + player.absorptionAmount)
+
+    private fun anchorDamage(pos: BlockPos, target: Player, fresh: Boolean = false): Float {
         if (target.isSpectator || target.isCreative && (target === mc.player || !targetNPCs)) return 0f
+        if (fresh) return ExplosionDamageUtil.anchorDamage(target, pos, ignoreTerrain, targetNPCs && target !== mc.player)
         return damageCache.damage(target, AuraMotionPrediction.Snapshot(target.position(), target.boundingBox),
-            Vec3.atCenterOf(pos), pos, 10f, airBase = true)
+            Vec3.atCenterOf(pos), pos, ExplosionDamageUtil.ANCHOR_DIAMETER, airBase = true,
+            ignoreCreative = targetNPCs && target !== mc.player)
     }
 
     private fun ensureSearchContext(player: LocalPlayer) {
@@ -268,24 +321,27 @@ object AnchorAuraModule : Module(
         val level = mc.level ?: return false
         if (mc.player !== player || currentTarget !== target || !target.isAlive || target.isRemoved
             || FriendRepository.isFriend(target) || player.distanceToSqr(target) > targetRange * targetRange) return false
-        if (!damageAllowed(player, target, plan.pos)) return false
+        if (!level.worldBorder.isWithinBounds(plan.pos) || level.isOutsideBuildHeight(plan.pos)
+            || !ExplosionDamageUtil.anchorExplodes(level, plan.pos)) return false
         val state = level.getBlockState(plan.pos)
-        return when (plan.stage) {
-            SequenceStage.PLACE_SENT -> InventoryUtil.findHotbarSlot(Items.GLOWSTONE) >= 0
+        val usable = when (plan.stage) {
+            SequenceStage.PLACE_SENT -> hasItem(player, Items.GLOWSTONE) && hasItem(player, Items.RESPAWN_ANCHOR)
                 && state.canBeReplaced() && hit.blockPos.relative(hit.direction) == plan.pos
-                && level.getEntities(null, AABB(plan.pos)).none { it.isAlive }
-            SequenceStage.CHARGE_SENT -> state.`is`(Blocks.RESPAWN_ANCHOR) && state.getValue(RespawnAnchorBlock.CHARGE) == 0
+                && level.getEntities(null, AABB(plan.pos)).none { it.blocksBuilding && !it.isSpectator }
+            SequenceStage.CHARGE_SENT -> !player.isSecondaryUseActive && hasItem(player, Items.GLOWSTONE)
+                && state.`is`(Blocks.RESPAWN_ANCHOR) && state.getValue(RespawnAnchorBlock.CHARGE) == 0
             SequenceStage.DETONATE_SENT -> state.`is`(Blocks.RESPAWN_ANCHOR) && state.getValue(RespawnAnchorBlock.CHARGE) > 0
+                && detonationSlot(player, state.getValue(RespawnAnchorBlock.CHARGE)) != null
         }
+        // Pending rotations can outlive the search: use current terrain, equipment and health.
+        return usable && damageAllowed(player, target, plan.pos)
     }
 
     private fun findPlan(player: LocalPlayer, target: Player, targetHp: Float, stage: SequenceStage): Plan? {
         val level = mc.level ?: return null
-        if (stage == SequenceStage.PLACE_SENT && InventoryUtil.findHotbarSlot(Items.GLOWSTONE) < 0) return null
-        if (stage == SequenceStage.PLACE_SENT && !player.offhandItem.`is`(Items.RESPAWN_ANCHOR)
-            && InventoryUtil.findHotbarSlot(Items.RESPAWN_ANCHOR) < 0) return null
-        if (stage == SequenceStage.CHARGE_SENT && !player.offhandItem.`is`(Items.GLOWSTONE)
-            && InventoryUtil.findHotbarSlot(Items.GLOWSTONE) < 0) return null
+        if (stage != SequenceStage.DETONATE_SENT && !hasItem(player, Items.GLOWSTONE)) return null
+        if (stage == SequenceStage.CHARGE_SENT && player.isSecondaryUseActive) return null
+        if (stage == SequenceStage.PLACE_SENT && !hasItem(player, Items.RESPAWN_ANCHOR)) return null
         ensureSearchContext(player)
         val key = target.id to stage
         if (searchMemo.containsKey(key)) return searchMemo[key]
@@ -293,6 +349,7 @@ object AnchorAuraModule : Module(
         val p = player.blockPosition()
         var best: Plan? = null
         var bestDamage = 0f
+        var bestSelfDamage = Float.POSITIVE_INFINITY
         val candidates = sequence {
             preferredPos?.let { yield(it) }
             yieldAll(BlockPos.betweenClosed(p.x - r, maxOf(p.y - r, level.minY), p.z - r,
@@ -300,23 +357,33 @@ object AnchorAuraModule : Module(
         }
         for (mutablePos in candidates) {
             val pos = mutablePos.immutable()
+            if (!level.worldBorder.isWithinBounds(pos) || !ExplosionDamageUtil.anchorExplodes(level, pos)) continue
             val state = level.getBlockState(pos)
             when (stage) {
-                SequenceStage.PLACE_SENT -> if (!state.canBeReplaced() || occupancy.aliveBlocked(pos)) continue
+                SequenceStage.PLACE_SENT -> if (!state.canBeReplaced() || occupancy.baseBlocked(pos)) continue
                 SequenceStage.CHARGE_SENT -> if (!state.`is`(Blocks.RESPAWN_ANCHOR) || state.getValue(RespawnAnchorBlock.CHARGE) != 0) continue
                 SequenceStage.DETONATE_SENT -> if (!state.`is`(Blocks.RESPAWN_ANCHOR) || state.getValue(RespawnAnchorBlock.CHARGE) == 0) continue
             }
-            if (player.eyePosition.distanceToSqr(Vec3.atCenterOf(pos)) > range * range) continue
+            if (stage == SequenceStage.DETONATE_SENT && detonationSlot(player, state.getValue(RespawnAnchorBlock.CHARGE)) == null) continue
+            val reach = minOf(range, player.blockInteractionRange())
+            val box = AABB(pos)
+            val nearest = Vec3(player.eyePosition.x.coerceIn(box.minX, box.maxX),
+                player.eyePosition.y.coerceIn(box.minY, box.maxY), player.eyePosition.z.coerceIn(box.minZ, box.maxZ))
+            if (player.eyePosition.distanceToSqr(nearest) > reach * reach) continue
             val damage = anchorDamage(pos, target)
-            if (damage <= bestDamage || damage < minDamage.toFloat() && !(lethalOverride && damage >= targetHp)) continue
-            if (anchorDamage(pos, player) > maxSelfDamage.toFloat()) continue
+            if (damage <= 0f || damage < bestDamage || damage < minDamage.toFloat()
+                && !(lethalOverride && targetHp > 0f && damage >= targetHp)) continue
+            val selfDamage = anchorDamage(pos, player)
+            if (!safeSelfDamage(player, selfDamage)) continue
+            if (best != null && damage == bestDamage && (selfDamage > bestSelfDamage
+                    || selfDamage == bestSelfDamage && pos != preferredPos)) continue
             val hit = if (stage == SequenceStage.PLACE_SENT) AuraActionQueue.placementHit(player, pos, range, wallCheck)
                 else AuraActionQueue.visibleHit(player, pos, range, wallCheck = wallCheck)
             if (hit == null) continue
             val plan = Plan(pos, hit, stage)
-            if (pos == preferredPos) { searchMemo[key] = plan; return plan }
             best = plan
             bestDamage = damage
+            bestSelfDamage = selfDamage
         }
         searchMemo[key] = best
         return best
@@ -357,21 +424,18 @@ object AnchorAuraModule : Module(
     }
 
     private fun detonateAnchor(player: LocalPlayer, hitResult: BlockHitResult): Boolean {
-        val slot = detonationSlot(player) ?: return false
-        if (player.isSecondaryUseActive && (!player.inventory.getItem(slot).isEmpty || !player.offhandItem.isEmpty)) return false
-        if (!player.offhandItem.`is`(Items.GLOWSTONE)) {
+        val state = mc.level?.getBlockState(hitResult.blockPos) ?: return false
+        if (!state.`is`(Blocks.RESPAWN_ANCHOR)) return false
+        val charges = state.getValue(RespawnAnchorBlock.CHARGE)
+        if (charges == 0) return false
+        val slot = detonationSlot(player, charges) ?: return false
+        if (charges == 4 || !player.offhandItem.`is`(Items.GLOWSTONE)) {
             return interact(player, InteractionHand.MAIN_HAND, hitResult, slot)
         }
 
         val menu = player.containerMenu
         if (menu !== player.inventoryMenu || !menu.carried.isEmpty || mc.gameMode == null) return false
-        val offhandSlot = menu.getSlot(45)
-        val swapSlot = (0..35).firstOrNull {
-            if (it == slot || player.inventory.getItem(it).`is`(Items.GLOWSTONE)) return@firstOrNull false
-            val candidate = menu.getSlot(if (it in 0..8) it + 36 else it)
-            candidate.mayPickup(player) && candidate.mayPlace(player.offhandItem)
-                && offhandSlot.mayPickup(player) && offhandSlot.mayPlace(candidate.item)
-        } ?: return false
+        val swapSlot = offhandSwapSlot(player, slot) ?: return false
         val menuSlot = if (swapSlot in 0..8) swapSlot + 36 else swapSlot
         if (!InventoryMoveModule.beginInventoryAction(InventoryActionSource.INVENTORY)) return false
         try {

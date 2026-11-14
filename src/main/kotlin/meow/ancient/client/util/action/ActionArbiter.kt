@@ -2,7 +2,30 @@ package meow.ancient.client.util.action
 
 enum class ActionGroup { MANUAL, COMBAT, MINING, UTILITY }
 
-data class ActionOwner(val name: String, val group: ActionGroup, val priority: Int, val helper: Boolean = false)
+data class ActionOwner(val name: String, val group: ActionGroup, val priority: Int, val helper: Boolean = false) {
+    companion object {
+        internal fun forModule(className: String): ActionOwner {
+            val name = className.substringAfterLast('.').substringBefore('$').removeSuffix("Module")
+            val helper = name in setOf("AutoMace", "BreachSwap", "MaceKill", "TpAura")
+            return when {
+                // Item-use binds must work even if an aura has a target or already attacked this tick.
+                name in setOf("ClickPearl", "ElytraHelper", "Phase", "FtHelper", "HwHelper", "AutoLunge") ->
+                    ActionOwner(name, ActionGroup.MANUAL, 1000)
+                name == "SpearKill" -> ActionOwner(name, ActionGroup.COMBAT, 330)
+                name == "Surround" -> ActionOwner(name, ActionGroup.COMBAT, 450)
+                name == "CrystalAura" -> ActionOwner(name, ActionGroup.COMBAT, 323)
+                name == "AnchorAura" -> ActionOwner(name, ActionGroup.COMBAT, 322)
+                name == "CrystalTerrain" -> ActionOwner(name, ActionGroup.COMBAT, 321)
+                name == "CrystalTerrainBoost" -> ActionOwner(name, ActionGroup.COMBAT, 324)
+                name == "HitAura" -> ActionOwner(name, ActionGroup.COMBAT, 320)
+                name == "TriggerBot" -> ActionOwner(name, ActionGroup.COMBAT, 300)
+                className.contains(".combat.") -> ActionOwner(name, ActionGroup.COMBAT, 310, helper)
+                name == "PacketMine" -> ActionOwner(name, ActionGroup.MINING, 900)
+                else -> ActionOwner(name, ActionGroup.UTILITY, 100)
+            }
+        }
+    }
+}
 
 /** A committed action cannot be preempted by a different automation halfway through its tick. */
 internal class ActionArbiter {

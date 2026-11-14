@@ -1,5 +1,7 @@
 package meow.ancient.mixin;
 
+import meow.ancient.module.modules.render.NoRenderModule;
+import net.minecraft.client.Minecraft;
 import meow.ancient.event.EventManager;
 import meow.ancient.event.events.ScreenCloseEvent;
 import net.minecraft.client.gui.screens.Screen;
@@ -20,6 +22,17 @@ public class MixinScreen {
                 ci.cancel();
             }
         }
+    }
+
+    @Inject(method = {
+        "extractBackground",
+        "extractBlurredBackground",
+        "extractMenuBackground(Lnet/minecraft/client/gui/GuiGraphicsExtractor;)V",
+        "extractMenuBackground(Lnet/minecraft/client/gui/GuiGraphicsExtractor;IIII)V",
+        "extractTransparentBackground"
+    }, at = @At("HEAD"), cancellable = true)
+    private void ancient$hideBackground(CallbackInfo ci) {
+        if (Minecraft.getInstance().level != null && NoRenderModule.INSTANCE.noGuiBackground()) ci.cancel();
     }
 
 }

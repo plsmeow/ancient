@@ -1,5 +1,11 @@
 package meow.ancient.mixin;
 
+import meow.ancient.module.modules.render.NoRenderModule;
+import net.minecraft.core.Holder;
+import net.minecraft.world.effect.MobEffect;
+import net.minecraft.world.effect.MobEffects;
+import net.minecraft.world.entity.LivingEntity;
+import org.spongepowered.asm.mixin.injection.Redirect;
 import meow.ancient.module.modules.render.CameraTweaksModule;
 import meow.ancient.module.modules.render.FreeCameraModule;
 import meow.ancient.module.modules.render.FreeLookModule;
@@ -81,4 +87,13 @@ public abstract class MixinCamera {
             cir.setReturnValue((float) CameraTweaksModule.INSTANCE.getDistance());
         }
     }
+
+    @Redirect(method = "extractRenderState", at = @At(value = "INVOKE",
+        target = "Lnet/minecraft/world/entity/LivingEntity;hasEffect(Lnet/minecraft/core/Holder;)Z"))
+    private boolean ancient$showSkyThroughEffects(LivingEntity entity, Holder<MobEffect> effect) {
+        if ((effect == MobEffects.BLINDNESS && NoRenderModule.INSTANCE.noBlindness())
+            || (effect == MobEffects.DARKNESS && NoRenderModule.INSTANCE.noDarkness())) return false;
+        return entity.hasEffect(effect);
+    }
+
 }

@@ -22,6 +22,8 @@ public class MixinEntityRenderer<T extends Entity, S extends EntityRenderState> 
         at = @At("TAIL")
     )
     private void ancient$extractChamsTarget(T entity, S state, float partialTick, CallbackInfo ci) {
+        if (NoRenderModule.INSTANCE.noGlowing()) state.outlineColor = 0;
+        if (NoRenderModule.INSTANCE.noInvisibility()) state.isInvisible = false;
         ((ChamsEntityRenderState) state).ancient$setChamsTarget(ChamsModule.INSTANCE.shouldRender(entity));
     }
 

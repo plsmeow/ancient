@@ -34,8 +34,14 @@ class SprintResetProcessor {
         owner = player
         restoreSprint = restoreSprint || player.isSprinting
         // Hold through the next update: the stop must be visible in the preceding movement packet.
-        holdUntil = maxOf(holdUntil, player.tickCount + 2)
+        if (holdUntil < 0) holdUntil = player.tickCount + 2
         player.isSprinting = false
+    }
+
+    fun cancelPreparation() {
+        if (resumeNextUpdate) return // Complete the accepted attack's sprint restore at the next update.
+        holdUntil = -1
+        resumeSprint()
     }
 
     fun onPreMovement() {

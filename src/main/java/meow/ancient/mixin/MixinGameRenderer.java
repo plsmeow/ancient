@@ -1,5 +1,8 @@
 package meow.ancient.mixin;
 
+import meow.ancient.module.modules.render.NoRenderModule;
+import net.minecraft.client.renderer.state.level.PlayerRenderState;
+import org.spongepowered.asm.mixin.injection.Redirect;
 import meow.ancient.client.listener.listeners.RenderListener;
 import meow.ancient.client.util.render.ChamsRenderer;
 import net.minecraft.client.Minecraft;
@@ -47,4 +50,22 @@ public class MixinGameRenderer {
             RenderListener.ALL_GUI_PIPELINES
         );
     }
+
+    @Redirect(method = "renderLevel", at = @At(value = "FIELD",
+        target = "Lnet/minecraft/client/renderer/state/level/PlayerRenderState;nauseaEffectIntensity:F"))
+    private float ancient$hideNauseaDistortion(PlayerRenderState state) {
+        return NoRenderModule.INSTANCE.noNausea() ? 0.0f : state.nauseaEffectIntensity;
+    }
+
+    @Redirect(method = "renderLevel", at = @At(value = "FIELD",
+        target = "Lnet/minecraft/client/renderer/state/level/PlayerRenderState;portalEffectIntensity:F"))
+    private float ancient$hidePortalDistortion(PlayerRenderState state) {
+        return NoRenderModule.INSTANCE.noPortalOverlay() ? 0.0f : state.portalEffectIntensity;
+    }
+
+    @Inject(method = "processBlurEffect", at = @At("HEAD"), cancellable = true)
+    private void ancient$hideScreenBlur(CallbackInfo ci) {
+        if (Minecraft.getInstance().level != null && NoRenderModule.INSTANCE.noGuiBackground()) ci.cancel();
+    }
+
 }

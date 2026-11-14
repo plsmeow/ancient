@@ -1,7 +1,7 @@
-package meow.ancient.module.modules.combat
+package meow.ancient.module.modules.movement
 
 import com.mojang.blaze3d.platform.InputConstants
-import meow.ancient.client.extensions.COMBAT
+import meow.ancient.client.extensions.MOVEMENT
 import meow.ancient.client.extensions.mc
 import meow.ancient.client.util.inventory.SilentSwapUtil
 import meow.ancient.event.events.KeyPressEvent
@@ -20,7 +20,7 @@ import sweetie.evaware.flora.api.Commando
 
 object AutoLungeModule : Module(
     name = "Auto Lunge",
-    category = COMBAT,
+    category = MOVEMENT,
     description = "Swaps to a Lunge spear in the hotbar and sends the STAB attack"
 ) {
     enum class LungeMode(val displayName: String) {

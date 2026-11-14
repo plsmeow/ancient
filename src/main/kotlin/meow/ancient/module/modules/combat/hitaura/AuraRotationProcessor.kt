@@ -2,6 +2,7 @@ package meow.ancient.module.modules.combat.hitaura
 
 import meow.ancient.client.extensions.box
 import meow.ancient.client.extensions.mc
+import meow.ancient.client.util.combat.AuraMotionPrediction
 import meow.ancient.client.util.rotation.*
 import meow.ancient.module.modules.combat.HitAuraModule
 import meow.ancient.module.modules.combat.TpAuraModule
@@ -12,6 +13,7 @@ import meow.ancient.module.modules.combat.hitaura.rotation.AdvancedRotationSetti
 import meow.ancient.module.modules.combat.hitaura.rotation.impl.*
 import net.minecraft.util.Mth
 import net.minecraft.world.entity.LivingEntity
+import net.minecraft.world.entity.Entity
 import net.minecraft.world.phys.Vec3
 import kotlin.math.abs
 import kotlin.math.hypot
@@ -19,6 +21,7 @@ import kotlin.math.hypot
 class AuraRotationProcessor(advancedSettings: AdvancedRotationSettings) {
     private var tickCounter: Int = 0
     private var previousMode: RotationMode? = null
+    private val targetMotion = AuraMotionPrediction()
 
     private val strategies: Map<RotationMode, RotationStrategy> = mapOf(
         RotationMode.VANILLA to VanillaRotation(),
@@ -46,6 +49,7 @@ class AuraRotationProcessor(advancedSettings: AdvancedRotationSettings) {
     fun reset() {
         tickCounter = 0
         previousMode = null
+        targetMotion.clear()
         strategies.values.forEach(RotationStrategy::reset)
     }
 
@@ -119,11 +123,28 @@ class AuraRotationProcessor(advancedSettings: AdvancedRotationSettings) {
         if (!strategy.shouldUpdateRotation(shouldSnapNow)) {
             return currentRot
         }
-        val preferredPoint = advancedAimPoint ?: overrideAimPoint ?: calculateAimPoint(target, aimPointMode)
+        var aimEyes = mc.player?.eyePosition ?: Vec3.ZERO
+        var aimBox = target.box
+        val player = mc.player
+        if (rotationMode == RotationMode.VANILLA && player != null && overrideAimPoint == null) {
+            targetMotion.update(target, player.tickCount)
+            aimBox = targetMotion.predict(target, 1.0).box
+            if (!player.onGround() && !player.isFallFlying && !player.isInLiquid) {
+                val level = mc.level
+                if (level != null) {
+                    val movement = player.deltaMovement
+                    val collisions = level.getEntityCollisions(player, player.boundingBox.expandTowards(movement))
+                    val allowed = Entity.collideBoundingBox(player, movement, player.boundingBox, level, collisions)
+                    aimEyes = aimEyes.add(allowed)
+                }
+            }
+        }
+        // This rotation is published after physics and used to attack at the next tick's HEAD.
+        val preferredPoint = advancedAimPoint ?: overrideAimPoint ?: AuraAimGeometry.point(aimEyes, aimBox, aimPointMode)
         val aimPoint = resolvePoint(preferredPoint) ?: return currentRot
         // Keep Advanced's attack-readiness state aligned with the point actually used for aiming.
         if (advanced != null && aimPoint != preferredPoint) advanced.resolveAimPoint(target, aimPoint)
-        val idealRotation = RotationUtil.getRotationToVec(aimPoint).normalizeTo(currentRot)
+        val idealRotation = RotationUtil.getRotationToVec(aimPoint, aimEyes).normalizeTo(currentRot)
 
         val dYaw = Mth.wrapDegrees(idealRotation.yaw - currentRot.yaw)
         val dPitch = idealRotation.pitch - currentRot.pitch
@@ -173,21 +194,7 @@ class AuraRotationProcessor(advancedSettings: AdvancedRotationSettings) {
     }
 
     private fun calculateAimPoint(target: LivingEntity, aimPointMode: AimPointMode): Vec3 {
-        val box = target.box
         val eyePos = mc.player?.eyePosition ?: Vec3.ZERO
-        return when (aimPointMode) {
-            AimPointMode.NEAREST -> RotationUtil.getNearestPoint(eyePos, box, 0.10)
-            AimPointMode.MULTIPOINT -> RotationUtil.getMultipoint(eyePos, box, 0.78)
-            AimPointMode.HEAD -> Vec3(
-                box.center.x,
-                (box.minY + (box.maxY - box.minY) * 0.88).coerceAtMost(box.maxY - 0.05),
-                box.center.z
-            )
-            AimPointMode.CHEST -> Vec3(
-                box.center.x,
-                box.minY + (box.maxY - box.minY) * 0.55,
-                box.center.z
-            )
-        }
+        return AuraAimGeometry.point(eyePos, target.box, aimPointMode)
     }
 }

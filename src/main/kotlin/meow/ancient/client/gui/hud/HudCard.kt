@@ -13,6 +13,8 @@ import org.joml.Matrix4f
 
 internal enum class HudForm { WATERMARK, CHIP, LIST, SCOREBOARD, ARRAY, TARGET }
 
+internal const val HUD_CARD_RADIUS = 5f
+
 internal class HudRow(var key: String = "") {
     var text = ""
         private set
@@ -269,7 +271,7 @@ internal class HudCard(
         if (form != HudForm.ARRAY) {
             RenderUtils.hudBackground(matrix, x, y, drawWidth, drawHeight,
                 palette.surfaceContainerLowest.alpha(if (HudModule.blur) 140 else 190),
-                (if (form == HudForm.WATERMARK || form == HudForm.CHIP) 8f else 5f) * scale,
+                HUD_CARD_RADIUS * scale,
                 0.55f * scale, palette.outlineVariant.alpha(95), ClientRenderPipeline.HUD_RECT, opacity = alpha)
         }
         gfx.enableScissor(x.toInt(), y.toInt(), kotlin.math.ceil(x + drawWidth).toInt(),

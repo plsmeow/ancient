@@ -5,7 +5,7 @@ import meow.ancient.client.interfaces.ILoadable
 import meow.ancient.module.modules.combat.BowBombModule
 import meow.ancient.module.modules.combat.AntiBotModule
 import meow.ancient.module.modules.combat.AutoTotemModule
-import meow.ancient.module.modules.combat.AutoLungeModule
+import meow.ancient.module.modules.movement.AutoLungeModule
 import meow.ancient.module.modules.combat.AutoMaceModule
 import meow.ancient.module.modules.combat.BreachSwapModule
 import meow.ancient.module.modules.combat.CriticalsModule
@@ -83,8 +83,8 @@ object ModuleManager : ILoadable {
             AutoTotemModule,
             AntiBotModule,
             TriggerBotModule,
-            AutoLungeModule,
             AutoMaceModule,
+            MaceKillModule,
             BowBombModule,
             CriticalsModule,
             BreachSwapModule,
@@ -98,6 +98,7 @@ object ModuleManager : ILoadable {
             TpAuraModule,
             CrystalOptimizerModule,
             AimAssistModule,
+            AutoLungeModule,
             AutoSprintModule,
             GroundSpoofModule,
             AirStuckModule,
