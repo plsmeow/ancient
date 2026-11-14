@@ -520,10 +520,11 @@ object HitAuraModule : Module(
                 && rotMode != RotationMode.GRIM_1204
             // The same accepted pose/ray must allow the attack before we sacrifice chase speed.
             val geometryReady = attackExecutor.geometryReady(target, maxReach, enforceRayTrace, throughWalls)
-            val prepareSprint = weaponPrepared && geometryReady && criticalProcessor.shouldPrepareSprintReset(
-                onlyCrits, smartCrits, readyNextAttack,
-                AutoMaceModule.isSmashReady(ThunderHackTiming.PREPARATION_TICKS)
-            )
+            val prepareSprint = !attackExecutor.isBreakingShield(target) && weaponPrepared && geometryReady
+                && criticalProcessor.shouldPrepareSprintReset(
+                    onlyCrits, smartCrits, readyNextAttack,
+                    AutoMaceModule.isSmashReady(ThunderHackTiming.PREPARATION_TICKS)
+                )
             if (prepareSprint) sprintResetProcessor.prepareAttack(sprintMode, true)
             else sprintResetProcessor.cancelPreparation()
 

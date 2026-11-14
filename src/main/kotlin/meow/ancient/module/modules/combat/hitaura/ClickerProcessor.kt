@@ -34,6 +34,10 @@ class ClickerProcessor(private val thunderHackTiming: Boolean = false) {
             || packet is ServerboundSetCarriedItemPacket) cooldown.restart(System.nanoTime())
     }
 
+    /** An axe disables blocking without a charged/critical hit; keep the accepted-click rate limit. */
+    fun isReadyToBreakShield(ticksAhead: Int = 0): Boolean =
+        clock.ready(System.nanoTime(), ticksAhead.coerceIn(0, AttackTiming.SPRINT_PREPARATION_TICKS) * 50_000_000L)
+
     fun isReadyToClick(
         clickMode: ClickMode,
         cps: Double,

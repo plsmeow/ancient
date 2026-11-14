@@ -93,11 +93,11 @@ class AttackExecutor(
         if (releaseWeapon) SilentSwapUtil.releasePreparedSlot(HitAuraModule)
     }
 
-    private fun useAxe(target: LivingEntity): Boolean = HitAuraModule.breakShield
+    fun isBreakingShield(target: LivingEntity): Boolean = HitAuraModule.breakShield
         && ShieldBreakProcessor.isTargetBlocking(target) && ShieldBreakProcessor.findAxeInHotbar() >= 0
 
     private fun weaponSlot(target: LivingEntity, ticksAhead: Int = 0): Int {
-        if (useAxe(target)) return ShieldBreakProcessor.findAxeInHotbar()
+        if (isBreakingShield(target)) return ShieldBreakProcessor.findAxeInHotbar()
         val mace = AutoMaceModule.readyMaceSlot(ticksAhead)
         if (mace >= 0) return mace
         if (BreachSwapModule.isActive()) return BreachSwapModule.findBreachMaceSlot()
@@ -105,7 +105,7 @@ class AttackExecutor(
     }
 
     private fun smashReady(target: LivingEntity, ticksAhead: Int = 0): Boolean {
-        if (useAxe(target)) return false
+        if (isBreakingShield(target)) return false
         if (AutoMaceModule.isSmashReady(ticksAhead)) return true
         val player = mc.player ?: return false
         val slot = weaponSlot(target, ticksAhead)
@@ -126,9 +126,10 @@ class AttackExecutor(
 
     private fun clickReady(target: LivingEntity, mode: ClickMode, cps: Double, randomize: Boolean,
                            spread: Double, ticksAhead: Int): Boolean {
-        val forceMace = !useAxe(target) && AutoMaceModule.isForceReady(target, ticksAhead)
+        if (isBreakingShield(target)) return clickerProcessor.isReadyToBreakShield(ticksAhead) || wait(WaitReason.COOLDOWN)
+        val forceMace = AutoMaceModule.isForceReady(target, ticksAhead)
         if (forceMace) return true
-        if (!useAxe(target) && !AutoMaceModule.isSmashReady(ticksAhead) && BreachSwapModule.isActive()
+        if (!AutoMaceModule.isSmashReady(ticksAhead) && BreachSwapModule.isActive()
             && !BreachSwapModule.isVirtualCooldownReady(ticksAhead)) return wait(WaitReason.COOLDOWN)
         val player = mc.player ?: return false
         val slot = weaponSlot(target, ticksAhead)
@@ -142,10 +143,12 @@ class AttackExecutor(
         ticksAhead: Int = 0, sprintResetMode: SprintResetMode = SprintResetMode.OFF): Boolean {
         if (!canReach(target, attackRange)
             || !clickReady(target, clickMode, cps, randomizeCps, cpsSpread, ticksAhead)) return false
-        val smash = smashReady(target, ticksAhead)
-        val critical = if (ticksAhead > 0) criticalProcessor.shouldPrepareAttack(onlyCrits, smartCrits, smash)
-            else criticalProcessor.isReadyForAttack(onlyCrits, smartCrits, sprintResetMode, smash)
-        if (!critical) return wait(WaitReason.CRIT)
+        if (!isBreakingShield(target)) {
+            val smash = smashReady(target, ticksAhead)
+            val critical = if (ticksAhead > 0) criticalProcessor.shouldPrepareAttack(onlyCrits, smartCrits, smash)
+                else criticalProcessor.isReadyForAttack(onlyCrits, smartCrits, sprintResetMode, smash)
+            if (!critical) return wait(WaitReason.CRIT)
+        }
         waitReason = WaitReason.READY
         return true
     }
@@ -164,7 +167,7 @@ class AttackExecutor(
 
     fun prepareAttack(target: LivingEntity, range: Double): Boolean {
         if (!canReach(target, range) || !prepareWeapon(target)) return false
-        macePreparation = if (useAxe(target)) AutoMaceModule.AttackPreparation.NONE else AutoMaceModule.beforeAttack()
+        macePreparation = if (isBreakingShield(target)) AutoMaceModule.AttackPreparation.NONE else AutoMaceModule.beforeAttack()
         return macePreparation != AutoMaceModule.AttackPreparation.WAITING || wait(WaitReason.SLOT)
     }
 
@@ -180,6 +183,7 @@ class AttackExecutor(
         val grim = rotationProcessor.getStrategy(rotationMode) as? Grim1204Rotation
         val walls = throughWalls && !HitAuraModule.wallCheck
         if (!geometryReady(target, attackRange, rayTrace, throughWalls)) return false
+        val breakingShield = isBreakingShield(target)
 
         val player = mc.player ?: return false
         val level = mc.level ?: return false
@@ -189,11 +193,11 @@ class AttackExecutor(
         var previousBreachSlot = -1
         var executed = false
         try {
-            val preparation = macePreparation ?: if (useAxe(target)) AutoMaceModule.AttackPreparation.NONE else AutoMaceModule.beforeAttack()
+            val preparation = macePreparation ?: if (breakingShield) AutoMaceModule.AttackPreparation.NONE else AutoMaceModule.beforeAttack()
             if (preparation == AutoMaceModule.AttackPreparation.WAITING) return wait(WaitReason.SLOT)
             val slot = weaponSlot(target)
             if (SilentSwapUtil.serverSlot != slot) return wait(WaitReason.SLOT)
-            if (useAxe(target)) previousAxeSlot = ShieldBreakProcessor.swapToAxe(target)
+            if (breakingShield) previousAxeSlot = ShieldBreakProcessor.swapToAxe(target)
             else if (preparation != AutoMaceModule.AttackPreparation.READY && BreachSwapModule.isActive())
                 previousBreachSlot = BreachSwapModule.swapToBreachMace()
 
@@ -202,11 +206,13 @@ class AttackExecutor(
             if (!canReach(target, attackRange)) return false
             if (mc.player !== player || mc.level !== level || level.getEntity(target.id) !== target || !target.isAlive)
                 return wait(WaitReason.CONTEXT)
-            if (MaceKillModule.isEnabled()) MaceKillModule.doCrit()
-            if (!sprintResetProcessor.preAttack(sprintResetMode)) return wait(WaitReason.CRIT)
-            // Recheck after equipment, teleport and sprint packets; a prediction is never authorization to hit.
-            if (!criticalProcessor.isReadyForAttack(onlyCrits, smartCrits, SprintResetMode.OFF, smashReady(target)))
-                return wait(WaitReason.CRIT)
+            if (!breakingShield) {
+                if (MaceKillModule.isEnabled()) MaceKillModule.doCrit()
+                if (!sprintResetProcessor.preAttack(sprintResetMode)) return wait(WaitReason.CRIT)
+                // Recheck after equipment, teleport and sprint packets; a prediction is never authorization to hit.
+                if (!criticalProcessor.isReadyForAttack(onlyCrits, smartCrits, SprintResetMode.OFF, smashReady(target)))
+                    return wait(WaitReason.CRIT)
+            }
             try {
                 if (!serverRange(target, attackRange)) return wait(WaitReason.RANGE)
                 if ((rayTrace || grim != null) && !lookingAt(target, attackRange, walls)) return wait(WaitReason.ROTATION)
@@ -244,7 +250,7 @@ class AttackExecutor(
                         macePreparation = null
                         AutoMaceModule.afterAttack(executed)
                     } finally {
-                        sprintResetProcessor.postAttack(executed)
+                        sprintResetProcessor.postAttack(executed && !breakingShield)
                         if (executed) SilentSwapUtil.releasePreparedSlot(HitAuraModule)
                     }
                 }
