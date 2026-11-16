@@ -69,6 +69,7 @@ object TagsModule : Module(
     )
 
     val entityTypes by picker("Entity Types", setOf("minecraft:player"), MinecraftPickerCatalogs.entities)
+    private val totemPops by boolean("Totem Pops", true)
     private var cachedSelection: Set<String>? = null
     private val selectedTypes = HashSet<EntityType<*>>()
 
@@ -236,7 +237,10 @@ object TagsModule : Module(
 
             for (tag in activeTags) {
                 val target = tag.target ?: continue
-                val nameText = if (target is ItemEntity) "${target.item.hoverName.string} x${target.item.count}" else target.name.string
+                val popCount = if (totemPops && target is Player)
+                    meow.ancient.client.util.combat.PlayerCombatTracker.count(target) else 0
+                val nameText = (if (target is ItemEntity) "${target.item.hoverName.string} x${target.item.count}" else target.name.string) +
+                    if (popCount > 0) " [-$popCount]" else ""
 
                 val living = target as? LivingEntity
                 val totalHp = living?.let { AnticheatManager.getHealth(it).coerceAtLeast(0f) } ?: 0f

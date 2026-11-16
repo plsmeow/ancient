@@ -11,6 +11,7 @@ import meow.ancient.module.modules.combat.SpearKillModule
 import meow.ancient.module.modules.combat.TriggerBotModule
 import meow.ancient.module.modules.player.PacketMineModule
 import meow.ancient.module.modules.movement.PhaseModule
+import meow.ancient.module.modules.movement.ScaffoldModule
 import net.minecraft.client.multiplayer.ClientLevel
 import net.minecraft.client.player.LocalPlayer
 import net.minecraft.network.Connection
@@ -76,12 +77,16 @@ object ActionCoordinator {
     private fun preferred(): ActionOwner? = when {
         manualUseActive() -> manual
         PhaseModule.isPreparingThrow() -> resolveOwner(PhaseModule)
+        meow.ancient.module.modules.combat.AutoPotionModule.hasPendingAction() -> resolveOwner(meow.ancient.module.modules.combat.AutoPotionModule)
         PacketMineModule.hasPendingAction() -> resolveOwner(PacketMineModule)
+        ScaffoldModule.hasPendingAction() -> resolveOwner(ScaffoldModule)
         SurroundModule.hasPendingAction() -> resolveOwner(SurroundModule)
+        meow.ancient.module.modules.combat.SelfTrapModule.hasPendingAction() -> resolveOwner(meow.ancient.module.modules.combat.SelfTrapModule)
         SpearKillModule.isEnabled() && SpearKillModule.target != null -> resolveOwner(SpearKillModule)
         CrystalAuraModule.hasCombatAction() -> resolveOwner(CrystalAuraModule)
         CrystalAuraModule.hasBoostedTerrainAction() -> boostedCrystalTerrainOwner()
         AnchorAuraModule.hasPendingAction() -> resolveOwner(AnchorAuraModule)
+        meow.ancient.module.modules.combat.AutoWebModule.hasPendingAction() -> resolveOwner(meow.ancient.module.modules.combat.AutoWebModule)
         CrystalAuraModule.hasTerrainAction() -> crystalTerrainOwner()
         HitAuraModule.isEnabled() && HitAuraModule.currentTarget != null && !HitAuraModule.shouldIgnoreContext() -> resolveOwner(HitAuraModule)
         TriggerBotModule.isEnabled() && TriggerBotModule.target != null -> resolveOwner(TriggerBotModule)

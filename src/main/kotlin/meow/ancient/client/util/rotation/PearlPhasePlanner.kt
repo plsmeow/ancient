@@ -80,7 +80,7 @@ object PearlPhasePlanner {
             val next = position.add(velocity)
             if (collision(position, next) != null) {
                 // ThrownEnderpearl.onHit teleports to oldPosition(), not the hit intersection.
-                if (abs(position.y - launch.feet.y) > 0.35 || position.distanceToSqr(launch.feet) > 1.5 * 1.5) return null
+                if (abs(position.y - launch.feet.y) > 0.65 || position.distanceToSqr(launch.feet) > 2.0 * 2.0) return null
                 val radius = launch.width * 0.5
                 val body = AABB(position.x - radius, position.y + 0.001, position.z - radius,
                     position.x + radius, position.y + launch.height - 0.001, position.z + radius)

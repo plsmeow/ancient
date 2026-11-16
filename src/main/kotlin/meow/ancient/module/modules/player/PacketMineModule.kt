@@ -89,6 +89,7 @@ object PacketMineModule :
         val pos: BlockPos,
         var direction: Direction,
         var state: BlockState,
+        var owner: Any? = null,
     ) {
         val progress = PacketMineProgress()
         var tool = ItemStack.EMPTY
@@ -114,6 +115,7 @@ object PacketMineModule :
     )
 
     @Volatile private var targets = emptyList<Target>()
+    private val channels = PacketMineChannels<Target>()
     private var prepared: Prepared? = null
     private val actions = AuraActionQueue(this)
     private val primaryVisual = AuraTargetRenderer({ isEnabled() && render }, { renderSlideSpeed })
@@ -185,12 +187,34 @@ object PacketMineModule :
     }
 
     fun selectBlock(pos: BlockPos, direction: Direction): Boolean {
+        return selectBlockInternal(pos, direction, null)
+    }
+
+    data class AutomaticTarget(val pos: BlockPos, val primary: Boolean, val retained: Boolean)
+    fun automaticTargets(owner: Any): List<AutomaticTarget> = targets.filter { it.owner === owner && it.isCurrent() }.map {
+        AutomaticTarget(it.pos, it === targets.lastOrNull(), it.progress.rebreakPrimed)
+    }
+    fun automaticCapacity(): Int = if (doubleBreak) 2 else 1
+    fun hasManualTarget(): Boolean = targets.any { it.owner == null && it.isCurrent() }
+    fun releaseAutomaticTargets(owner: Any) { targets.filter { it.owner === owner }.forEach { clearTarget(it, true) } }
+
+    fun selectAutomaticBlock(owner: Any, pos: BlockPos, direction: Direction): Boolean {
+        if (targets.any { it.owner !== owner } || targets.size >= automaticCapacity()) return false
+        // A new START would overwrite vanilla's one confirmed instant-rebreak position.
+        if (targets.any { it.progress.rebreakPrimed }) return false
+        return selectBlockInternal(pos, direction, owner)
+    }
+
+    private fun selectBlockInternal(pos: BlockPos, direction: Direction, owner: Any?): Boolean {
         if (!interceptsMining() || mc.gui.screen() != null) return false
         val player = mc.player ?: return false
         val level = mc.level ?: return false
         val state = level.getBlockState(pos)
         if (!validBlock(player, level, pos, state) || !withinRange(player, pos)) return false
-        if (targets.any { it.pos == pos && it.isCurrent() }) return true
+        targets.firstOrNull { it.pos == pos && it.isCurrent() }?.let {
+            if (owner == null) it.owner = null
+            return true
+        }
         val capacity = if (doubleBreak) 2 else 1
         while (targets.size >= capacity) clearTarget(targets.first(), true)
         if (doubleBreak)
@@ -203,7 +227,7 @@ object PacketMineModule :
                     else restart(previous)
                 }
             }
-        targets = targets + Target(player, level, pos.immutable(), direction, state)
+        targets = targets + Target(player, level, pos.immutable(), direction, state, owner)
         nextStartTick = tick
         meow.ancient.module.modules.combat.CrystalAuraModule.yieldToManualMining(pos)
         return true
@@ -228,7 +252,10 @@ object PacketMineModule :
         val hit = mc.hitResult as? BlockHitResult ?: return
         if (hit.type != HitResult.Type.BLOCK) return
         val current = targets.firstOrNull { it.pos == hit.blockPos }
-        if (current != null) { clearTarget(current, true); event.cancel = true }
+        if (current != null) {
+            if (current.owner != null) current.owner = null else clearTarget(current, true)
+            event.cancel = true
+        }
         else if (selectBlock(hit.blockPos, hit.direction)) event.cancel = true
     }
 
@@ -239,6 +266,18 @@ object PacketMineModule :
         actions.beginTick()
         primaryVisual.beginTick()
         secondaryVisual.beginTick()
+        channels.delayed?.let {
+            if (!it.isCurrent() || it.level.getBlockState(it.pos).isAir) channels.confirmed(it)
+        }
+        channels.active?.let {
+            if (!it.isCurrent() || it.level.getBlockState(it.pos).isAir) channels.confirmed(it)
+        }
+        val sharedSlot = if (autoTool && (doubleBreak || channels.delayed != null)) sharedTool() else null
+        val mining = targets.filter { it.progress.phase == PacketMineProgress.Phase.MINING }
+        val leased = mining.firstOrNull()?.let { current ->
+            if (paused(current.player) || !ActionCoordinator.canAct(this)) false
+            else SilentSwapUtil.prepareSlot(sharedSlot ?: current.toolSlot, 2, this)
+        } ?: false
         for (current in targets) {
             if (
                 !current.isCurrent() ||
@@ -267,23 +306,24 @@ object PacketMineModule :
             if (paused(current.player)) continue
             if (current.progress.phase != PacketMineProgress.Phase.CONFIRM) {
                 current.toolSlot =
-                    if (autoTool) selectTool(current, state)
+                    if (autoTool) sharedSlot ?: selectTool(current, state)
                     else current.player.inventory.selectedSlot
             }
             val tool = current.player.inventory.getItem(current.toolSlot)
             if (
                 current.progress.phase == PacketMineProgress.Phase.MINING &&
-                    (state.block !== current.miningState.block ||
-                        !ItemStack.isSameItemSameComponents(current.tool, tool))
+                    state.block !== current.miningState.block
             ) {
                 restart(current)
             }
-            if (
-                current.progress.phase == PacketMineProgress.Phase.MINING && !current.finishPending
-            ) {
-                // Keep the tool leased while damage advances.
-                if (!ActionCoordinator.canAct(this)
-                    || !SilentSwapUtil.prepareSlot(current.toolSlot, 2, this)) continue
+            if (current.progress.phase == PacketMineProgress.Phase.MINING) {
+                // Both server channels use the same held tool. Do not alternate slot leases per block.
+                if (!leased || SilentSwapUtil.serverSlot != current.toolSlot) continue
+                if (!ItemStack.isSameItemSameComponents(current.tool, tool)) {
+                    current.tool = tool.copy()
+                    current.serverEfficiency = minOf(current.player.getAttributeValue(Attributes.MINING_EFFICIENCY),
+                        miningAttribute(current.player, tool, Attributes.MINING_EFFICIENCY))
+                }
                 // Begin immediately with conservative attributes; server updates refine the speed.
                 current.lastDelta =
                     PacketMineToolSpeed.progress(
@@ -297,6 +337,13 @@ object PacketMineModule :
                 current.finishPending =
                     current.progress.advance(current.lastDelta, tick, breakProgress.toFloat())
             }
+            if (channels.delayed === current && current.progress.phase == PacketMineProgress.Phase.MINING
+                && current.finishPending && enoughTime(current)) {
+                // STOP for this position is ignored while the second position is active.
+                // Vanilla completes the delayed block itself; only the air update confirms it.
+                current.progress.stop(tick)
+                current.finishPending = false
+            }
         }
 
         targets.lastOrNull()?.let { showMiningTarget(primaryVisual, it) }
@@ -309,7 +356,8 @@ object PacketMineModule :
                 needsAction(it) && (it.level.getBlockState(it.pos).isAir || visibleHit(it) != null)
             }
         val current =
-            candidates.firstOrNull { it.progress.phase == PacketMineProgress.Phase.START }
+            candidates.firstOrNull { needsHandoff(it) }
+                ?: candidates.firstOrNull { it.progress.phase == PacketMineProgress.Phase.START }
                 ?: candidates.firstOrNull { it !== lastAction }
                 ?: candidates.firstOrNull()
                 ?: return
@@ -341,13 +389,19 @@ object PacketMineModule :
         val state = current.level.getBlockState(current.pos)
         if (mode == "Rebreak" && fast && current.progress.rebreakPrimed) return true
         if (state.isAir) return false
+        if (needsHandoff(current)) return true
+        if (channels.delayed === current) return false
         return when (current.progress.phase) {
-            PacketMineProgress.Phase.START -> tick >= nextStartTick
+            PacketMineProgress.Phase.START -> channels.canStart() && tick >= nextStartTick
             PacketMineProgress.Phase.MINING -> current.finishPending && enoughTime(current)
             PacketMineProgress.Phase.REBREAK -> tick >= current.retryAfterTick
             PacketMineProgress.Phase.CONFIRM -> false
         }
     }
+
+    private fun needsHandoff(current: Target): Boolean = doubleBreak && channels.canHandoff(current)
+        && current.progress.phase == PacketMineProgress.Phase.MINING
+        && targets.any { it !== current && it.progress.phase == PacketMineProgress.Phase.START }
 
     @Commando(priority = -128)
     fun onPreMovement(event: PlayerPreMovementEvent) {
@@ -384,9 +438,18 @@ object PacketMineModule :
         val hit = if (rotate) outgoingHit(current) else visibleHit(current)
         if (hit == null) return
         val direction = hit.direction
+        if (needsHandoff(current)) {
+            current.direction = direction
+            if (sendAction(current, ServerboundPlayerActionPacket.Action.STOP_DESTROY_BLOCK)) {
+                channels.handoff(current)
+                lastAction = current
+                swing(current.player)
+            }
+            return
+        }
         when (current.progress.phase) {
             PacketMineProgress.Phase.START -> {
-                if (tick < nextStartTick) return
+                if (tick < nextStartTick || !channels.canStart()) return
                 current.direction = direction
                 current.tool = current.player.inventory.getItem(action.slot).copy()
                 current.miningState = state
@@ -398,15 +461,9 @@ object PacketMineModule :
                 current.serverBreakSpeed =
                     current.player.getAttributeValue(Attributes.BLOCK_BREAK_SPEED)
                 current.startNanos = System.nanoTime()
-                if (doubleBreak)
-                    sendAction(current, ServerboundPlayerActionPacket.Action.STOP_DESTROY_BLOCK)
                 if (!sendAction(current, ServerboundPlayerActionPacket.Action.START_DESTROY_BLOCK)) return
-                // ThunderHack SpeedMine DoubleMine uses STOP / START / STOP. The early STOP puts
-                // the first block in delayed destroy while a second block becomes the active
-                // destroy.
-                // https://github.com/Pan4ur/ThunderHack-Recode/blob/main/src/main/java/thunder/hack/features/modules/player/SpeedMine.java
-                if (doubleBreak)
-                    sendAction(current, ServerboundPlayerActionPacket.Action.STOP_DESTROY_BLOCK)
+                // START A -> early STOP A -> START B. A is delayed, B remains the active position.
+                channels.started(current)
                 current.progress.start()
                 swing(current.player)
             }
@@ -504,6 +561,7 @@ object PacketMineModule :
         if (current !in targets || pos != current.pos) return
         current.state = state
         if (state.isAir) {
+            channels.confirmed(current)
             val retain = mode == "Rebreak" && !current.secondary
             // An instant or delayed server break can be confirmed before our final STOP.
             if (!current.progress.confirmAir(retain, allowMining = true))
@@ -526,6 +584,14 @@ object PacketMineModule :
     }
 
     private fun restart(current: Target) {
+        if (channels.delayed === current) {
+            // ABORT names the active position, never the delayed slot. Preserve its server ownership.
+            resetMining(current)
+            current.progress.start()
+            current.startNanos = System.nanoTime()
+            current.miningState = current.level.getBlockState(current.pos)
+            return
+        }
         abort(current)
         resetMining(current)
         nextStartTick = maxOf(nextStartTick, tick + postBreakDelay.toLong())
@@ -543,6 +609,7 @@ object PacketMineModule :
         targets.forEach { clearTarget(it, abort) }
         prepared = null
         lastAction = null
+        channels.reset()
         primaryVisual.reset()
         secondaryVisual.reset()
         SilentSwapUtil.releasePreparedSlot(this)
@@ -579,6 +646,29 @@ object PacketMineModule :
         return bestSlot
     }
 
+    private fun sharedTool(): Int? {
+        val player = mc.player ?: return null
+        val work = (targets + listOfNotNull(channels.delayed)).distinct().filter { current ->
+            current.isCurrent() && !current.progress.rebreakPrimed
+                && !current.level.getBlockState(current.pos).isAir
+        }
+        if (work.isEmpty()) return null
+        val selected = SilentSwapUtil.serverSlot.takeIf { it in 0..8 } ?: player.inventory.selectedSlot
+        fun score(slot: Int): Double = work.minOf { current ->
+            val state = current.level.getBlockState(current.pos)
+            val stack = player.inventory.getItem(slot)
+            if (!stack.canDestroyBlock(state, current.level, current.pos, player)) Double.NEGATIVE_INFINITY
+            else toolSpeed(player, stack, state) / state.getDestroySpeed(current.level, current.pos).coerceAtLeast(0.001f)
+        }
+        var best = selected
+        var speed = score(selected)
+        for (slot in 0..8) {
+            val candidate = score(slot)
+            if (candidate > speed + 1.0E-6) { best = slot; speed = candidate }
+        }
+        return best
+    }
+
     private fun toolSpeed(player: LocalPlayer, stack: ItemStack, state: BlockState): Double {
         return PacketMineToolSpeed.score(
             stack,
@@ -602,14 +692,10 @@ object PacketMineModule :
         if (
             current.isCurrent() &&
                 !current.progress.rebreakPrimed &&
-                current.progress.phase != PacketMineProgress.Phase.START
+                current.progress.phase != PacketMineProgress.Phase.START && channels.active === current
         ) {
             pendingAborts = (pendingAborts + current).distinctBy { it.pos }
-            // ABORT can cancel the server's active position even when it names the delayed block.
-            // Re-establish any remaining initial break without erasing confirmed Rebreak priming.
-            targets
-                .filter { it !== current && it.progress.phase == PacketMineProgress.Phase.MINING }
-                .forEach { resetMining(it) }
+            channels.abortActive(current)
         }
     }
 

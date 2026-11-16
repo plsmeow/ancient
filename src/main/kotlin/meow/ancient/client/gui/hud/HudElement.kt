@@ -12,5 +12,6 @@ enum class HudElement {
     TPS,
     PING,
     NOTIFICATIONS,
-    SCOREBOARD
+    SCOREBOARD,
+    TOTEMS
 }

@@ -43,13 +43,11 @@ import net.minecraft.network.protocol.game.ClientboundBlockUpdatePacket
 import net.minecraft.network.protocol.game.ClientboundSectionBlocksUpdatePacket
 import net.minecraft.network.protocol.Packet
 import net.minecraft.network.protocol.game.ServerboundAttackPacket
-import net.minecraft.network.protocol.game.ServerboundUseItemOnPacket
 import net.minecraft.world.InteractionHand
 import net.minecraft.world.entity.boss.enderdragon.EndCrystal
 import net.minecraft.world.entity.player.Player
 import net.minecraft.world.item.Items
 import net.minecraft.world.item.Item
-import net.minecraft.world.item.component.SwingAnimation
 import net.minecraft.world.level.block.Blocks
 import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.BlockHitResult
@@ -79,6 +77,8 @@ object CrystalAuraModule : Module(
     val ignoreTerrain by boolean("Ignore Terrain", false, "Ignores blocks with blast resistance below 600; disabled uses vanilla exposure")
     val basePlace by boolean("Base Place", true, "Places obsidian as base for crystals if none available")
     val lethalOverride by boolean("Lethal Override", true)
+    val antiWeakness by boolean("AntiWeakness", true, "Selects an effective hotbar weapon before breaking crystals")
+    val lethal by boolean("Lethal", false, "Allows a totem trade only for a lethal forecast against an unprotected target")
     val targetNPCs by boolean("Target NPCs", true, "Includes practice NPCs reported as creative players")
     val extrapolation by boolean("Extrapolation", true, "Predicts positions at explosion time, including movement collisions")
     val extrapolationLimit by number("Extrapolation Limit", 20.0, 0.0, 40.0, 1.0, 0, isVisible = { extrapolation })
@@ -110,6 +110,8 @@ object CrystalAuraModule : Module(
     private val visual = AuraTargetRenderer({ isEnabled() && render }, { renderSlideSpeed })
     private val motionPrediction = AuraMotionPrediction()
     private val damageCache = AuraDamageCache()
+    private val lethalDamageCache = AuraDamageCache()
+    private var lethalProtectionUntil = -1
     private val occupancy = AuraEntityOccupancy()
     private val siteSearchMemo = HashMap<Boolean, Site?>()
     private val diagnosticState = CrystalAuraDiagnostics()
@@ -178,6 +180,38 @@ object CrystalAuraModule : Module(
     private fun selfDamageAt(pos: Vec3, player: LocalPlayer, base: BlockPos?, lead: Double): Float =
         maxOf(damageAt(pos, player, base, 0.0), damageAt(pos, player, base, lead))
 
+    fun shouldKeepTotem(): Boolean = isEnabled() && tick <= lethalProtectionUntil
+
+    private fun lethalTrade(pos: Vec3, player: LocalPlayer, target: Player, base: BlockPos?, lead: Double): Boolean {
+        if (!lethal || !target.isAlive || target.isCreative || target.isSpectator || target.hurtTime > 0) return false
+        val protection = net.minecraft.core.component.DataComponents.DEATH_PROTECTION
+        val enemyProtected = target.mainHandItem.has(protection) || target.offhandItem.has(protection)
+        val effectiveMain = player.inventory.getItem(SilentSwapUtil.serverSlot.coerceIn(0, 8))
+        val selfProtected = effectiveMain.has(protection) || player.offhandItem.has(protection)
+        val lastPop = meow.ancient.client.util.combat.PlayerCombatTracker.lastPopNanos(player)
+        val recentlyPopped = lastPop > 0L && System.nanoTime() - lastPop < 1_000_000_000L
+        // Never spend a totem based on IgnoreTerrain's optimistic exposure estimate.
+        val damage = minOf(lethalDamageCache.damage(target, forecast(target, 0.0), pos, base),
+            lethalDamageCache.damage(target, forecast(target, lead), pos, base))
+        val self = maxOf(lethalDamageCache.damage(player, forecast(player, 0.0), pos, base),
+            lethalDamageCache.damage(player, forecast(player, lead), pos, base))
+        val hp = maxOf(AnticheatManager.getHealth(target), target.health + target.absorptionAmount)
+        return meow.ancient.client.util.combat.CrystalLethalPolicy.mayTrade(hp, damage, self,
+            enemyProtected, selfProtected, recentlyPopped)
+    }
+
+    private fun damageAllowed(pos: Vec3, player: LocalPlayer, target: Player, base: BlockPos?, lead: Double): Boolean =
+        selfDamageAt(pos, player, base, lead).let { it.isFinite() && it <= maxSelfDamage }
+            || lethalTrade(pos, player, target, base, lead)
+
+    private fun breakSlot(player: LocalPlayer): Int? {
+        if (!antiWeakness || !player.hasEffect(net.minecraft.world.effect.MobEffects.WEAKNESS)) return player.inventory.selectedSlot
+        val actual = player.getAttribute(net.minecraft.world.entity.ai.attributes.Attributes.ATTACK_DAMAGE) ?: return null
+        fun effective(slot: Int) = meow.ancient.module.modules.player.PacketMineToolSpeed.attributeValue(actual,
+            net.minecraft.world.entity.ai.attributes.Attributes.ATTACK_DAMAGE, player.mainHandItem, player.inventory.getItem(slot))
+        return (sequenceOf(player.inventory.selectedSlot) + (0..8).asSequence()).firstOrNull { effective(it) > 0.0 }
+    }
+
     fun shouldKeepTerrainMining() = isEnabled() && basePlace && autoMineTerrain && miner.keepVanillaMining()
     fun hasPendingAction() = isEnabled() && (prepared != null || pending != null || miner.active)
     fun hasCombatAction() = isEnabled() && (prepared != null || pending != null)
@@ -219,6 +253,7 @@ object CrystalAuraModule : Module(
         breakTimer++
         tick++
         damageCache.beginTick(level, ignoreTerrain)
+        lethalDamageCache.beginTick(level, false)
         miner.beginTick()
         siteSearchMemo.clear()
         failedSites.entries.removeIf { tick >= it.value }
@@ -424,7 +459,7 @@ object CrystalAuraModule : Module(
     private fun continueTerrain(player: LocalPlayer, level: ClientLevel): Boolean {
         val plan = terrainPlan ?: return false
         describeTerrain(plan)
-        val state = level.getBlockState(plan.pos)
+        val state = meow.ancient.client.util.inventory.BlockPredictionUtil.serverState(level, plan.pos)
         if (state.`is`(Blocks.OBSIDIAN)) plan.observeServerState(plan.pos, state)
         if (plan.stage == CrystalTerrainPlan.Stage.DONE) {
             cancelTerrain()
@@ -590,7 +625,7 @@ object CrystalAuraModule : Module(
         val current = pending ?: return false
         val confirmed = when (current.kind) {
             PendingKind.BREAK -> level.getEntity(current.entityId) == null
-            PendingKind.BASE -> level.getBlockState(current.pos).`is`(Blocks.OBSIDIAN)
+            PendingKind.BASE -> meow.ancient.client.util.inventory.BlockPredictionUtil.serverState(level, current.pos).`is`(Blocks.OBSIDIAN)
             PendingKind.CRYSTAL -> level.getEntities(null, crystalBox(current.pos)).any { it is EndCrystal && it.isAlive }
         }
         val ping = player.connection.getPlayerInfo(player.uuid)?.latency ?: 150
@@ -598,7 +633,7 @@ object CrystalAuraModule : Module(
         if (confirmed || tick - current.sentTick >= timeout) {
             pending = null
             if (current.kind == PendingKind.BASE && terrainPlan?.pos == current.pos) {
-                if (confirmed) terrainPlan?.observeServerState(current.pos, level.getBlockState(current.pos))
+                if (confirmed) terrainPlan?.observeServerState(current.pos, meow.ancient.client.util.inventory.BlockPredictionUtil.serverState(level, current.pos))
                 else terrainPlan?.retry(tick, timeout)
             } else if (!confirmed && current.kind != PendingKind.BREAK) failedSites[current.pos] = tick + 2
             return false
@@ -621,9 +656,10 @@ object CrystalAuraModule : Module(
     private fun qualifies(pos: Vec3, player: LocalPlayer, target: Player, targetHp: Float, base: BlockPos? = null,
                           lead: Double = 0.0): Boolean {
         if (!target.isAlive) return false
-        if (selfDamageAt(pos, player, base, lead) > maxSelfDamage.toFloat()) return false
+        if (!damageAllowed(pos, player, target, base, lead)) return false
         val damage = damageAt(pos, target, base, lead)
         return damage >= minDamage.toFloat() || lethalOverride && damage >= targetHp
+            || lethalTrade(pos, player, target, base, lead)
     }
 
     private fun findCrystal(player: LocalPlayer, target: Player, targetHp: Float, fresh: Boolean = false): EndCrystal? {
@@ -636,8 +672,9 @@ object CrystalAuraModule : Module(
             if (entity !is EndCrystal || !entity.isAlive) continue
             if (AuraActionQueue.visibleCrystalPoint(player, entity, breakRange, wallCheck) == null) continue
             val damage = damageAt(entity.position(), target, null, lead)
-            if (damage <= bestDamage || damage < minDamage.toFloat() && !(lethalOverride && damage >= targetHp)) continue
-            if (selfDamageAt(entity.position(), player, null, lead) > maxSelfDamage.toFloat()) continue
+            if (damage <= bestDamage || damage < minDamage.toFloat() && !(lethalOverride && damage >= targetHp)
+                && !lethalTrade(entity.position(), player, target, null, lead)) continue
+            if (!damageAllowed(entity.position(), player, target, null, lead)) continue
             best = entity
             bestDamage = damage
         }
@@ -675,6 +712,7 @@ object CrystalAuraModule : Module(
         }
         for (mutablePos in candidates) {
             val pos = mutablePos.immutable()
+            if (placementReserved(pos)) continue
             if (pos in failedSites) continue
             // Locally predicted air in our excavation is not a ready site until mining is confirmed.
             if (terrainPlan?.let {
@@ -694,10 +732,11 @@ object CrystalAuraModule : Module(
             if (base && occupancy.baseBlocked(pos)) continue
             clear++
             val damage = damageAt(explosionPos(pos), target, if (base) pos else null, lead)
-            if (damage < minDamage.toFloat() && !(lethalOverride && damage >= targetHp)) continue
+            if (damage < minDamage.toFloat() && !(lethalOverride && damage >= targetHp)
+                && !lethalTrade(explosionPos(pos), player, target, if (base) pos else null, lead)) continue
             damagePass++
             if (damage <= bestDamage && pos != preferredPos) continue
-            if (selfDamageAt(explosionPos(pos), player, if (base) pos else null, lead) > maxSelfDamage.toFloat()) continue
+            if (!damageAllowed(explosionPos(pos), player, target, if (base) pos else null, lead)) continue
             selfPass++
             val hit = if (base) AuraActionQueue.placementHit(player, pos, placeRange, wallCheck)
                 else AuraActionQueue.visibleHit(player, pos, placeRange, wallCheck = wallCheck)
@@ -737,6 +776,11 @@ object CrystalAuraModule : Module(
     }
 
     private fun requestProtection(target: Player, explosion: Vec3, base: BlockPos? = null, prospective: Boolean = false): Boolean {
+        val player = mc.player ?: return false
+        if (lethalTrade(explosion, player, target, base, predictionTicks(ping(player) / 100.0))) {
+            SurroundModule.clearProtectionRequest("CrystalAura")
+            return false
+        }
         val spawn = BlockPos.containing(explosion)
         val reserved = buildSet {
             add(spawn); add(spawn.above())
@@ -756,7 +800,11 @@ object CrystalAuraModule : Module(
     }
 
     private fun prepare(player: LocalPlayer) {
-        val action = prepared ?: return
+        var action = prepared ?: return
+        if (action.kind == PendingKind.BREAK) {
+            val slot = breakSlot(player) ?: run { clearPrepared(); return }
+            if (slot != action.slot) { action = action.copy(slot = slot); prepared = action }
+        }
         diagnosticState.status(when (action.kind) {
             PendingKind.BREAK -> Reason.BREAK
             PendingKind.BASE -> Reason.BASE
@@ -795,8 +843,13 @@ object CrystalAuraModule : Module(
         PendingKind.CRYSTAL -> AuraTargetRenderer.Kind.PLACE
     }
 
+    private fun placementReserved(pos: BlockPos): Boolean = (0..2).any {
+        meow.ancient.client.util.combat.PlacementReservations.reserved(pos.above(it), this)
+    }
+
     private fun validPrepared(player: LocalPlayer, target: Player?, action: Prepared): Boolean {
         val level = mc.level ?: return false
+        if (action.kind != PendingKind.BREAK && placementReserved(action.pos)) return false
         if (action.terrainBase) {
             val stack = if (action.hand == InteractionHand.OFF_HAND) player.offhandItem else player.inventory.getItem(action.slot)
             return action.kind == PendingKind.BASE && terrainPlan?.pos == action.pos
@@ -810,6 +863,7 @@ object CrystalAuraModule : Module(
         if (!target.isAlive || target.isRemoved || FriendRepository.isFriend(target)
             || player.distanceToSqr(target) > targetRange * targetRange) return false
         if (action.kind == PendingKind.BREAK) {
+            if (antiWeakness && breakSlot(player) != action.slot) return false
             val crystal = level.getEntity(action.entityId) as? EndCrystal ?: return false
             return crystal.isAlive && qualifies(crystal.position(), player, target, AnticheatManager.getHealth(target),
                 lead = predictionTicks(ping(player) / 100.0))
@@ -847,6 +901,7 @@ object CrystalAuraModule : Module(
         if (SilentSwapUtil.serverSlot != action.slot) { diagnosticState.status(Reason.TOOL_SWAP, pos = action.pos); return }
         // Equipment or terrain may change after selection but before the movement hook.
         damageCache.beginTick(level, ignoreTerrain)
+        lethalDamageCache.beginTick(level, false)
         if (!validPrepared(player, target, action)) {
             diagnosticState.status(Reason.CONTEXT, "Позиция или прогноз изменились; повторный поиск", action.pos)
             clearPrepared(); return
@@ -871,6 +926,8 @@ object CrystalAuraModule : Module(
                     sending = packet
                     player.connection.send(packet)
                     if (accepted) {
+                        if (target != null && lethalTrade(crystal.position(), player, target, null, predictionTicks(ping(player) / 100.0)))
+                            lethalProtectionUntil = tick + (ping(player) / 50 + 5).coerceIn(5, 80)
                         player.resetAttackStrengthTicker()
                         player.swing(InteractionHand.MAIN_HAND, player.mainHandItem.attackAnimation, false)
                         player.connection.send(ServerboundPunchPacket.INSTANCE)
@@ -889,16 +946,18 @@ object CrystalAuraModule : Module(
                             return@withOwner
                         }
                     if (action.kind == PendingKind.BASE && hit.blockPos.relative(hit.direction) != action.pos) return@withOwner
-                    val gameMode = mc.gameMode ?: return@withOwner
-                    gameMode.startPrediction(level) { sequence ->
-                        ServerboundUseItemOnPacket(action.hand, hit, sequence).also { sending = it }
-                    }
+                    accepted = InventoryUtil.useItemOn(action.hand, hit)
                     if (accepted) {
-                        player.swing(action.hand, SwingAnimation.DEFAULT, false)
                         placeTimer = 0
                     }
                 }
                 if (accepted) {
+                    if (action.kind != PendingKind.BREAK) {
+                        val timeout = (ping(player) / 50 + 5).coerceIn(5, 80)
+                        meow.ancient.client.util.combat.PlacementReservations.claim(action.pos, this, timeout)
+                        if (action.kind == PendingKind.CRYSTAL) for (height in 1..2)
+                            meow.ancient.client.util.combat.PlacementReservations.claim(action.pos.above(height), this, timeout)
+                    }
                     if (action.kind == PendingKind.BREAK) SurroundModule.clearProtectionRequest("CrystalAura")
                     if (action.terrainBase) terrainPlan?.let { it.placementSent(tick); it.recovery.placementSent() }
                     pending = Pending(action.kind, action.pos, tick, action.entityId, action.box)
@@ -1080,6 +1139,8 @@ object CrystalAuraModule : Module(
     }
 
     private fun reset() {
+        lethalProtectionUntil = -1
+        meow.ancient.client.util.combat.PlacementReservations.release(this)
         SurroundModule.clearProtectionRequest("CrystalAura")
         placeTimer = 0
         breakTimer = 0

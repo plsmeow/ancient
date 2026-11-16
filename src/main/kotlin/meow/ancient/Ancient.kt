@@ -27,6 +27,7 @@ object Ancient : ClientModInitializer {
 		VulkanShapePipelines.init()
         EventManager.register(SlownessManager)
 		EventManager.register(ServerCritState)
+		meow.ancient.client.util.combat.PlayerCombatTracker.initialize()
 		ClientTickEvents.END_CLIENT_TICK.register {
 			SlownessManager.update()
 			AutoSaveManager.onTick()

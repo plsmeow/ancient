@@ -21,6 +21,13 @@ mutable field net/minecraft/client/Minecraft rightClickDelay I
 accessible method net/minecraft/client/multiplayer/MultiPlayerGameMode startPrediction (Lnet/minecraft/client/multiplayer/ClientLevel;Lnet/minecraft/client/multiplayer/prediction/PredictiveAction;)V
 accessible field net/minecraft/client/multiplayer/MultiPlayerGameMode carriedIndex I
 accessible method net/minecraft/client/multiplayer/MultiPlayerGameMode ensureHasSentCarriedItem ()V
+accessible method net/minecraft/client/multiplayer/ClientLevel getBlockStatePredictionHandler ()Lnet/minecraft/client/multiplayer/prediction/BlockStatePredictionHandler;
+accessible field net/minecraft/client/multiplayer/prediction/BlockStatePredictionHandler serverVerifiedStates Lit/unimi/dsi/fastutil/longs/Long2ObjectOpenHashMap;
+accessible class net/minecraft/client/multiplayer/prediction/BlockStatePredictionHandler$ServerVerifiedState
+accessible field net/minecraft/client/multiplayer/prediction/BlockStatePredictionHandler$ServerVerifiedState sequence I
+mutable field net/minecraft/client/multiplayer/prediction/BlockStatePredictionHandler$ServerVerifiedState sequence I
+accessible field net/minecraft/client/multiplayer/prediction/BlockStatePredictionHandler$ServerVerifiedState blockState Lnet/minecraft/world/level/block/state/BlockState;
+mutable field net/minecraft/client/multiplayer/prediction/BlockStatePredictionHandler$ServerVerifiedState blockState Lnet/minecraft/world/level/block/state/BlockState;
 accessible method net/minecraft/world/entity/Entity collide (Lnet/minecraft/world/phys/Vec3;)Lnet/minecraft/world/phys/Vec3;
 
 # Input

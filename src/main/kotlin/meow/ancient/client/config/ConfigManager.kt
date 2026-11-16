@@ -9,6 +9,7 @@ import meow.ancient.client.command.CommandManager
 import meow.ancient.client.extensions.mc
 import meow.ancient.client.util.bind.SettingBindingManager
 import meow.ancient.module.ModuleManager
+import meow.ancient.module.modules.movement.FlightModule
 import meow.ancient.module.modules.render.HudModule
 import meow.ancient.module.modules.render.HideModule
 import meow.ancient.module.setting.Setting
@@ -135,8 +136,18 @@ object ConfigManager {
             for (module in ModuleManager.modules) {
                 val modObj = modulesObj.getAsJsonObject(module.name) ?: continue
 
+                val savedFlightMode = if (module === FlightModule) modObj.getAsJsonObject("settings")?.get("Mode") else null
+                val removedFlightMode = savedFlightMode != null && savedFlightMode.isJsonPrimitive
+                    && savedFlightMode.asJsonPrimitive.isString
+                    && FlightModule.modeSetting.modes.none { it.equals(savedFlightMode.asString, ignoreCase = true) }
+                // A removed flight mode must not silently enable the default flight behavior.
+                if (removedFlightMode) {
+                    FlightModule.modeSetting.reset()
+                    module.setEnabled(false)
+                }
+
                 if (modObj.has("enabled")) {
-                    module.setEnabled(modObj.get("enabled").asBoolean)
+                    module.setEnabled(modObj.get("enabled").asBoolean && !removedFlightMode)
                 }
                 if (modObj.has("key")) {
                     module.key = modObj.get("key").asInt

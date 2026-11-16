@@ -45,18 +45,21 @@ class AuraActionQueue(private var owner: Any) {
     private var rotated = false
     private var awaitingPlaceLook = false
     private var pending: (() -> Unit)? = null
+    private var pendingReady: (() -> Boolean)? = null
     private val serverEyes get() = sentPosition.add(0.0, player?.eyeHeight?.toDouble() ?: 0.0, 0.0)
 
     init { EventManager.register(this) }
 
     fun beginTick() {
         pending = null
+        pendingReady = null
         syncContext()
     }
 
     internal fun changeOwner(newOwner: Any) {
         if (owner == newOwner) return
         pending = null
+        pendingReady = null
         owner = newOwner
     }
 
@@ -72,6 +75,7 @@ class AuraActionQueue(private var owner: Any) {
 
     fun reset() {
         pending = null
+        pendingReady = null
         player = null
         level = null
         hasMovement = false
@@ -117,13 +121,26 @@ class AuraActionQueue(private var owner: Any) {
     fun onPreMovement(event: PlayerPreMovementEvent) {
         val action = pending ?: return
         pending = null
+        pendingReady = null
         if (player !== mc.player || level !== mc.level || !hasMovement || !ActionCoordinator.canAct(owner)) return
         ActionCoordinator.withOwner(ActionCoordinator.resolveOwner(owner)) { action() }
+    }
+
+    /** Placement can precede local jump/collision physics when the previously sent look already matches. */
+    fun placeBeforePhysics(): Boolean {
+        val action = pending ?: return false
+        if (player !== mc.player || level !== mc.level || !hasMovement || !ActionCoordinator.canAct(owner)
+            || pendingReady?.invoke() != true) return false
+        pending = null
+        pendingReady = null
+        ActionCoordinator.withOwner(ActionCoordinator.resolveOwner(owner)) { action() }
+        return true
     }
 
     fun block(hit: BlockHitResult, range: Double, rotations: Boolean, moveFix: MoveFixMode,
               exactFace: Boolean = false, wallCheck: Boolean = true, action: (BlockHitResult) -> Unit): Boolean {
         if (!prepareBlock(hit, range, rotations, moveFix, exactFace, wallCheck)) return false
+        pendingReady = { blockHit(hit, range, exactFace, wallCheck) != null }
         pending = { blockHit(hit, range, exactFace, wallCheck)?.let(action) }
         return true
     }
@@ -205,6 +222,7 @@ class AuraActionQueue(private var owner: Any) {
     fun crystal(crystal: EndCrystal, range: Double, rotations: Boolean, moveFix: MoveFixMode,
                 wallCheck: Boolean = true, action: () -> Unit): Boolean {
         if (!prepareCrystal(crystal, range, rotations, moveFix, wallCheck)) return false
+        pendingReady = null
         pending = { if (crystalReady(crystal, range, wallCheck)) action() }
         return true
     }
@@ -230,6 +248,15 @@ class AuraActionQueue(private var owner: Any) {
         return hasMovement && current === mc.player && level === mc.level && crystal.isAlive
             && hitsCrystal(serverEyes, sentRotation, crystal, reach, wallCheck)
             && withinReach(current.eyePosition, crystal.boundingBox, reach)
+    }
+
+    fun item(pitch: Float, moveFix: MoveFixMode, action: () -> Unit): Boolean {
+        if (player == null || level == null) return false
+        pendingReady = null
+        val base = RotationManager.getServerRotation()
+        applyAim(GCDUtil.applyGCD(Rotation(sentRotation.yaw, pitch).normalizeTo(base), base), moveFix)
+        pending = { if (hasMovement && abs(sentRotation.pitch - pitch) <= maxOf(1f, GCDUtil.getGCD())) action() }
+        return true
     }
 
     private fun blockAimPoint(hit: BlockHitResult): Vec3 =

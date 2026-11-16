@@ -23,6 +23,7 @@ import meow.ancient.module.modules.combat.TpAuraModule
 import meow.ancient.module.modules.combat.CrystalOptimizerModule
 import meow.ancient.module.modules.combat.AimAssistModule
 import meow.ancient.module.modules.movement.StepModule
+import meow.ancient.module.modules.movement.ScaffoldModule
 import meow.ancient.module.modules.movement.PhaseModule
 import meow.ancient.module.modules.player.FastExpModule
 import meow.ancient.module.modules.movement.AirStuckModule
@@ -80,6 +81,10 @@ object ModuleManager : ILoadable {
         modules.clear()
         add(
             HitAuraModule,
+            meow.ancient.module.modules.combat.AutoPotionModule,
+            meow.ancient.module.modules.combat.AutoMineModule,
+            meow.ancient.module.modules.combat.AutoWebModule,
+            meow.ancient.module.modules.combat.SelfTrapModule,
             AutoTotemModule,
             AntiBotModule,
             TriggerBotModule,
@@ -100,6 +105,7 @@ object ModuleManager : ILoadable {
             AimAssistModule,
             AutoLungeModule,
             AutoSprintModule,
+            ScaffoldModule,
             GroundSpoofModule,
             AirStuckModule,
             ElytraBoosterModule,
@@ -121,6 +127,8 @@ object ModuleManager : ILoadable {
             FastExpModule,
             ElytraHelperModule,
             PacketMineModule,
+            meow.ancient.module.modules.player.ReplenishModule,
+            meow.ancient.module.modules.player.AutoArmorModule,
             ClickPearlModule,
             AutoTpacceptModule,
             NoPushModule,
@@ -131,6 +139,7 @@ object ModuleManager : ILoadable {
             FtHelperModule,
             HwHelperModule,
             NeuroRecordModule,
+            meow.ancient.module.modules.other.NotifierModule,
             ClickGuiModule,
             HudModule,
             TagsModule,
@@ -145,6 +154,7 @@ object ModuleManager : ILoadable {
             CameraTweaksModule,
             ChamsModule,
             BlockEspModule,
+            meow.ancient.module.modules.render.BreakEspModule,
             LightEspModule,
             PredictionsModule,
             HideModule,

@@ -12,6 +12,10 @@ data class ActionOwner(val name: String, val group: ActionGroup, val priority: I
                 name in setOf("ClickPearl", "ElytraHelper", "Phase", "FtHelper", "HwHelper", "AutoLunge") ->
                     ActionOwner(name, ActionGroup.MANUAL, 1000)
                 name == "SpearKill" -> ActionOwner(name, ActionGroup.COMBAT, 330)
+                name == "AutoPotion" -> ActionOwner(name, ActionGroup.COMBAT, 950)
+                name == "Scaffold" -> ActionOwner(name, ActionGroup.UTILITY, 600)
+                name == "SelfTrap" -> ActionOwner(name, ActionGroup.COMBAT, 440)
+                name == "AutoWeb" -> ActionOwner(name, ActionGroup.COMBAT, 315)
                 name == "Surround" -> ActionOwner(name, ActionGroup.COMBAT, 450)
                 name == "CrystalAura" -> ActionOwner(name, ActionGroup.COMBAT, 323)
                 name == "AnchorAura" -> ActionOwner(name, ActionGroup.COMBAT, 322)

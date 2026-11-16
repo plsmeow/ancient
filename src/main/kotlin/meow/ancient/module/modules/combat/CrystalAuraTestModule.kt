@@ -740,12 +740,8 @@ object CrystalAuraTestModule : Module(
     }
 
     private fun detonateInHand(player: LocalPlayer, hit: BlockHitResult): Boolean {
-        val gameMode = mc.gameMode ?: return false
-        if (!player.containerMenu.carried.isEmpty) return false
-        val result = gameMode.useItemOn(player, InteractionHand.MAIN_HAND, hit)
-        if (!result.consumesAction()) return false
-        player.swing(InteractionHand.MAIN_HAND, player.mainHandItem.attackAnimation, false)
-        return true
+        if (mc.player !== player || !player.containerMenu.carried.isEmpty) return false
+        return InventoryUtil.useItemOn(InteractionHand.MAIN_HAND, hit)
     }
 
     private fun attemptBreak(player: LocalPlayer, level: ClientLevel, crystal: EndCrystal): Boolean {
@@ -822,19 +818,15 @@ object CrystalAuraTestModule : Module(
         }
         var placed = false
         InventoryUtil.withSilentSlot(slot) {
-            placed = InventoryUtil.useItemOnPacket(InteractionHand.MAIN_HAND, hit)
+            placed = InventoryUtil.useItemOn(InteractionHand.MAIN_HAND, hit)
         }
         return placed
     }
 
     private fun interact(player: LocalPlayer, hand: InteractionHand, hit: BlockHitResult): Boolean {
-        val gameMode = mc.gameMode ?: return false
         if (mc.player !== player || !player.connection.connection.isConnected) return false
         if (!player.containerMenu.carried.isEmpty) return false
-        val result = gameMode.useItemOn(player, hand, hit)
-        if (!result.consumesAction()) return false
-        player.swing(hand, player.getItemInHand(hand).attackAnimation, false)
-        return true
+        return InventoryUtil.useItemOn(hand, hit)
     }
 
     private fun startDigging(level: ClientLevel, player: LocalPlayer, pos: BlockPos): Boolean {

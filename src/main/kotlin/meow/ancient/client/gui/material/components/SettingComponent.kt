@@ -1,7 +1,6 @@
 package meow.ancient.client.gui.material.components
 
 import meow.ancient.client.util.other.color.Color4b
-import meow.ancient.client.util.render.RenderUtils
 import meow.ancient.client.util.render.ScissorUtil
 import meow.ancient.client.util.render.engine.controls.ClientRenderPipeline
 import meow.ancient.client.util.render.font.Font
@@ -66,9 +65,9 @@ abstract class SettingComponent(val setting: Setting<*>) : GuiComponent {
     }
 
     class MarqueeText {
-        private var charOffset = 0f
-        private var forward = true
-        private var pauseTimer = 0f
+        private var scrollTime = 0f
+        private var lastText = ""
+        private var lastSize = 0f
 
         fun render(
             matrix: Matrix4f,
@@ -84,52 +83,51 @@ abstract class SettingComponent(val setting: Setting<*>) : GuiComponent {
             pipeline: ClientRenderPipeline = ClientRenderPipeline.WINDOW_TEXT
         ) {
             val font = Fonts.google_sans_regular
+            if (text != lastText || size != lastSize) {
+                scrollTime = 0f
+                lastText = text
+                lastSize = size
+            }
+            if (maxWidth <= 0f || size <= 0f) {
+                scrollTime = 0f
+                return
+            }
             val totalW = font.width(text, size)
             if (totalW <= maxWidth) {
                 font.drawString(matrix, text, x, y, size, color, false, pipeline)
-                charOffset = 0f
-                pauseTimer = 0f
-                forward = true
+                scrollTime = 0f
                 return
             }
 
             if (!isHovered) {
-                charOffset = 0f
-                pauseTimer = 0f
-                forward = true
+                scrollTime = 0f
                 val trimmed = fitStart(font, text, maxWidth, size)
                 font.drawString(matrix, trimmed, x, y, size, color, false, pipeline)
                 return
             }
 
-            val maxShift = (text.length - 3).coerceAtLeast(1)
-            if (forward) {
-                if (charOffset <= 0f && pauseTimer < 0.7f) {
-                    pauseTimer += dt
-                } else {
-                    charOffset += 7f * dt
-                    if (charOffset >= maxShift) {
-                        charOffset = maxShift.toFloat()
-                        forward = false
-                        pauseTimer = 0f
-                    }
-                }
-            } else {
-                if (charOffset >= maxShift && pauseTimer < 0.7f) {
-                    pauseTimer += dt
-                } else {
-                    charOffset -= 7f * dt
-                    if (charOffset <= 0f) {
-                        charOffset = 0f
-                        forward = true
-                        pauseTimer = 0f
-                    }
-                }
+            val overflow = totalW - maxWidth
+            val pause = 0.7f
+            val travel = maxOf(1.25f, overflow / 32f)
+            val cycle = 2f * (pause + travel)
+            val delta = if (dt.isFinite()) dt.coerceIn(0f, 0.1f) else 0f
+            scrollTime = (scrollTime + delta) % cycle
+            val offset = when {
+                scrollTime < pause -> 0f
+                scrollTime < pause + travel -> overflow * ease((scrollTime - pause) / travel)
+                scrollTime < 2f * pause + travel -> overflow
+                else -> overflow * (1f - ease((scrollTime - 2f * pause - travel) / travel))
             }
 
-            val startIndex = charOffset.toInt().coerceIn(0, text.length - 1)
-            val display = fitWindow(font, text, startIndex, maxWidth, size)
-            font.drawString(matrix, display, x, y, size, color, false, pipeline)
+            // Move the complete label at subpixel precision; clip instead of replacing whole characters.
+            ScissorUtil.withScissor(x, y - 2f, maxWidth, font.getLineHeight(size) + 4f) {
+                font.drawString(matrix, text, x - offset, y, size, color, false, pipeline)
+            }
+        }
+
+        private fun ease(progress: Float): Float {
+            val t = progress.coerceIn(0f, 1f)
+            return t * t * t * (t * (t * 6f - 15f) + 10f)
         }
 
         private fun fitStart(font: Font, text: String, maxWidth: Float, size: Float): String {
@@ -142,19 +140,5 @@ abstract class SettingComponent(val setting: Setting<*>) : GuiComponent {
             return ""
         }
 
-        private fun fitWindow(font: Font, text: String, startIndex: Int, maxWidth: Float, size: Float): String {
-            val sub = text.substring(startIndex)
-            val prefix = if (startIndex > 0) "…" else ""
-            if (font.width(prefix + sub, size) <= maxWidth) {
-                return prefix + sub
-             }
-            var len = sub.length
-            while (len > 0) {
-                val candidate = prefix + sub.substring(0, len) + "…"
-                if (font.width(candidate, size) <= maxWidth) return candidate
-                len--
-            }
-            return ""
-        }
     }
 }

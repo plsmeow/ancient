@@ -92,6 +92,7 @@ object AnchorAuraModule : Module(
         private set
 
     private fun reset() {
+        meow.ancient.client.util.combat.PlacementReservations.release(this)
         SurroundModule.clearProtectionRequest("AnchorAura")
         tickTimer = 0
         sequence = null
@@ -110,7 +111,7 @@ object AnchorAuraModule : Module(
 
     private fun awaitingConfirmation(player: LocalPlayer, level: Level): Boolean {
         val current = sequence ?: return false
-        val state = level.getBlockState(current.pos)
+        val state = meow.ancient.client.util.inventory.BlockPredictionUtil.serverState(level, current.pos)
         val confirmed = current.confirmed(state)
         val ping = player.connection.getPlayerInfo(player.uuid)?.latency ?: 150
         val timeout = (ping.coerceAtLeast(0) / 50 + 5).coerceIn(5, 80)
@@ -197,6 +198,7 @@ object AnchorAuraModule : Module(
                 SequenceStage.DETONATE_SENT -> detonateAnchor(player, hit)
             }
             if (sent) {
+                meow.ancient.client.util.combat.PlacementReservations.claim(plan.pos, this, ((player.connection.getPlayerInfo(player.uuid)?.latency ?: 150) / 50 + 5).coerceIn(5, 80))
                 queuedPlan = null
                 preferredPos = plan.pos
                 sequence = AnchorSequence(plan.pos, plan.stage, player.tickCount, charges)
@@ -322,6 +324,7 @@ object AnchorAuraModule : Module(
         if (mc.player !== player || currentTarget !== target || !target.isAlive || target.isRemoved
             || FriendRepository.isFriend(target) || player.distanceToSqr(target) > targetRange * targetRange) return false
         if (!level.worldBorder.isWithinBounds(plan.pos) || level.isOutsideBuildHeight(plan.pos)
+            || meow.ancient.client.util.combat.PlacementReservations.reserved(plan.pos, this)
             || !ExplosionDamageUtil.anchorExplodes(level, plan.pos)) return false
         val state = level.getBlockState(plan.pos)
         val usable = when (plan.stage) {
@@ -357,6 +360,7 @@ object AnchorAuraModule : Module(
         }
         for (mutablePos in candidates) {
             val pos = mutablePos.immutable()
+            if (meow.ancient.client.util.combat.PlacementReservations.reserved(pos, this)) continue
             if (!level.worldBorder.isWithinBounds(pos) || !ExplosionDamageUtil.anchorExplodes(level, pos)) continue
             val state = level.getBlockState(pos)
             when (stage) {
@@ -393,11 +397,11 @@ object AnchorAuraModule : Module(
         if (!mc.isSameThread || mc.player !== player || mc.level !== sequenceLevel || mc.gameMode == null
             || !player.connection.connection.isConnected || !player.containerMenu.carried.isEmpty
             || player.isSpectator || slot != null && slot !in 0..8) return false
-        // Packet-only interaction: advance the sequence from actual server block updates, not prediction.
+        // Predict locally through vanilla; sequence confirmation still reads the server state.
         if (hand == InteractionHand.MAIN_HAND && silentSlots) {
             var sent = false
             InventoryUtil.withSilentSlot(slot ?: player.inventory.selectedSlot) {
-                sent = InventoryUtil.useItemOnPacket(hand, hitResult)
+                sent = InventoryUtil.useItemOn(hand, hitResult)
             }
             return sent
         }
@@ -405,7 +409,7 @@ object AnchorAuraModule : Module(
             InventoryUtil.swapToSlot(slot)
             if (player.inventory.selectedSlot != slot) return false
         }
-        return InventoryUtil.useItemOnPacket(hand, hitResult)
+        return InventoryUtil.useItemOn(hand, hitResult)
     }
 
     private fun placeAnchor(player: LocalPlayer, hit: BlockHitResult): Boolean {

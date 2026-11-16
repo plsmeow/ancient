@@ -16,6 +16,7 @@ import meow.ancient.module.modules.movement.InventoryMoveModule;
 import meow.ancient.module.modules.movement.ElytraRecastModule;
 import meow.ancient.module.modules.movement.PhaseModule;
 import meow.ancient.module.modules.movement.NoSlowModule;
+import meow.ancient.module.modules.movement.ScaffoldModule;
 import net.minecraft.client.player.LocalPlayer;
 import meow.ancient.module.modules.player.NoPushModule;
 import meow.ancient.module.modules.player.PacketMineModule;
@@ -32,6 +33,7 @@ public class MixinLocalPlayer {
     @Inject(method = "aiStep()V", at = @At("RETURN"))
     private void ancient$recastElytra(CallbackInfo ci) {
         ElytraRecastModule.INSTANCE.onAfterMovement((LocalPlayer) (Object) this);
+        ScaffoldModule.INSTANCE.onAfterMovement();
     }
 
     @Inject(method = "tick", at = @At("HEAD"), cancellable = true)
@@ -102,7 +104,7 @@ public class MixinLocalPlayer {
                 return motion;
             }
         }
-        return movement;
+        return type == MoverType.SELF ? ScaffoldModule.INSTANCE.limitMovement(movement) : movement;
     }
 
     @Inject(method = "moveTowardsClosestSpace", at = @At("HEAD"), cancellable = true)

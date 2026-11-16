@@ -70,6 +70,7 @@ object AutoTotemModule : Module(
     }
     private fun condition(player: Player): Boolean {
         if (player.isCreative || player.isSpectator || !player.isAlive) return false
+        if (CrystalAuraModule.shouldKeepTotem()) return true
         if (mode == "Always") return true
 
         val level = mc.level ?: return false

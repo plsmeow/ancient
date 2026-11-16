@@ -102,7 +102,7 @@ class HudNotifications {
             val message = HudNotificationCenter.poll(now) ?: break
             if (now - message.createdAt >= HUD_NOTIFICATION_LIFETIME_NANOS - EXIT_NANOS) continue
             if (count == this.limit) remove(0)
-            entries[count].prepare(message.name, if (message.enabled) "Enabled" else "Disabled",
+            entries[count].prepare(message.name, message.detail,
                 message.enabled, false, message.createdAt, count * STACK_STEP)
             entries[count].opacity.update(1f, dt)
             count++

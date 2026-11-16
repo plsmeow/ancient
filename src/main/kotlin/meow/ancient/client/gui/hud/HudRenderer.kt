@@ -40,10 +40,11 @@ class HudRenderer(private val serverStats: HudServerStats) {
     private val tps = HudCard("TPS", HudForm.CHIP)
     private val ping = HudCard("PING", HudForm.CHIP)
     private val scoreboard = HudCard("Scoreboard", HudForm.SCOREBOARD, "Preview Line", "")
-    private val cards = arrayOf(watermark, keybinds, potions, target, staff, arrayList, coords, speed, tps, ping, scoreboard)
+    private val totems = HudCard("TOTEMS", HudForm.CHIP)
+    private val cards = arrayOf(watermark, keybinds, potions, target, staff, arrayList, coords, speed, tps, ping, scoreboard, totems)
     private val elements = arrayOf(HudElement.WATERMARK, HudElement.KEYBINDS, HudElement.POTIONS,
         HudElement.TARGET, HudElement.STAFF, HudElement.ARRAY_LIST, HudElement.COORDS,
-        HudElement.SPEED, HudElement.TPS, HudElement.PING, HudElement.SCOREBOARD)
+        HudElement.SPEED, HudElement.TPS, HudElement.PING, HudElement.SCOREBOARD, HudElement.TOTEMS)
     private val notifications = HudNotifications()
     private val staffDetector = HudStaffDetector()
     private val widthComparator = Comparator<HudRow> { a, b -> b.width.compareTo(a.width) }
@@ -183,6 +184,13 @@ class HudRenderer(private val serverStats: HudServerStats) {
             ping.add(pingText, key = "ping")
         }
         updateScoreboard(module)
+        totems.begin(module.isElementEnabled(HudElement.TOTEMS))
+        if (totems.enabled) {
+            val count = (0..35).sumOf { slot -> currentPlayer.inventory.getItem(slot).let {
+                if (it.`is`(net.minecraft.world.item.Items.TOTEM_OF_UNDYING)) it.count else 0
+            } } + currentPlayer.offhandItem.let { if (it.`is`(net.minecraft.world.item.Items.TOTEM_OF_UNDYING)) it.count else 0 }
+            totems.add(count.toString(), key = "totems")
+        }
     }
 
     private fun updateModules(module: HudModule) {
@@ -384,6 +392,8 @@ class HudRenderer(private val serverStats: HudServerStats) {
         keybinds.defaultY = topBottom + gap
         staff.defaultX = 7f
         staff.defaultY = keybinds.defaultY + if (keybinds.isVisible) keybinds.height * scale + gap else 0f
+        totems.defaultX = 7f
+        totems.defaultY = staff.defaultY + if (staff.isVisible) staff.height * scale + gap else 0f
         arrayList.defaultX = screenWidth - 7f - arrayList.width * scale
         arrayList.defaultY = 7f
         potions.defaultX = screenWidth - 7f - potions.width * scale

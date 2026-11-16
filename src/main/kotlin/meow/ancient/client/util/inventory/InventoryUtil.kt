@@ -10,11 +10,14 @@ import net.minecraft.client.player.LocalPlayer
 import net.minecraft.core.component.DataComponents
 import net.minecraft.core.registries.Registries
 import net.minecraft.network.protocol.game.ServerboundContainerClosePacket
+import net.minecraft.network.protocol.game.ServerboundContainerClickPacket
 import net.minecraft.network.protocol.game.ServerboundSetCarriedItemPacket
 import net.minecraft.network.protocol.game.ServerboundUseItemOnPacket
 import net.minecraft.network.protocol.game.ServerboundUseItemPacket
+import net.minecraft.network.protocol.Packet
 import net.minecraft.tags.ItemTags
 import net.minecraft.world.InteractionHand
+import net.minecraft.world.InteractionResult
 import net.minecraft.world.entity.EquipmentSlot
 import net.minecraft.world.inventory.ContainerInput
 import net.minecraft.world.item.Item
@@ -30,15 +33,27 @@ object InventoryUtil {
     private val Hotbar_rad = 0 until 9
     private val invent_rad = 9 until 36
     private val allslots = 0 until 36
-    private class UseReceipt(var packet: ServerboundUseItemOnPacket? = null, var accepted: Boolean = false)
+    private class UseReceipt(var packet: Packet<*>? = null, var accepted: Boolean = false,
+                             val hand: InteractionHand? = null, val hit: BlockHitResult? = null)
     private var useReceipt: UseReceipt? = null
+    private class ClickReceipt(val menu: Int, val slot: Int, val button: Int, var accepted: Boolean = false)
+    private var clickReceipt: ClickReceipt? = null
 
     init { EventManager.register(this) }
 
     @Commando
     fun onPacketSent(event: PacketSentEvent) {
         if (!mc.isSameThread) return
-        useReceipt?.let { if (event.packet === it.packet) it.accepted = true }
+        useReceipt?.let {
+            val packet = event.packet
+            if (packet === it.packet || it.hit != null && packet is ServerboundUseItemOnPacket
+                && packet.hand() == it.hand && packet.hitResult() === it.hit) it.accepted = true
+        }
+        val click = event.packet as? ServerboundContainerClickPacket ?: return
+        clickReceipt?.let {
+            if (click.containerId() == it.menu && click.slotNum().toInt() == it.slot
+                && click.buttonNum().toInt() == it.button && click.containerInput() == ContainerInput.SWAP) it.accepted = true
+        }
     }
 
     fun swapToOffhand(slot: Int, closeInvPacket: Boolean = true, forceGrim: Boolean = false) {
@@ -134,8 +149,20 @@ object InventoryUtil {
             || hotbarButton !in Hotbar_rad && hotbarButton != 40) return false
         val slot = menu.getSlot(menuSlot)
         if (!slot.mayPickup(player) || !slot.mayPlace(player.inventory.getItem(hotbarButton))) return false
-        gameMode.handleContainerInput(menu.containerId, menuSlot, hotbarButton, ContainerInput.SWAP, player)
-        return true
+        val before = menu.slots.map { it.item.copy() }
+        val carried = menu.carried.copy()
+        val previous = clickReceipt
+        val receipt = ClickReceipt(menu.containerId, menuSlot, hotbarButton)
+        clickReceipt = receipt
+        try {
+            gameMode.handleContainerInput(menu.containerId, menuSlot, hotbarButton, ContainerInput.SWAP, player)
+            if (!receipt.accepted && mc.player === player && player.containerMenu === menu) {
+                // Native click prediction has already edited the menu even if a handler cancelled the packet.
+                before.forEachIndexed { index, stack -> menu.getSlot(index).set(stack) }
+                menu.carried = carried
+            }
+            return receipt.accepted
+        } finally { clickReceipt = previous }
     }
 
     fun clickSlot(menuSlot: Int, hotbarButton: Int): Boolean {
@@ -165,18 +192,65 @@ object InventoryUtil {
         })
     }
 
-    fun useItemOnPacket(hand: InteractionHand, hitResult: BlockHitResult): Boolean {
-        if (!ActionCoordinator.canAct()) return false
+    /** Native block/item interaction, including local placement, inventory prediction and packet receipts. */
+    fun useItemOn(hand: InteractionHand, hitResult: BlockHitResult): Boolean {
+        if (!mc.isSameThread || !ActionCoordinator.canAct()) return false
         val player = mc.player ?: return false
         val gameMode = mc.gameMode ?: return false
         val level = mc.level ?: return false
         if (!canModifyInventory(player)) return false
         val previous = useReceipt
+        val receipt = UseReceipt(hand = hand, hit = hitResult)
+        useReceipt = receipt
+        try {
+            return SilentSwapUtil.withServerSelection {
+                val selected = player.inventory.selectedSlot
+                val main = player.mainHandItem.copy()
+                val offhand = player.offhandItem.copy()
+                val prediction = BlockPredictionUtil.snapshot(level)
+                try {
+                    val result = gameMode.useItemOn(player, hand, hitResult)
+                    if (!receipt.accepted) {
+                        prediction.rollback()
+                        if (mc.player === player) {
+                            player.inventory.setItem(selected, main)
+                            player.setItemInHand(InteractionHand.OFF_HAND, offhand)
+                        }
+                        false
+                    } else {
+                        if (result is InteractionResult.Success && result.shouldSwing())
+                            player.swing(hand, SwingAnimation.DEFAULT, false)
+                        // Server-only interactions (e.g. detonating an anchor) can return PASS locally.
+                        result != InteractionResult.FAIL
+                    }
+                } catch (failure: Throwable) {
+                    if (!receipt.accepted) {
+                        prediction.rollback()
+                        if (mc.player === player) {
+                            player.inventory.setItem(selected, main)
+                            player.setItemInHand(InteractionHand.OFF_HAND, offhand)
+                        }
+                    }
+                    throw failure
+                }
+            }
+        } finally { useReceipt = previous }
+    }
+
+    /** Uses the prepared server rotation and reports whether the packet passed all handlers. */
+    fun useItemPacket(hand: InteractionHand): Boolean {
+        if (!ActionCoordinator.canAct()) return false
+        val player = mc.player ?: return false
+        val gameMode = mc.gameMode ?: return false
+        val level = mc.level ?: return false
+        if (!canModifyInventory(player) || player.cooldowns.isOnCooldown(player.getItemInHand(hand))) return false
+        val previous = useReceipt
         val receipt = UseReceipt()
         useReceipt = receipt
         try {
+            val rotation = RotationManager.getServerRotation()
             gameMode.startPrediction(level) { sequence ->
-                ServerboundUseItemOnPacket(hand, hitResult, sequence).also { receipt.packet = it }
+                ServerboundUseItemPacket(hand, sequence, rotation.yaw, rotation.pitch).also { receipt.packet = it }
             }
             if (receipt.accepted) player.swing(hand, SwingAnimation.DEFAULT, false)
             return receipt.accepted

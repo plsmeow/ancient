@@ -86,6 +86,7 @@ object SurroundModule : Module("Surround", COMBAT, "Surrounds your feet with obs
         playerContext = null
         levelContext = null
         actions.reset()
+        meow.ancient.client.util.combat.PlacementReservations.release(this)
         visual.reset()
         SilentSwapUtil.releasePreparedSlot(this)
     }
@@ -161,7 +162,7 @@ object SurroundModule : Module("Surround", COMBAT, "Surrounds your feet with obs
         tick++
         val ping = player.connection.getPlayerInfo(player.uuid)?.latency ?: 150
         val timeout = (ping.coerceAtLeast(0) / 50 + 5).coerceIn(5, 80)
-        pending.entries.removeIf { level.getBlockState(it.key).`is`(Blocks.OBSIDIAN) || tick - it.value >= timeout }
+        pending.entries.removeIf { meow.ancient.client.util.inventory.BlockPredictionUtil.serverState(level, it.key).`is`(Blocks.OBSIDIAN) || tick - it.value >= timeout }
         requests.entries.removeIf { tick >= it.value.expires || it.value.explosion.targetId?.let { id ->
             (level.getEntity(id) as? Player)?.let { !it.isAlive || FriendRepository.isFriend(it) } != false
         } == true }
@@ -201,7 +202,8 @@ object SurroundModule : Module("Surround", COMBAT, "Surrounds your feet with obs
                 || !player.containerMenu.carried.isEmpty || InventoryMoveModule.isInventoryActionSlowed()
                 || onlyGround && !player.onGround() || SilentSwapUtil.serverSlot != slot
                 || !validSite(player, level, site, hit, hand, slot)) return@block
-            if (InventoryUtil.useItemOnPacket(hand, hit)) {
+            if (InventoryUtil.useItemOn(hand, hit)) {
+                meow.ancient.client.util.combat.PlacementReservations.claim(site.pos, this, timeout)
                 pending[site.pos] = tick
                 lastPlace = tick
                 visual.pulse()
@@ -212,7 +214,8 @@ object SurroundModule : Module("Surround", COMBAT, "Surrounds your feet with obs
 
     private fun replaceable(player: LocalPlayer, level: ClientLevel, pos: BlockPos): Boolean {
         val gameMode = mc.gameMode ?: return false
-        return !PacketMineModule.targetsPosition(pos) && level.worldBorder.isWithinBounds(pos) && level.getBlockState(pos).canBeReplaced()
+        return !PacketMineModule.targetsPosition(pos) && !meow.ancient.client.util.combat.PlacementReservations.reserved(pos, this)
+            && level.worldBorder.isWithinBounds(pos) && level.getBlockState(pos).canBeReplaced()
             && !level.isOutsideBuildHeight(pos)
             && !player.blockActionRestricted(level, pos, gameMode.playerMode)
             && !AABB(pos).intersects(player.boundingBox) && level.getEntities(null, AABB(pos)).none { !it.isRemoved && it.blocksBuilding }

@@ -58,6 +58,7 @@ object SilentSwapUtil {
         var temporaryDepth = 0
         var scopeDepth = 0
         var scopeSlot = -1
+        var nativeSelectionDepth = 0
         var sendDepth = 0
         var restoreNotBeforeTick = 0
         var restoreOwner: Any? = null
@@ -66,7 +67,7 @@ object SilentSwapUtil {
             && player.connection.connection === connection && connection.isConnected && !player.isSpectator
 
         fun isManaged(): Boolean = AnticheatManager.isSilentSwapNew || pendingSlot >= 0
-            || temporaryDepth > 0 || scopeDepth > 0
+            || temporaryDepth > 0 || scopeDepth > 0 || nativeSelectionDepth > 0
     }
 
     @Volatile private var state: SwapState? = null
@@ -201,6 +202,29 @@ object SilentSwapUtil {
         if (!mc.isSameThread) return
         val current = state ?: return
         if (current.restoreOwner === owner) current.restoreNotBeforeTick = 0
+    }
+
+    /** Let vanilla predict with the item already selected on the server, preserving the camera hotbar. */
+    fun <T> withServerSelection(action: () -> T): T {
+        check(mc.isSameThread)
+        val player = checkNotNull(mc.player)
+        val current = checkNotNull(currentState(player))
+        observeSelection(current)
+        val visibleSlot = player.inventory.selectedSlot
+        val selected = current.serverSlot.takeIf { it in HOTBAR } ?: visibleSlot
+        current.nativeSelectionDepth++
+        player.inventory.selectedSlot = selected
+        mc.gameMode?.carriedIndex = selected
+        try {
+            return action()
+        } finally {
+            current.nativeSelectionDepth--
+            if (mc.player === player) {
+                player.inventory.selectedSlot = visibleSlot
+                // Managed swaps synchronize carriedIndex to the visible slot until the safe restore boundary.
+                mc.gameMode?.carriedIndex = if (current.isManaged()) visibleSlot else selected
+            }
+        }
     }
 
     fun restoreSlot(slot: Int, syncClientSlot: Boolean = true) {
@@ -374,6 +398,7 @@ object SilentSwapUtil {
     }
 
     private fun observeSelection(current: SwapState) {
+        if (current.nativeSelectionDepth > 0) return
         val selected = current.player.inventory.selectedSlot
         if (selected == current.expectedSlot) return
         current.expectedSlot = selected

@@ -1,0 +1,10 @@
+Scaffold contains code adapted from LiquidBounce (https://github.com/CCBlueX/LiquidBounce).
+Copyright (c) 2015 - 2026 CCBlueX. License: GPL-3.0-or-later.
+Source commit: 0eccefdb56d5afaca6443ec79016be2c3529dbce (2026-11-15).
+License: META-INF/licenses/liquidbounce-GPL-3.0.txt.
+Current implementation, exact source files, modifications: docs/scaffold-port.md.
+
+Earlier Scaffold code was adapted from Meteor Client (https://github.com/MeteorDevelopment/meteor-client).
+Copyright (c) Meteor Development. License: GPL-3.0-only.
+Earlier attribution and license retained.
+License: META-INF/licenses/meteor-client-GPL-3.0.txt.
