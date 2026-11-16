@@ -10,6 +10,7 @@ import meow.ancient.client.util.rotation.RotationUtil
 import meow.ancient.event.EventManager
 import meow.ancient.event.events.PacketSentEvent
 import meow.ancient.event.events.PlayerPreMovementEvent
+import meow.ancient.event.events.PlayerMovementSentEvent
 import net.minecraft.client.multiplayer.ClientLevel
 import net.minecraft.client.player.LocalPlayer
 import net.minecraft.core.BlockPos
@@ -34,7 +35,7 @@ import net.minecraft.util.Mth
 import kotlin.math.abs
 
 /** Before flying, interactions use the position and look the server already knows. */
-class AuraActionQueue(private var owner: Any) {
+class AuraActionQueue(private var owner: Any, private val flushAfterMovement: Boolean = false) {
     private var player: LocalPlayer? = null
     private var level: ClientLevel? = null
     private var sentRotation = Rotation(0f, 0f)
@@ -119,10 +120,28 @@ class AuraActionQueue(private var owner: Any) {
 
     @Commando(priority = -128)
     fun onPreMovement(event: PlayerPreMovementEvent) {
+        if (flushAfterMovement) {
+            flushReady()
+            return
+        }
         val action = pending ?: return
         pending = null
         pendingReady = null
         if (player !== mc.player || level !== mc.level || !hasMovement || !ActionCoordinator.canAct(owner)) return
+        ActionCoordinator.withOwner(ActionCoordinator.resolveOwner(owner)) { action() }
+    }
+
+    @Commando(priority = -128)
+    fun onMovementSent(event: PlayerMovementSentEvent) {
+        if (flushAfterMovement) flushReady()
+    }
+
+    private fun flushReady() {
+        val action = pending ?: return
+        if (player !== mc.player || level !== mc.level || !hasMovement || !ActionCoordinator.canAct(owner)
+            || pendingReady?.invoke() != true) return
+        pending = null
+        pendingReady = null
         ActionCoordinator.withOwner(ActionCoordinator.resolveOwner(owner)) { action() }
     }
 
@@ -222,7 +241,7 @@ class AuraActionQueue(private var owner: Any) {
     fun crystal(crystal: EndCrystal, range: Double, rotations: Boolean, moveFix: MoveFixMode,
                 wallCheck: Boolean = true, action: () -> Unit): Boolean {
         if (!prepareCrystal(crystal, range, rotations, moveFix, wallCheck)) return false
-        pendingReady = null
+        pendingReady = { crystalReady(crystal, range, wallCheck) }
         pending = { if (crystalReady(crystal, range, wallCheck)) action() }
         return true
     }
@@ -252,9 +271,9 @@ class AuraActionQueue(private var owner: Any) {
 
     fun item(pitch: Float, moveFix: MoveFixMode, action: () -> Unit): Boolean {
         if (player == null || level == null) return false
-        pendingReady = null
         val base = RotationManager.getServerRotation()
         applyAim(GCDUtil.applyGCD(Rotation(sentRotation.yaw, pitch).normalizeTo(base), base), moveFix)
+        pendingReady = { hasMovement && abs(sentRotation.pitch - pitch) <= maxOf(1f, GCDUtil.getGCD()) }
         pending = { if (hasMovement && abs(sentRotation.pitch - pitch) <= maxOf(1f, GCDUtil.getGCD())) action() }
         return true
     }

@@ -73,10 +73,12 @@ object AnchorAuraModule : Module(
         }
     }
     private data class Plan(val pos: BlockPos, val hit: BlockHitResult, val stage: SequenceStage)
-    private val actions = AuraActionQueue(this)
+    private val actions = AuraActionQueue(this, flushAfterMovement = true)
     private val damageCache = AuraDamageCache()
     private val occupancy = AuraEntityOccupancy()
     private val searchMemo = HashMap<Pair<Int, SequenceStage>, Plan?>()
+    private val searchPositions = HashMap<SequenceStage, MutableList<BlockPos>>()
+    private var searchPositionsReady = false
     private var searchTick = -1
     private var searchPlayer: LocalPlayer? = null
     private var searchWorld: Level? = null
@@ -102,7 +104,8 @@ object AnchorAuraModule : Module(
         sequenceLevel = null
         currentTarget = null
         searchTick = -1; searchPlayer = null; searchWorld = null
-        searchMemo.clear(); occupancy.clear()
+        searchMemo.clear(); searchPositions.clear(); occupancy.clear()
+        searchPositionsReady = false
         damageCache.beginTick(null, ignoreTerrain)
         actions.beginTick()
         visual.reset()
@@ -112,7 +115,11 @@ object AnchorAuraModule : Module(
     private fun awaitingConfirmation(player: LocalPlayer, level: Level): Boolean {
         val current = sequence ?: return false
         val state = meow.ancient.client.util.inventory.BlockPredictionUtil.serverState(level, current.pos)
-        val confirmed = current.confirmed(state)
+        // Vanilla predicts placement/charging, but never predicts an anchor explosion.
+        // The server copy can still be air from before PLACE when DETONATE is sent.
+        val confirmed = if (current.stage == SequenceStage.DETONATE_SENT)
+            !level.getBlockState(current.pos).`is`(Blocks.RESPAWN_ANCHOR)
+            else current.confirmed(state)
         val ping = player.connection.getPlayerInfo(player.uuid)?.latency ?: 150
         val timeout = (ping.coerceAtLeast(0) / 50 + 5).coerceIn(5, 80)
         if (confirmed || player.tickCount - current.sentTick >= timeout) {
@@ -120,6 +127,8 @@ object AnchorAuraModule : Module(
             return false
         }
         visual.show(AABB(current.pos), renderKind(current.stage))
+        if (current.stage != SequenceStage.DETONATE_SENT && current.confirmed(level.getBlockState(current.pos)))
+            return false
         return true
     }
 
@@ -166,10 +175,19 @@ object AnchorAuraModule : Module(
         val target = currentTarget ?: return
         if (tickTimer < delay.toInt()) return
         val targetHp = AnticheatManager.getHealth(target)
-        val selected = findPlan(player, target, targetHp, SequenceStage.DETONATE_SENT)
+        // Advance only our predicted anchor; do not start another chain before the explosion resolves.
+        val current = sequence
+        val selected = if (current != null) {
+            val next = if (current.stage == SequenceStage.PLACE_SENT) SequenceStage.CHARGE_SENT
+                else SequenceStage.DETONATE_SENT
+            findPlan(player, target, targetHp, next, onlyPos = current.pos)
+        } else findPlan(player, target, targetHp, SequenceStage.DETONATE_SENT)
             ?: findPlan(player, target, targetHp, SequenceStage.CHARGE_SENT)
             ?: findPlan(player, target, targetHp, SequenceStage.PLACE_SENT)
-            ?: return
+        if (selected == null) {
+            SilentSwapUtil.releasePreparedSlot(this)
+            return
+        }
         if (SurroundModule.requestProtection("AnchorAura", protectionExplosion(selected.pos, target))) {
             SilentSwapUtil.releasePreparedSlot(this)
             return
@@ -315,8 +333,36 @@ object AnchorAuraModule : Module(
         if (searchTick == player.tickCount && searchWorld === level && searchPlayer === player && searchIgnoreTerrain == ignoreTerrain) return
         searchTick = player.tickCount; searchWorld = level; searchPlayer = player; searchIgnoreTerrain = ignoreTerrain
         searchMemo.clear()
+        searchPositions.clear()
+        searchPositionsReady = false
         damageCache.beginTick(level, ignoreTerrain)
         occupancy.update(level.entitiesForRendering(), AABB(player.blockPosition()).inflate(range + 4.0))
+    }
+
+    private fun ensureSearchPositions(player: LocalPlayer) {
+        if (searchPositionsReady) return
+        val level = mc.level ?: return
+        searchPositionsReady = true
+        val r = range.toInt() + 1
+        val p = player.blockPosition()
+        val eyes = player.eyePosition
+        val reach = minOf(range, player.blockInteractionRange())
+        // Classify the reachable volume once instead of scanning it for each of the three stages.
+        for (mutablePos in BlockPos.betweenClosed(p.x - r, maxOf(p.y - r, level.minY), p.z - r,
+                p.x + r, minOf(p.y + r, level.maxY - 1), p.z + r)) {
+            val pos = mutablePos.immutable()
+            val state = level.getBlockState(pos)
+            val stage = if (state.`is`(Blocks.RESPAWN_ANCHOR)) {
+                if (state.getValue(RespawnAnchorBlock.CHARGE) > 0) SequenceStage.DETONATE_SENT else SequenceStage.CHARGE_SENT
+            } else if (state.canBeReplaced() && !occupancy.baseBlocked(pos)) SequenceStage.PLACE_SENT else continue
+            val dx = eyes.x - eyes.x.coerceIn(pos.x.toDouble(), pos.x + 1.0)
+            val dy = eyes.y - eyes.y.coerceIn(pos.y.toDouble(), pos.y + 1.0)
+            val dz = eyes.z - eyes.z.coerceIn(pos.z.toDouble(), pos.z + 1.0)
+            if (dx * dx + dy * dy + dz * dz > reach * reach) continue
+            if (meow.ancient.client.util.combat.PlacementReservations.reserved(pos, this)
+                || !level.worldBorder.isWithinBounds(pos) || !ExplosionDamageUtil.anchorExplodes(level, pos)) continue
+            searchPositions.getOrPut(stage) { ArrayList() }.add(pos)
+        }
     }
 
     private fun validPlan(player: LocalPlayer, target: Player, plan: Plan, hit: BlockHitResult): Boolean {
@@ -340,23 +386,24 @@ object AnchorAuraModule : Module(
         return usable && damageAllowed(player, target, plan.pos)
     }
 
-    private fun findPlan(player: LocalPlayer, target: Player, targetHp: Float, stage: SequenceStage): Plan? {
+    private fun findPlan(player: LocalPlayer, target: Player, targetHp: Float, stage: SequenceStage,
+                         onlyPos: BlockPos? = null): Plan? {
         val level = mc.level ?: return null
         if (stage != SequenceStage.DETONATE_SENT && !hasItem(player, Items.GLOWSTONE)) return null
         if (stage == SequenceStage.CHARGE_SENT && player.isSecondaryUseActive) return null
         if (stage == SequenceStage.PLACE_SENT && !hasItem(player, Items.RESPAWN_ANCHOR)) return null
         ensureSearchContext(player)
         val key = target.id to stage
-        if (searchMemo.containsKey(key)) return searchMemo[key]
-        val r = range.toInt() + 1
-        val p = player.blockPosition()
+        if (onlyPos == null && searchMemo.containsKey(key)) return searchMemo[key]
         var best: Plan? = null
         var bestDamage = 0f
         var bestSelfDamage = Float.POSITIVE_INFINITY
         val candidates = sequence {
-            preferredPos?.let { yield(it) }
-            yieldAll(BlockPos.betweenClosed(p.x - r, maxOf(p.y - r, level.minY), p.z - r,
-                p.x + r, minOf(p.y + r, level.maxY - 1), p.z + r).asSequence().filter { it != preferredPos })
+            if (onlyPos != null) yield(onlyPos) else {
+                preferredPos?.let { yield(it) }
+                ensureSearchPositions(player)
+                yieldAll(searchPositions[stage].orEmpty().asSequence().filter { it != preferredPos })
+            }
         }
         for (mutablePos in candidates) {
             val pos = mutablePos.immutable()
@@ -385,11 +432,15 @@ object AnchorAuraModule : Module(
                 else AuraActionQueue.visibleHit(player, pos, range, wallCheck = wallCheck)
             if (hit == null) continue
             val plan = Plan(pos, hit, stage)
+            if (pos == preferredPos) {
+                if (onlyPos == null) searchMemo[key] = plan
+                return plan
+            }
             best = plan
             bestDamage = damage
             bestSelfDamage = selfDamage
         }
-        searchMemo[key] = best
+        if (onlyPos == null) searchMemo[key] = best
         return best
     }
 

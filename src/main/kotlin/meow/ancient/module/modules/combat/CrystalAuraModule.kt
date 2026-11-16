@@ -28,6 +28,7 @@ import meow.ancient.client.util.rotation.RotationUtil
 import meow.ancient.event.events.ClientDisconnectEvent
 import meow.ancient.event.events.PlayerUpdateEvent
 import meow.ancient.event.events.PlayerPreMovementEvent
+import meow.ancient.event.events.PlayerMovementSentEvent
 import meow.ancient.event.events.PacketSentEvent
 import meow.ancient.event.events.PacketReceiveEvent
 import meow.ancient.module.Module
@@ -127,7 +128,7 @@ object CrystalAuraModule : Module(
     private var terrainRetryAt = 0
     private var terrainAirSince: Int? = null
     private var terrainFailuresSeen = 0
-    private var pending: Pending? = null
+    private val pending = ArrayList<Pending>()
     private var prepared: Prepared? = null
     private var sending: Packet<*>? = null
     private var accepted = false
@@ -213,13 +214,13 @@ object CrystalAuraModule : Module(
     }
 
     fun shouldKeepTerrainMining() = isEnabled() && basePlace && autoMineTerrain && miner.keepVanillaMining()
-    fun hasPendingAction() = isEnabled() && (prepared != null || pending != null || miner.active)
-    fun hasCombatAction() = isEnabled() && (prepared != null || pending != null)
+    fun hasPendingAction() = isEnabled() && (prepared != null || pending.isNotEmpty() || miner.active)
+    fun hasCombatAction() = isEnabled() && prepared != null
     fun hasTerrainAction() = isEnabled() && miner.active
     fun hasBoostedTerrainAction() = isEnabled() && basePlace && autoMineTerrain
         && terrainPlan?.priorityBoosted == true && terrainPlan?.stage == CrystalTerrainPlan.Stage.MINE
         && terrainPlan?.recovery?.suspended == false && tick >= (terrainPlan?.recovery?.retryAt ?: 0)
-        && prepared == null && pending == null && !AnchorAuraModule.hasInFlightAction()
+        && prepared == null && pending.isEmpty() && !AnchorAuraModule.hasInFlightAction()
 
     fun yieldToManualMining(pos: BlockPos) {
         miner.cancel()
@@ -257,6 +258,7 @@ object CrystalAuraModule : Module(
         miner.beginTick()
         siteSearchMemo.clear()
         failedSites.entries.removeIf { tick >= it.value }
+        updatePending(player, level)
         currentTarget = findTarget(player)
         motionPrediction.update(player, tick)
         currentTarget?.let { motionPrediction.update(it, tick) }
@@ -281,8 +283,6 @@ object CrystalAuraModule : Module(
             return
         }
         val target = currentTarget
-        // Never spend another crystal while spawn, base placement or destruction is unconfirmed.
-        if (awaitingConfirmation(player, level)) return
         if (target != null || terrainPlan != null)
             occupancy.update(level.entitiesForRendering(), AABB(player.blockPosition()).inflate(maxOf(placeRange, breakRange) + 4.0))
 
@@ -305,10 +305,22 @@ object CrystalAuraModule : Module(
             return
         }
         if (prepared?.kind == PendingKind.BREAK) clearPrepared()
-        if (target != null && terrainPlan != null && useAvailableSite(player, target)) return
+        val placementBusy = pending.count { it.kind != PendingKind.BREAK } >= 2
+        if (!placementBusy && target != null && terrainPlan != null && useAvailableSite(player, target)) return
         // Keep the selected excavation only while no ready placement is available.
-        if (continueTerrain(player, level)) return
+        if (pending.isEmpty()) {
+            if (continueTerrain(player, level)) return
+        } else {
+            miner.cancel()
+            terrainPlan?.recovery?.pause(tick)
+        }
         if (target == null) { miner.cancel(); clearPrepared(); diagnosticState.status(Reason.NO_TARGET); return }
+        // Breaks remain available while placements await a spawn; bound speculative placements.
+        if (placementBusy) {
+            clearPrepared()
+            diagnosticState.status(Reason.SERVER, "Подтверждение установок")
+            return
+        }
         val targetHp = AnticheatManager.getHealth(target)
         val existing = prepared
         if (existing != null) {
@@ -338,6 +350,12 @@ object CrystalAuraModule : Module(
             schedulePlace(player, baseSite, Items.OBSIDIAN, PendingKind.BASE)
             return
         }
+        // A confirmed explosion/spawn may free the preferred site; don't excavate a replacement yet.
+        if (pending.isNotEmpty()) {
+            diagnosticState.status(Reason.SERVER, "Подтверждение взрыва или установки")
+            terrainPlan?.let { describeTerrain(it) }
+            return
+        }
         if (basePlace && autoMineTerrain) {
             if (terrainPlan != null) return
             if (tick < terrainRetryAt) { diagnosticState.status(Reason.DELAY, "Пауза после неудачного AutoMine"); return }
@@ -350,7 +368,7 @@ object CrystalAuraModule : Module(
         } else diagnosticState.status(siteSearchReason)
     }
 
-    private fun canCompareTerrain(player: LocalPlayer): Boolean = basePlace && autoMineTerrain
+    private fun canCompareTerrain(player: LocalPlayer): Boolean = basePlace && autoMineTerrain && pending.isEmpty()
         && (player.offhandItem.`is`(Items.OBSIDIAN) || InventoryUtil.findHotbarSlot(Items.OBSIDIAN) >= 0)
         && (player.offhandItem.`is`(Items.END_CRYSTAL) || InventoryUtil.findHotbarSlot(Items.END_CRYSTAL) >= 0)
 
@@ -621,36 +639,26 @@ object CrystalAuraModule : Module(
         return best
     }
 
-    private fun awaitingConfirmation(player: LocalPlayer, level: ClientLevel): Boolean {
-        val current = pending ?: return false
-        val confirmed = when (current.kind) {
-            PendingKind.BREAK -> level.getEntity(current.entityId) == null
-            PendingKind.BASE -> meow.ancient.client.util.inventory.BlockPredictionUtil.serverState(level, current.pos).`is`(Blocks.OBSIDIAN)
-            PendingKind.CRYSTAL -> level.getEntities(null, crystalBox(current.pos)).any { it is EndCrystal && it.isAlive }
+    private fun updatePending(player: LocalPlayer, level: ClientLevel) {
+        val timeout = (ping(player) / 50 + 5).coerceIn(5, 80)
+        val iterator = pending.iterator()
+        while (iterator.hasNext()) {
+            val current = iterator.next()
+            val confirmed = when (current.kind) {
+                PendingKind.BREAK -> level.getEntity(current.entityId) == null
+                PendingKind.BASE -> meow.ancient.client.util.inventory.BlockPredictionUtil.serverState(level, current.pos).`is`(Blocks.OBSIDIAN)
+                PendingKind.CRYSTAL -> level.getEntities(null, crystalBox(current.pos)).any { it is EndCrystal && it.isAlive }
+            }
+            if (confirmed || tick - current.sentTick >= timeout) {
+                iterator.remove()
+                if (current.kind == PendingKind.BASE && terrainPlan?.pos == current.pos) {
+                    if (confirmed) terrainPlan?.observeServerState(current.pos, meow.ancient.client.util.inventory.BlockPredictionUtil.serverState(level, current.pos))
+                    else terrainPlan?.retry(tick, timeout)
+                } else if (!confirmed && current.kind != PendingKind.BREAK) failedSites[current.pos] = tick + 2
+                continue
+            }
+            visual.show(current.box, renderKind(current.kind))
         }
-        val ping = player.connection.getPlayerInfo(player.uuid)?.latency ?: 150
-        val timeout = (ping.coerceAtLeast(0) / 50 + 5).coerceIn(5, 80)
-        if (confirmed || tick - current.sentTick >= timeout) {
-            pending = null
-            if (current.kind == PendingKind.BASE && terrainPlan?.pos == current.pos) {
-                if (confirmed) terrainPlan?.observeServerState(current.pos, meow.ancient.client.util.inventory.BlockPredictionUtil.serverState(level, current.pos))
-                else terrainPlan?.retry(tick, timeout)
-            } else if (!confirmed && current.kind != PendingKind.BREAK) failedSites[current.pos] = tick + 2
-            return false
-        }
-        visual.show(current.box, when (current.kind) {
-            PendingKind.BREAK -> AuraTargetRenderer.Kind.BREAK
-            PendingKind.BASE -> AuraTargetRenderer.Kind.BASE
-            PendingKind.CRYSTAL -> AuraTargetRenderer.Kind.PLACE
-        })
-        diagnosticState.status(Reason.SERVER, when (current.kind) {
-            PendingKind.BREAK -> "Подтверждение взрыва"
-            PendingKind.BASE -> "Подтверждение обсидиана"
-            PendingKind.CRYSTAL -> "Подтверждение появления кристалла"
-        }, current.pos)
-        if (current.kind != PendingKind.BASE || terrainPlan?.pos != current.pos) terrainPlan?.recovery?.pause(tick)
-        terrainPlan?.let { describeTerrain(it) }
-        return true
     }
 
     private fun qualifies(pos: Vec3, player: LocalPlayer, target: Player, targetHp: Float, base: BlockPos? = null,
@@ -670,11 +678,14 @@ object CrystalAuraModule : Module(
         val entities = if (fresh) level.entitiesForRendering() else occupancy.endCrystals
         for (entity in entities) {
             if (entity !is EndCrystal || !entity.isAlive) continue
-            if (AuraActionQueue.visibleCrystalPoint(player, entity, breakRange, wallCheck) == null) continue
+            if (pending.any { it.kind == PendingKind.BREAK && it.entityId == entity.id }) continue
+            val reach = minOf(breakRange, player.entityInteractionRange())
+            if (player.eyePosition.distanceToSqr(RotationUtil.getNearestPoint(player.eyePosition, entity.boundingBox)) > reach * reach) continue
             val damage = damageAt(entity.position(), target, null, lead)
             if (damage <= bestDamage || damage < minDamage.toFloat() && !(lethalOverride && damage >= targetHp)
                 && !lethalTrade(entity.position(), player, target, null, lead)) continue
             if (!damageAllowed(entity.position(), player, target, null, lead)) continue
+            if (AuraActionQueue.visibleCrystalPoint(player, entity, breakRange, wallCheck) == null) continue
             best = entity
             bestDamage = damage
         }
@@ -682,6 +693,7 @@ object CrystalAuraModule : Module(
     }
 
     private fun crystalBox(pos: BlockPos) = AABB(pos.x.toDouble(), pos.y + 1.0, pos.z.toDouble(), pos.x + 1.0, pos.y + 3.0, pos.z + 1.0)
+    private fun crystalEntityBox(pos: BlockPos) = AABB(pos.x - 0.5, pos.y + 1.0, pos.z - 0.5, pos.x + 1.5, pos.y + 3.0, pos.z + 1.5)
     private fun explosionPos(pos: BlockPos) = Vec3(pos.x + 0.5, pos.y + 1.0, pos.z + 0.5)
 
     private fun positions(player: LocalPlayer): Iterable<BlockPos> {
@@ -695,7 +707,7 @@ object CrystalAuraModule : Module(
     private fun findSite(player: LocalPlayer, target: Player, targetHp: Float, base: Boolean, onlyPos: BlockPos? = null,
                          preferCached: Boolean = true): Site? {
         val level = mc.level ?: return null
-        if (onlyPos == null && !preferCached && siteSearchMemo.containsKey(base)) return siteSearchMemo[base]
+        if (onlyPos == null && siteSearchMemo.containsKey(base)) return siteSearchMemo[base]
         var best: Site? = null
         var bestDamage = 0f
         var geometry = 0
@@ -712,6 +724,9 @@ object CrystalAuraModule : Module(
         }
         for (mutablePos in candidates) {
             val pos = mutablePos.immutable()
+            if (pending.any { it.kind != PendingKind.BREAK && it.pos == pos }) continue
+            // A placed crystal has no client entity until spawn; reserve its full footprint meanwhile.
+            if (pending.any { it.kind == PendingKind.CRYSTAL && crystalEntityBox(it.pos).intersects(crystalBox(pos)) }) continue
             if (placementReserved(pos)) continue
             if (pos in failedSites) continue
             // Locally predicted air in our excavation is not a ready site until mining is confirmed.
@@ -726,7 +741,7 @@ object CrystalAuraModule : Module(
             geometry++
             if (!level.getBlockState(pos.above()).isAir) continue
             if (player.eyePosition.distanceToSqr(RotationUtil.getNearestPoint(player.eyePosition, AABB(pos))) > placeRange * placeRange) continue
-            val futureCrystal = AABB(pos.x - 0.5, pos.y + 1.0, pos.z - 0.5, pos.x + 1.5, pos.y + 3.0, pos.z + 1.5)
+            val futureCrystal = crystalEntityBox(pos)
             if (player.eyePosition.distanceToSqr(RotationUtil.getNearestPoint(player.eyePosition, futureCrystal)) > attackReach * attackReach) continue
             if (occupancy.crystalBlocked(pos)) continue
             if (base && occupancy.baseBlocked(pos)) continue
@@ -752,12 +767,13 @@ object CrystalAuraModule : Module(
             clear == 0 && geometry > 0 -> Reason.CRYSTAL_BLOCKED
             else -> Reason.DAMAGE
         }
-        if (onlyPos == null && !preferCached) siteSearchMemo[base] = best
+        if (onlyPos == null) siteSearchMemo[base] = best
         return best
     }
 
     private fun schedulePlace(player: LocalPlayer, site: Site, item: Item, kind: PendingKind,
                               targetId: Int? = currentTarget?.id, terrainBase: Boolean = false) {
+        if (pending.count { it.kind != PendingKind.BREAK } >= 2) return
         val hand = if (player.offhandItem.`is`(item)) InteractionHand.OFF_HAND else InteractionHand.MAIN_HAND
         val slot = if (hand == InteractionHand.OFF_HAND) player.inventory.selectedSlot else InventoryUtil.findHotbarSlot(item)
         if (slot !in 0..8) return
@@ -849,6 +865,10 @@ object CrystalAuraModule : Module(
 
     private fun validPrepared(player: LocalPlayer, target: Player?, action: Prepared): Boolean {
         val level = mc.level ?: return false
+        if (action.kind != PendingKind.BREAK && pending.count { it.kind != PendingKind.BREAK } >= 2) return false
+        if (pending.any { if (action.kind == PendingKind.BREAK)
+                it.kind == PendingKind.BREAK && it.entityId == action.entityId
+            else it.kind != PendingKind.BREAK && it.pos == action.pos }) return false
         if (action.kind != PendingKind.BREAK && placementReserved(action.pos)) return false
         if (action.terrainBase) {
             val stack = if (action.hand == InteractionHand.OFF_HAND) player.offhandItem else player.inventory.getItem(action.slot)
@@ -883,11 +903,20 @@ object CrystalAuraModule : Module(
 
     @Commando(priority = -128)
     fun onPreMovement(event: PlayerPreMovementEvent) {
+        sendPrepared()
+    }
+
+    @Commando(priority = -128)
+    fun onMovementSent(event: PlayerMovementSentEvent) {
+        sendPrepared()
+    }
+
+    private fun sendPrepared() {
         val action = prepared ?: return
         val player = mc.player ?: return
         val level = mc.level ?: return
         val target = level.getEntity(action.targetId) as? Player
-        if (readyTick != tick || player !== localPlayer || level !== world || pending != null) return
+        if (readyTick != tick || player !== localPlayer || level !== world) return
         if (!ActionCoordinator.canAct(this)) {
             diagnosticState.status(Reason.PRIORITY, ActionCoordinator.blockReason(this).orEmpty(), action.pos)
             return
@@ -899,6 +928,18 @@ object CrystalAuraModule : Module(
             return
         }
         if (SilentSwapUtil.serverSlot != action.slot) { diagnosticState.status(Reason.TOOL_SWAP, pos = action.pos); return }
+        // A new look may be sent later in this tick. Avoid an exposure scan until its ray is ready.
+        if (action.kind == PendingKind.BREAK) {
+            if (breakTimer < breakDelay.toInt()) { diagnosticState.status(Reason.DELAY, pos = action.pos); return }
+            val crystal = level.getEntity(action.entityId) as? EndCrystal ?: return
+            if (!actions.crystalReady(crystal, breakRange, wallCheck)) { diagnosticState.status(Reason.ROTATION, pos = action.pos); return }
+        } else {
+            if (!action.terrainBase && placeTimer < placeDelay.toInt()) { diagnosticState.status(Reason.DELAY, pos = action.pos); return }
+            if (actions.blockHit(action.hit ?: return, placeRange, exactFace = action.kind == PendingKind.BASE, wallCheck = wallCheck) == null) {
+                diagnosticState.status(Reason.ROTATION, "Серверный взгляд ещё не попал в грань", action.pos)
+                return
+            }
+        }
         // Equipment or terrain may change after selection but before the movement hook.
         damageCache.beginTick(level, ignoreTerrain)
         lethalDamageCache.beginTick(level, false)
@@ -932,6 +973,7 @@ object CrystalAuraModule : Module(
                         player.swing(InteractionHand.MAIN_HAND, player.mainHandItem.attackAnimation, false)
                         player.connection.send(ServerboundPunchPacket.INSTANCE)
                         breakTimer = 0
+                        CrystalOptimizerModule.onCrystalAttacked(crystal)
                     }
                 } else {
                     if (!action.terrainBase && placeTimer < placeDelay.toInt()) { diagnosticState.status(Reason.DELAY, pos = action.pos); return@withOwner }
@@ -960,7 +1002,7 @@ object CrystalAuraModule : Module(
                     }
                     if (action.kind == PendingKind.BREAK) SurroundModule.clearProtectionRequest("CrystalAura")
                     if (action.terrainBase) terrainPlan?.let { it.placementSent(tick); it.recovery.placementSent() }
-                    pending = Pending(action.kind, action.pos, tick, action.entityId, action.box)
+                    pending.add(Pending(action.kind, action.pos, tick, action.entityId, action.box))
                     visual.pulse()
                     clearPrepared()
                 } else diagnosticState.status(Reason.CONTEXT, "Пакет действия не отправлен", action.pos)
@@ -1032,7 +1074,7 @@ object CrystalAuraModule : Module(
         val cleared = plan.clearedStates
         if (actions.placementHit(pos, placeRange, wallCheck, rotations, cleared) == null) return Reason.PLACE_FACE
         val built = plan.builtStates
-        val futureCrystal = AABB(pos.x - 0.5, pos.y + 1.0, pos.z - 0.5, pos.x + 1.5, pos.y + 3.0, pos.z + 1.5)
+        val futureCrystal = crystalEntityBox(pos)
         if (forecast(target, lead).box.intersects(crystalBox(pos))
             || actions.visibleHit(pos, placeRange, wallCheck, rotations = rotations, overrides = built) == null
             || actions.visibleBoxPoint(futureCrystal, breakRange, wallCheck, rotations, built) == null) return Reason.CRYSTAL_BLOCKED
@@ -1097,7 +1139,7 @@ object CrystalAuraModule : Module(
             val miningTicks = blocks.sumOf { miner.estimatedMiningTicks(player, it).coerceAtMost(201) }
             if (miningTicks !in 1..200) continue
             search.speed++
-            val futureCrystal = AABB(pos.x - 0.5, pos.y + 1.0, pos.z - 0.5, pos.x + 1.5, pos.y + 3.0, pos.z + 1.5)
+            val futureCrystal = crystalEntityBox(pos)
             if (player.eyePosition.distanceToSqr(RotationUtil.getNearestPoint(player.eyePosition, futureCrystal)) > attackReach * attackReach) continue
             if (occupancy.crystalBlocked(pos) || occupancy.baseBlocked(pos)) continue
             search.space++
@@ -1144,7 +1186,7 @@ object CrystalAuraModule : Module(
         SurroundModule.clearProtectionRequest("CrystalAura")
         placeTimer = 0
         breakTimer = 0
-        pending = null
+        pending.clear()
         clearPrepared()
         sending = null
         accepted = false
