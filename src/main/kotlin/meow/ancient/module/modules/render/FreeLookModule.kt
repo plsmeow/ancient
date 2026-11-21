@@ -5,10 +5,12 @@ import meow.ancient.client.extensions.RENDER
 import meow.ancient.client.extensions.currentScreen
 import meow.ancient.client.extensions.inGame
 import meow.ancient.client.extensions.mc
+import meow.ancient.client.util.anticheat.AnticheatManager
 import meow.ancient.event.events.ClientDisconnectEvent
 import meow.ancient.event.events.KeyPressEvent
 import meow.ancient.event.events.PlayerUpdateEvent
 import meow.ancient.module.Module
+import meow.ancient.module.setting.KeybindSetting
 import net.minecraft.client.CameraType
 import net.minecraft.util.Mth
 import sweetie.evaware.flora.api.Commando
@@ -39,7 +41,7 @@ object FreeLookModule : Module(
 
         when (event.action) {
             InputConstants.PRESS -> {
-                if (!event.cancel) startLooking()
+                if (!event.cancel && (currentScreen == null || !KeybindSetting.isMouseButton(event.key))) startLooking()
             }
             InputConstants.RELEASE -> stopLooking()
         }
@@ -56,12 +58,13 @@ object FreeLookModule : Module(
             return
         }
         if (!looking) {
-            if (currentScreen == null && lookKey != InputConstants.UNKNOWN.value && isLookKeyDown(lookKey)) {
+            if (AnticheatManager.canUseContext() && lookKey != InputConstants.UNKNOWN.value && isLookKeyDown(lookKey)
+                && (currentScreen == null || !KeybindSetting.isMouseButton(lookKey))) {
                 startLooking()
             }
             return
         }
-        if (!inGame || currentScreen != null || FreeCameraModule.isEnabled()) {
+        if (!inGame || !AnticheatManager.canUseContext() || FreeCameraModule.isEnabled()) {
             stopLooking()
             return
         }
@@ -87,7 +90,7 @@ object FreeLookModule : Module(
     fun getPitch(tickDelta: Float): Float = Mth.lerp(tickDelta, previousPitch, pitch)
 
     private fun startLooking() {
-        if (looking || !inGame || currentScreen != null || FreeCameraModule.isEnabled()) return
+        if (looking || !inGame || !AnticheatManager.canUseContext() || FreeCameraModule.isEnabled()) return
         val player = mc.player ?: return
 
         yaw = player.yRot

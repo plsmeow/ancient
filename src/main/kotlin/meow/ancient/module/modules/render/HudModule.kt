@@ -12,6 +12,7 @@ import meow.ancient.event.events.OverlayRenderEvent
 import meow.ancient.event.events.PacketReceiveEvent
 import meow.ancient.event.events.PlayerUpdateEvent
 import meow.ancient.module.Module
+import meow.ancient.module.modules.other.NotifierModule
 import meow.ancient.module.setting.Setting
 import net.minecraft.client.gui.screens.ChatScreen
 import net.minecraft.network.protocol.game.ClientboundLoginPacket
@@ -31,6 +32,10 @@ object HudModule : Module("HUD", RENDER, "Material HUD with live player and serv
     val targetRayTrace by targetRayTraceSetting
     private val notificationLimitSetting = number("Notification Limit", 7.0, 1.0, 20.0, 1.0, 0, isVisible = { false })
     val notificationLimit by notificationLimitSetting
+    private val notificationStyleSetting = mode("Notification Style", "Cards", listOf("Cards", "Compact"), isVisible = { false })
+    val notificationStyle by notificationStyleSetting
+    private val notificationDirectionSetting = mode("Stack Direction", "Auto", listOf("Auto", "Up", "Down"), isVisible = { false })
+    val notificationDirection by notificationDirectionSetting
     private val scaleSetting = number("Scale", 0.75, 0.5, 1.5, 0.05, 2)
     val scale by scaleSetting
     private val blurSetting = boolean("Background Blur", false, description = "Apply Kawase blur behind HUD elements")
@@ -46,7 +51,8 @@ object HudModule : Module("HUD", RENDER, "Material HUD with live player and serv
     fun elementSettings(element: HudElement): List<Setting<*>> = when (element) {
         HudElement.WATERMARK -> listOf(watermarkElementsSetting)
         HudElement.TARGET -> listOf(targetRayTraceSetting)
-        HudElement.NOTIFICATIONS -> listOf(notificationLimitSetting)
+        HudElement.NOTIFICATIONS -> listOf(notificationStyleSetting, notificationDirectionSetting,
+            notificationLimitSetting, dragController.alignmentSetting(element)) + NotifierModule.notificationSettings
         else -> emptyList()
     }
 

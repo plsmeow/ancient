@@ -3,6 +3,7 @@ package meow.ancient.module.modules.combat.hitaura
 import meow.ancient.client.extensions.inGame
 import meow.ancient.client.extensions.mc
 import meow.ancient.client.util.action.ActionCoordinator
+import meow.ancient.client.util.anticheat.AnticheatManager
 import meow.ancient.client.util.inventory.SilentSwapUtil
 import meow.ancient.client.util.rotation.RayTraceUtil
 import meow.ancient.client.util.rotation.RotationUtil
@@ -139,7 +140,7 @@ class AttackExecutor(
     }
 
     private fun canReach(target: LivingEntity, range: Double): Boolean {
-        if (!inGame || HitAuraModule.shouldIgnoreContext()) return wait(WaitReason.CONTEXT)
+        if (!inGame || !AnticheatManager.canUseContext()) return wait(WaitReason.CONTEXT)
         if (!ActionCoordinator.canAct(HitAuraModule)) return wait(WaitReason.PRIORITY)
         if (TpAuraModule.isPendingVaultReturn()) return wait(WaitReason.CONTEXT)
         if (TpAuraModule.getRenderPosition(target) != null) return true

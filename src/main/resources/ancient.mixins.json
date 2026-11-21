@@ -7,9 +7,12 @@
     "mixinPriority": 1337,
     "client": [
         "MixinMinecraft",
+        "MixinScaffoldTimer",
         "ServerboundMovePlayerPacketAccessor",
         "MixinLocalPlayer",
         "MixinMultiPlayerGameMode",
+        "MixinUseOnContext",
+        "MixinBlockPlaceContext",
         "LivingEntityAccessor",
         "EntityCollisionContextAccessor",
         "MixinKeyboardInput",

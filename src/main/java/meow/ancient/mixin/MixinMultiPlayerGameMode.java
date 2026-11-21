@@ -4,6 +4,7 @@ import meow.ancient.client.util.rotation.RotationManager;
 import meow.ancient.client.util.combat.AuraTerrainMiner;
 import meow.ancient.module.modules.combat.CrystalAuraModule;
 import meow.ancient.module.modules.player.PacketMineModule;
+import meow.ancient.module.modules.render.FreeCameraModule;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.MultiPlayerGameMode;
 import net.minecraft.core.BlockPos;
@@ -45,6 +46,9 @@ public class MixinMultiPlayerGameMode {
     )
     private ServerboundUseItemPacket ancient$useClientLook(InteractionHand hand, int sequence, float yaw, float pitch) {
         Player player = Minecraft.getInstance().player;
+        if (FreeCameraModule.INSTANCE.isEnabled()) {
+            return new ServerboundUseItemPacket(hand, sequence, FreeCameraModule.INSTANCE.getYaw(), FreeCameraModule.INSTANCE.getPitch());
+        }
         if (player == null || player.getItemInHand(hand).is(Items.FIREWORK_ROCKET)) {
             return new ServerboundUseItemPacket(hand, sequence, yaw, pitch);
         }

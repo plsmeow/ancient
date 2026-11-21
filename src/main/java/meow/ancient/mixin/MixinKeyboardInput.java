@@ -6,6 +6,7 @@ import meow.ancient.event.events.MovementInputEvent;
 import meow.ancient.client.util.inventory.SlownessManager;
 import meow.ancient.module.modules.movement.InventoryMoveModule;
 import meow.ancient.module.modules.movement.ElytraRecastModule;
+import meow.ancient.module.modules.movement.ScaffoldModule;
 import net.minecraft.client.player.ClientInput;
 import net.minecraft.client.player.KeyboardInput;
 import org.spongepowered.asm.mixin.Mixin;
@@ -21,6 +22,7 @@ public class MixinKeyboardInput {
 
     @Inject(method = "tick", at = @At("TAIL"))
     private void onTickInput(CallbackInfo ci) {
+        ScaffoldModule.INSTANCE.onBeforeInputUpdate();
         RotationManager.INSTANCE.onInputUpdate((ClientInput) (Object) this);
         if (ancientInputEvent == null) {
             ancientInputEvent = new MovementInputEvent((ClientInput) (Object) this);

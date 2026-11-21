@@ -4,12 +4,14 @@ import com.mojang.blaze3d.platform.InputConstants
 import meow.ancient.client.extensions.OTHER
 import meow.ancient.client.extensions.currentScreen
 import meow.ancient.client.extensions.mc
+import meow.ancient.client.util.anticheat.AnticheatManager
 import meow.ancient.client.util.inventory.InventoryUtil
 import meow.ancient.client.util.inventory.InventoryActionSource
 import meow.ancient.event.events.ClientDisconnectEvent
 import meow.ancient.module.modules.movement.InventoryMoveModule
 import meow.ancient.event.events.KeyPressEvent
 import meow.ancient.module.Module
+import meow.ancient.module.setting.KeybindSetting
 import meow.ancient.module.modules.render.FreeCameraModule
 import net.minecraft.world.item.Item
 import net.minecraft.world.item.Items
@@ -45,8 +47,9 @@ object FtHelperModule : Module(
     @Commando
     fun onKeyPress(event: KeyPressEvent) {
         if (event.cancel || event.action != InputConstants.PRESS || event.key == InputConstants.UNKNOWN.value) return
+        if (currentScreen != null && KeybindSetting.isMouseButton(event.key)) return
         val player = mc.player ?: return
-        if (currentScreen != null || player.isSpectator || !player.connection.connection.isConnected
+        if (!AnticheatManager.canUseContext(player) || player.isSpectator || !player.connection.connection.isConnected
             || player.containerMenu !== player.inventoryMenu || !player.inventoryMenu.carried.isEmpty) return
         val item = getItemByKey(event.key) ?: return
         val slot = if (player.mainHandItem.`is`(item) || player.offhandItem.`is`(item)) player.inventory.selectedSlot
@@ -57,7 +60,7 @@ object FtHelperModule : Module(
         val connection = player.connection
         InventoryMoveModule.runInventoryAction(InventoryActionSource.fromInventorySlot(slot), Runnable {
             if (!isEnabled() || actionGeneration != generation || mc.player !== player
-                || player.connection !== connection || !connection.connection.isConnected || currentScreen != null
+                || player.connection !== connection || !connection.connection.isConnected || !AnticheatManager.canUseContext(player)
                 || player.containerMenu !== player.inventoryMenu || !player.inventoryMenu.carried.isEmpty) return@Runnable
             val savedYaw = player.yRot
             val savedPitch = player.xRot

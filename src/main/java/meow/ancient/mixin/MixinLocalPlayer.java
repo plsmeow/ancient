@@ -33,7 +33,6 @@ public class MixinLocalPlayer {
     @Inject(method = "aiStep()V", at = @At("RETURN"))
     private void ancient$recastElytra(CallbackInfo ci) {
         ElytraRecastModule.INSTANCE.onAfterMovement((LocalPlayer) (Object) this);
-        ScaffoldModule.INSTANCE.onAfterMovement();
     }
 
     @Inject(method = "tick", at = @At("HEAD"), cancellable = true)

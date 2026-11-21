@@ -2,6 +2,7 @@ package meow.ancient.module.modules.movement
 
 import meow.ancient.client.extensions.MOVEMENT
 import meow.ancient.client.extensions.mc
+import meow.ancient.client.util.anticheat.AnticheatManager
 import meow.ancient.client.util.inventory.SilentSwapUtil
 import meow.ancient.client.util.rotation.MoveFixMode
 import meow.ancient.client.util.rotation.Rotation
@@ -117,7 +118,7 @@ object ElytraFlyModule : Module(
     // Swap before the movement packet, so the managed silent-swap mode can accept the hotbar change.
     private fun useFirework(player: LocalPlayer) {
         val level = mc.level ?: return
-        if (!fireworks || tick < nextFireworkTick || !canFly(player) || player.isUsingItem) return
+        if (!fireworks || tick < nextFireworkTick || !canFly(player)) return
         if (level.entitiesForRendering().any {
                 it is FireworkRocketEntity && !it.isRemoved &&
                     (it as FireworkRocketEntityAccessor).`ancient$getAttachedToEntity`() === player
@@ -137,7 +138,7 @@ object ElytraFlyModule : Module(
     private fun launchRocket(player: LocalPlayer, hand: InteractionHand): Boolean {
         val level = mc.level ?: return false
         val gameMode = mc.gameMode ?: return false
-        if (!canFly(player) || player.isUsingItem) return false
+        if (!canFly(player)) return false
         // The visible hand can still hold another item during a silent swap; use the flight rotation explicitly.
         val rotation = RotationManager.getServerRotation()
         RotationManager.lockOutgoingRotation()
@@ -163,8 +164,7 @@ object ElytraFlyModule : Module(
     private fun canFly(player: LocalPlayer): Boolean = mc.player === player && mc.level != null &&
         player.connection.connection.isConnected && player.isAlive && !player.isSpectator && !player.isPassenger &&
         !player.abilities.flying && !player.isInWater && !player.isInLava && player.isFallFlying &&
-        mc.gui.screen() == null && !InventoryMoveModule.isInventoryActionSlowed() &&
-        player.containerMenu === player.inventoryMenu && player.containerMenu.carried.isEmpty &&
+        AnticheatManager.canUseContext(player) && !InventoryMoveModule.isInventoryActionSlowed() &&
         LivingEntity.canGlideUsing(player.getItemBySlot(EquipmentSlot.CHEST), EquipmentSlot.CHEST)
 
     private fun reset() {

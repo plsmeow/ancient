@@ -3,8 +3,10 @@ package meow.ancient.module.modules.player
 import com.mojang.blaze3d.platform.InputConstants
 import meow.ancient.client.extensions.PLAYER
 import meow.ancient.client.extensions.mc
+import meow.ancient.client.util.anticheat.AnticheatManager
 import meow.ancient.client.util.action.ActionCoordinator
 import meow.ancient.client.util.combat.AuraActionQueue
+import meow.ancient.client.util.inventory.BlockPredictionUtil
 import meow.ancient.client.util.inventory.SilentSwapUtil
 import meow.ancient.client.util.render.AuraTargetRenderer
 import meow.ancient.client.util.rotation.MoveFixMode
@@ -18,6 +20,7 @@ import meow.ancient.event.events.PlayerUpdateEvent
 import meow.ancient.module.Module
 import meow.ancient.module.modules.movement.InventoryMoveModule
 import meow.ancient.module.setting.KeybindSetting
+import meow.ancient.module.modules.render.FreeCameraModule
 import net.minecraft.client.multiplayer.ClientLevel
 import net.minecraft.client.player.LocalPlayer
 import net.minecraft.core.BlockPos
@@ -44,10 +47,18 @@ object PacketMineModule :
         name = "PacketMine",
         category = PLAYER,
         description =
-            "Click once to packet-mine; Rebreak keeps the position after the first confirmed break",
+            "Click once to packet-mine; Rebreak retains the position for STOP-only repeats",
     ) {
     private val modeSetting = mode("Mode", "Normal", listOf("Normal", "Rebreak"))
     private val mode by modeSetting
+    private val forceSetting =
+        boolean(
+            "Force",
+            false,
+            "After the first mining cycle, only sends rebreak STOP packets without waiting for air",
+            isVisible = { mode == "Rebreak" },
+        )
+    private val force by forceSetting
     private val doubleBreakSetting =
         boolean(
             "DoubleBreak",
@@ -79,9 +90,6 @@ object PacketMineModule :
     private val swing by boolean("Swing", true)
     private val render by boolean("Render", true)
     private val renderSlideSpeed by number("Render Slide Speed", 14.0, 5.0, 30.0, 1.0, 0, isVisible = { render })
-    private val postBreakDelay by number("Post Break Delay", 0.0, 0.0, 20.0, 1.0, 0, unit = "ticks")
-    private val confirmTimeout by
-        number("Confirm Timeout", 60.0, 20.0, 200.0, 1.0, 0, unit = "ticks")
 
     private class Target(
         val player: LocalPlayer,
@@ -101,7 +109,7 @@ object PacketMineModule :
         var lastDelta = 0f
         var serverEfficiency = 0.0
         var serverBreakSpeed = player.getAttributeValue(Attributes.BLOCK_BREAK_SPEED)
-        var retryAfterTick = 0L
+        @Volatile var attempt = 0L
 
         fun isCurrent(): Boolean =
             mc.player === player && mc.level === level && player.connection.connection.isConnected
@@ -124,11 +132,11 @@ object PacketMineModule :
     private var accepted = false
     private var lastAction: Target? = null
     private var tick = 0L
-    private var nextStartTick = 0L
     private var pendingAborts = emptyList<Target>()
 
     init {
         modeSetting.addListener { clearTargets(true) }
+        forceSetting.addListener { clearTargets(true) }
         doubleBreakSetting.addListener {
             if (!doubleBreak && targets.size > 1) {
                 targets.dropLast(1).forEach { clearTarget(it, true) }
@@ -140,7 +148,6 @@ object PacketMineModule :
         clearTargets(false)
         actions.beginTick()
         tick = 0L
-        nextStartTick = 0L
         mc.gameMode?.stopDestroyBlock()
     }
 
@@ -175,7 +182,7 @@ object PacketMineModule :
     fun hasPendingAction(): Boolean = isEnabled() && targets.any {
         it.progress.phase == PacketMineProgress.Phase.START || it.progress.phase == PacketMineProgress.Phase.MINING ||
             it.progress.phase == PacketMineProgress.Phase.CONFIRM
-            || it.progress.phase == PacketMineProgress.Phase.REBREAK && !it.level.getBlockState(it.pos).isAir
+            || it.progress.phase == PacketMineProgress.Phase.REBREAK && !it.state.isAir
     }
 
     data class DebugTarget(val x: Int, val y: Int, val z: Int, val phase: String,
@@ -206,10 +213,11 @@ object PacketMineModule :
     }
 
     private fun selectBlockInternal(pos: BlockPos, direction: Direction, owner: Any?): Boolean {
-        if (!interceptsMining() || mc.gui.screen() != null) return false
+        if (!interceptsMining()) return false
         val player = mc.player ?: return false
+        if (!AnticheatManager.canUseContext(player)) return false
         val level = mc.level ?: return false
-        val state = level.getBlockState(pos)
+        val state = BlockPredictionUtil.serverState(level, pos)
         if (!validBlock(player, level, pos, state) || !withinRange(player, pos)) return false
         targets.firstOrNull { it.pos == pos && it.isCurrent() }?.let {
             if (owner == null) it.owner = null
@@ -223,12 +231,11 @@ object PacketMineModule :
                 // Selecting a new primary position makes the previous one a one-shot secondary.
                 // Vanilla stores only one current destroy position for instant STOP-only rebreaks.
                 if (previous.progress.rebreakPrimed) {
-                    if (level.getBlockState(previous.pos).isAir) clearTarget(previous, false)
+                    if (previous.state.isAir || force) clearTarget(previous, false)
                     else restart(previous)
                 }
             }
         targets = targets + Target(player, level, pos.immutable(), direction, state, owner)
-        nextStartTick = tick
         meow.ancient.module.modules.combat.CrystalAuraModule.yieldToManualMining(pos)
         return true
     }
@@ -249,7 +256,7 @@ object PacketMineModule :
         )
             return
         if (event.key != KeybindSetting.fromMouseButton(InputConstants.MOUSE_BUTTON_LEFT)) return
-        val hit = mc.hitResult as? BlockHitResult ?: return
+        val hit = cameraInsideHit() ?: mc.hitResult as? BlockHitResult ?: return
         if (hit.type != HitResult.Type.BLOCK) return
         val current = targets.firstOrNull { it.pos == hit.blockPos }
         if (current != null) {
@@ -266,12 +273,8 @@ object PacketMineModule :
         actions.beginTick()
         primaryVisual.beginTick()
         secondaryVisual.beginTick()
-        channels.delayed?.let {
-            if (!it.isCurrent() || it.level.getBlockState(it.pos).isAir) channels.confirmed(it)
-        }
-        channels.active?.let {
-            if (!it.isCurrent() || it.level.getBlockState(it.pos).isAir) channels.confirmed(it)
-        }
+        channels.delayed?.let { if (!it.isCurrent()) channels.confirmed(it) }
+        channels.active?.let { if (!it.isCurrent()) channels.confirmed(it) }
         val sharedSlot = if (autoTool && (doubleBreak || channels.delayed != null)) sharedTool() else null
         val mining = targets.filter { it.progress.phase == PacketMineProgress.Phase.MINING }
         val leased = mining.firstOrNull()?.let { current ->
@@ -288,8 +291,8 @@ object PacketMineModule :
                 clearTarget(current, true)
                 continue
             }
-            if (current.progress.timedOut(tick, confirmTimeout.toLong())) retry(current)
-            val state = current.level.getBlockState(current.pos)
+            if (current.progress.timedOut(tick, 60L)) retry(current)
+            val state = current.state
             if (state.isAir) {
                 if (
                     current.progress.phase != PacketMineProgress.Phase.REBREAK &&
@@ -302,7 +305,6 @@ object PacketMineModule :
                 clearTarget(current, true)
                 continue
             }
-            current.state = state
             if (paused(current.player)) continue
             if (current.progress.phase != PacketMineProgress.Phase.CONFIRM) {
                 current.toolSlot =
@@ -353,7 +355,7 @@ object PacketMineModule :
         // independently.
         val candidates =
             targets.filter {
-                needsAction(it) && (it.level.getBlockState(it.pos).isAir || visibleHit(it) != null)
+                needsAction(it) && (it.state.isAir || visibleHit(it) != null)
             }
         val current =
             candidates.firstOrNull { needsHandoff(it) }
@@ -361,8 +363,8 @@ object PacketMineModule :
                 ?: candidates.firstOrNull { it !== lastAction }
                 ?: candidates.firstOrNull()
                 ?: return
-        val state = current.level.getBlockState(current.pos)
-        if (rotate) {
+        val state = current.state
+        if (rotate && !FreeCameraModule.isEnabled() && cameraInsideHit(current.pos) == null) {
             if (!state.isAir) {
                 val hit = visibleHit(current) ?: return
                 current.direction = hit.direction
@@ -386,15 +388,15 @@ object PacketMineModule :
 
     private fun needsAction(current: Target): Boolean {
         if (!current.isCurrent() || paused(current.player)) return false
-        val state = current.level.getBlockState(current.pos)
+        val state = current.state
         if (mode == "Rebreak" && fast && current.progress.rebreakPrimed) return true
         if (state.isAir) return false
         if (needsHandoff(current)) return true
         if (channels.delayed === current) return false
         return when (current.progress.phase) {
-            PacketMineProgress.Phase.START -> channels.canStart() && tick >= nextStartTick
+            PacketMineProgress.Phase.START -> channels.canStart()
             PacketMineProgress.Phase.MINING -> current.finishPending && enoughTime(current)
-            PacketMineProgress.Phase.REBREAK -> tick >= current.retryAfterTick
+            PacketMineProgress.Phase.REBREAK -> true
             PacketMineProgress.Phase.CONFIRM -> false
         }
     }
@@ -419,7 +421,7 @@ object PacketMineModule :
                 SilentSwapUtil.serverSlot != action.slot
         )
             return
-        val state = current.level.getBlockState(current.pos)
+        val state = current.state
         if (mode == "Rebreak" && fast && current.progress.rebreakPrimed) {
             if (!state.isAir && !validBlock(current.player, current.level, current.pos, state))
                 return
@@ -435,7 +437,8 @@ object PacketMineModule :
         }
         if (state.isAir || !validBlock(current.player, current.level, current.pos, state)) return
         if (current.progress.phase == PacketMineProgress.Phase.CONFIRM) return
-        val hit = if (rotate) outgoingHit(current) else visibleHit(current)
+        val hit = if (rotate && !FreeCameraModule.isEnabled() && cameraInsideHit(current.pos) == null) outgoingHit(current)
+            else visibleHit(current)
         if (hit == null) return
         val direction = hit.direction
         if (needsHandoff(current)) {
@@ -449,7 +452,7 @@ object PacketMineModule :
         }
         when (current.progress.phase) {
             PacketMineProgress.Phase.START -> {
-                if (tick < nextStartTick || !channels.canStart()) return
+                if (!channels.canStart()) return
                 current.direction = direction
                 current.tool = current.player.inventory.getItem(action.slot).copy()
                 current.miningState = state
@@ -461,6 +464,7 @@ object PacketMineModule :
                 current.serverBreakSpeed =
                     current.player.getAttributeValue(Attributes.BLOCK_BREAK_SPEED)
                 current.startNanos = System.nanoTime()
+                current.attempt++
                 if (!sendAction(current, ServerboundPlayerActionPacket.Action.START_DESTROY_BLOCK)) return
                 // START A -> early STOP A -> START B. A is delayed, B remains the active position.
                 channels.started(current)
@@ -471,7 +475,6 @@ object PacketMineModule :
                 if (current.finishPending && enoughTime(current)) finish(current)
             }
             PacketMineProgress.Phase.REBREAK -> {
-                if (tick < current.retryAfterTick) return
                 current.direction = direction
                 finish(current)
             }
@@ -494,10 +497,9 @@ object PacketMineModule :
         // Reference: CCBlueX/LiquidBounce nextgen, 073f912576589bc563cdb56fce03dc336a788c0c,
         // src/main/kotlin/net/ccbluex/liquidbounce/features/module/modules/world/packetmine/mode/CivMineMode.kt
         if (!sendAction(current, ServerboundPlayerActionPacket.Action.STOP_DESTROY_BLOCK)) return
-        current.progress.stop(tick)
+        current.progress.stop(tick, mode == "Rebreak" && force && !current.secondary)
+        if (current.progress.phase == PacketMineProgress.Phase.REBREAK) channels.confirmed(current)
         current.finishPending = false
-        current.retryAfterTick = 0L
-        nextStartTick = tick + postBreakDelay.toLong()
         swing(current.player)
     }
 
@@ -516,6 +518,7 @@ object PacketMineModule :
     fun onPacket(event: PacketReceiveEvent) {
         if (event.cancel) return
         val snapshot = targets
+        val delayed = channels.delayed
         when (val packet = event.packet) {
             is ClientboundUpdateAttributesPacket ->
                 mc.execute {
@@ -540,20 +543,33 @@ object PacketMineModule :
                         }
                     }
                 }
-            is ClientboundBlockUpdatePacket ->
-                mc.execute {
-                    snapshot
-                        .filter { it in targets && it.isCurrent() }
-                        .forEach { updateBlock(it, packet.pos, packet.blockState) }
+            is ClientboundBlockUpdatePacket -> {
+                snapshot.forEach { current ->
+                    if (current.pos == packet.pos) queueBlockUpdate(current, packet.blockState)
                 }
+                if (delayed != null && delayed !in snapshot && delayed.pos == packet.pos)
+                    queueBlockUpdate(delayed, packet.blockState)
+            }
             is ClientboundSectionBlocksUpdatePacket ->
-                mc.execute {
-                    packet.runUpdates { pos, state ->
-                        snapshot
-                            .filter { it in targets && it.isCurrent() }
-                            .forEach { updateBlock(it, pos, state) }
+                packet.runUpdates { pos, state ->
+                    snapshot.forEach { current ->
+                        if (current.pos == pos) queueBlockUpdate(current, state)
                     }
+                    if (delayed != null && delayed !in snapshot && delayed.pos == pos)
+                        queueBlockUpdate(delayed, state)
                 }
+        }
+    }
+
+    private fun queueBlockUpdate(current: Target, state: BlockState) {
+        val attempt = current.attempt
+        mc.execute {
+            if (!current.isCurrent() || current.attempt != attempt) return@execute
+            if (current !in targets) {
+                if (state.isAir && channels.delayed === current) channels.confirmed(current)
+                return@execute
+            }
+            updateBlock(current, current.pos, state)
         }
     }
 
@@ -568,36 +584,42 @@ object PacketMineModule :
                 clearTarget(current, false)
         } else if (!validBlock(current.player, current.level, pos, state)) {
             clearTarget(current, true)
-        } else if (current.progress.phase == PacketMineProgress.Phase.CONFIRM) {
-            // Corrections cannot arm a new position, but must retain an already confirmed Rebreak.
-            retry(current)
+        } else if (current.progress.phase == PacketMineProgress.Phase.CONFIRM && current.progress.rebreakPrimed) {
+            current.progress.retry()
         }
     }
 
     private fun retry(current: Target) {
+        if (mode == "Rebreak" && force && current.progress.completedCycle) {
+            if (current.secondary) clearTarget(current, false) else current.progress.retry()
+            return
+        }
         if (!current.progress.rebreakPrimed) {
             restart(current)
             return
         }
         current.progress.retry()
-        current.retryAfterTick = tick + postBreakDelay.toLong()
     }
 
     private fun restart(current: Target) {
+        if (mode == "Rebreak" && force && current.progress.completedCycle) {
+            if (current.secondary) clearTarget(current, false) else current.progress.retry()
+            return
+        }
         if (channels.delayed === current) {
             // ABORT names the active position, never the delayed slot. Preserve its server ownership.
             resetMining(current)
             current.progress.start()
             current.startNanos = System.nanoTime()
-            current.miningState = current.level.getBlockState(current.pos)
+            current.miningState = current.state
             return
         }
         abort(current)
         resetMining(current)
-        nextStartTick = maxOf(nextStartTick, tick + postBreakDelay.toLong())
     }
 
     private fun resetMining(current: Target) {
+        current.attempt++
         current.progress.restart()
         current.tool = ItemStack.EMPTY
         current.finishPending = false
@@ -650,12 +672,12 @@ object PacketMineModule :
         val player = mc.player ?: return null
         val work = (targets + listOfNotNull(channels.delayed)).distinct().filter { current ->
             current.isCurrent() && !current.progress.rebreakPrimed
-                && !current.level.getBlockState(current.pos).isAir
+                && !current.state.isAir
         }
         if (work.isEmpty()) return null
         val selected = SilentSwapUtil.serverSlot.takeIf { it in 0..8 } ?: player.inventory.selectedSlot
         fun score(slot: Int): Double = work.minOf { current ->
-            val state = current.level.getBlockState(current.pos)
+            val state = current.state
             val stack = player.inventory.getItem(slot)
             if (!stack.canDestroyBlock(state, current.level, current.pos, player)) Double.NEGATIVE_INFINITY
             else toolSpeed(player, stack, state) / state.getDestroySpeed(current.level, current.pos).coerceAtLeast(0.001f)
@@ -724,11 +746,7 @@ object PacketMineModule :
     }
 
     private fun paused(player: LocalPlayer): Boolean =
-        mc.gui.screen() != null ||
-            player.isUsingItem ||
-            player.containerMenu !== player.inventoryMenu ||
-            !player.containerMenu.carried.isEmpty ||
-            InventoryMoveModule.isInventoryActionSlowed()
+        !AnticheatManager.canUseContext(player) || InventoryMoveModule.isInventoryActionSlowed()
 
     private fun validBlock(
         player: LocalPlayer,
@@ -744,12 +762,10 @@ object PacketMineModule :
             mc.gameMode?.let { !player.blockActionRestricted(level, pos, it.playerMode) } == true
 
     private fun withinRange(player: LocalPlayer, pos: BlockPos): Boolean {
-        val distance =
-            player.eyePosition.distanceToSqr(
-                RotationUtil.getNearestPoint(player.eyePosition, AABB(pos))
-            )
+        val eyes = if (FreeCameraModule.isEnabled()) mc.gameRenderer.mainCamera().position() else player.eyePosition
         val reach = minOf(range, player.blockInteractionRange())
-        return distance <= reach * reach && player.isWithinBlockInteractionRange(pos, 0.0)
+        return AABB(pos).distanceToSqr(eyes) <= reach * reach
+            && (FreeCameraModule.isEnabled() || player.isWithinBlockInteractionRange(pos, 0.0))
     }
 
     private fun outgoingHit(current: Target): BlockHitResult? {
@@ -757,6 +773,23 @@ object PacketMineModule :
     }
 
     private fun visibleHit(current: Target): BlockHitResult? {
-        return AuraActionQueue.visibleHit(current.player, current.pos, range)
+        cameraInsideHit(current.pos)?.let { return it }
+        val eyes = if (FreeCameraModule.isEnabled()) mc.gameRenderer.mainCamera().position() else current.player.eyePosition
+        return AuraActionQueue.visibleHit(current.player, current.pos, range, eyes = eyes)
+    }
+
+    private fun cameraInsideHit(pos: BlockPos = mc.gameRenderer.mainCamera().blockPosition()): BlockHitResult? {
+        val player = mc.player ?: return null
+        val level = mc.level ?: return null
+        val camera = mc.gameRenderer.mainCamera()
+        val eyes = camera.position()
+        val shape = level.getBlockState(pos).getShape(level, pos)
+        val localEyes = eyes.subtract(pos.x.toDouble(), pos.y.toDouble(), pos.z.toDouble())
+        if (shape.toAabbs().none { it.contains(localEyes) }) return null
+        val forward = camera.forwardVector()
+        val reach = minOf(range, player.blockInteractionRange())
+        if (reach <= 0.0 || !withinRange(player, pos)) return null
+        return BlockHitResult(eyes, Direction.getApproximateNearest(forward.x().toDouble(), forward.y().toDouble(), forward.z().toDouble()).opposite,
+            pos, true)
     }
 }

@@ -2,6 +2,7 @@ package meow.ancient.client.util.combat
 
 import meow.ancient.client.extensions.mc
 import meow.ancient.client.util.action.ActionCoordinator
+import meow.ancient.client.util.anticheat.AnticheatManager
 import meow.ancient.client.util.inventory.InventoryUtil
 import meow.ancient.client.util.inventory.InventoryAutomation
 import meow.ancient.client.util.inventory.SilentSwapUtil
@@ -55,8 +56,8 @@ class BlockPlacementController(private val owner: Module) {
         actions.beginTick(); visual.beginTick()
         val timeout = ((player.connection.getPlayerInfo(player.uuid)?.latency ?: 150).coerceAtLeast(0) / 50 + 5).coerceIn(5, 80)
         pending.entries.removeIf { !BlockPredictionUtil.serverState(level, it.key).canBeReplaced() || tick - it.value >= timeout }
-        if (!player.isAlive || player.isSpectator || player.isUsingItem || mc.gui.screen() != null
-            || player.containerMenu !== player.inventoryMenu || !player.containerMenu.carried.isEmpty
+        if (!player.isAlive || player.isSpectator || !AnticheatManager.canUseContext(player)
+            || !player.containerMenu.carried.isEmpty
             || InventoryAutomation.busy() || InventoryMoveModule.isInventoryActionSlowed() || tick - lastPlace < delay) {
             SilentSwapUtil.releasePreparedSlot(owner); return
         }
@@ -86,8 +87,8 @@ class BlockPlacementController(private val owner: Module) {
         if (!actions.block(hit, range, rotations, MoveFixMode.SILENT, exactFace = true) { actual ->
                 queued = false
                 if (preparedTick != tick || mc.player !== player || mc.level !== level || !owner.isEnabled()
-                    || !ActionCoordinator.canAct(owner) || player.isUsingItem || mc.gui.screen() != null
-                    || player.containerMenu !== player.inventoryMenu || !player.containerMenu.carried.isEmpty
+                    || !ActionCoordinator.canAct(owner) || !AnticheatManager.canUseContext(player)
+                    || !player.containerMenu.carried.isEmpty
                     || InventoryAutomation.busy() || InventoryMoveModule.isInventoryActionSlowed() || SilentSwapUtil.serverSlot != slot
                     || !available(pos) || !validPlacement(pos, actual, hand, slot, item)) return@block
                 if (InventoryUtil.useItemOn(hand, actual)) {

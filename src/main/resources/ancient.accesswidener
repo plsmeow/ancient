@@ -29,6 +29,7 @@ mutable field net/minecraft/client/multiplayer/prediction/BlockStatePredictionHa
 accessible field net/minecraft/client/multiplayer/prediction/BlockStatePredictionHandler$ServerVerifiedState blockState Lnet/minecraft/world/level/block/state/BlockState;
 mutable field net/minecraft/client/multiplayer/prediction/BlockStatePredictionHandler$ServerVerifiedState blockState Lnet/minecraft/world/level/block/state/BlockState;
 accessible method net/minecraft/world/entity/Entity collide (Lnet/minecraft/world/phys/Vec3;)Lnet/minecraft/world/phys/Vec3;
+accessible field net/minecraft/world/level/block/state/BlockBehaviour hasCollision Z
 
 # Input
 accessible field net/minecraft/client/KeyMapping key Lcom/mojang/blaze3d/platform/InputConstants$Key;

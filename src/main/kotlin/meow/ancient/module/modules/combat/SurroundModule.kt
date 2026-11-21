@@ -3,6 +3,7 @@ package meow.ancient.module.modules.combat
 import meow.ancient.client.extensions.COMBAT
 import meow.ancient.client.extensions.mc
 import meow.ancient.client.util.action.ActionCoordinator
+import meow.ancient.client.util.anticheat.AnticheatManager
 import meow.ancient.client.util.combat.AuraActionQueue
 import meow.ancient.client.util.combat.AuraEntityOccupancy
 import meow.ancient.client.util.combat.ExplosionDamageUtil
@@ -119,8 +120,8 @@ object SurroundModule : Module("Surround", COMBAT, "Surrounds your feet with obs
         player.inventory.getItem(it).let { stack -> if (stack.`is`(Items.OBSIDIAN)) stack.count else 0 }
     } + if (player.offhandItem.`is`(Items.OBSIDIAN)) player.offhandItem.count else 0
 
-    private fun canProtect(player: LocalPlayer) = player.isAlive && !player.isSpectator && !player.isUsingItem
-        && mc.gui.screen() == null && player.containerMenu === player.inventoryMenu
+    private fun canProtect(player: LocalPlayer) = player.isAlive && !player.isSpectator
+        && AnticheatManager.canUseContext(player)
         && player.containerMenu.carried.isEmpty && !InventoryMoveModule.isInventoryActionSlowed()
         && (!onlyGround || player.onGround())
 
@@ -167,8 +168,8 @@ object SurroundModule : Module("Surround", COMBAT, "Surrounds your feet with obs
             (level.getEntity(id) as? Player)?.let { !it.isAlive || FriendRepository.isFriend(it) } != false
         } == true }
         if (mode != "Smart") { requests.clear(); anchors.clear(); anchorScanOrigin = null }
-        if (!ActionCoordinator.canAct(this) || !player.isAlive || player.isSpectator || player.isUsingItem
-            || mc.gui.screen() != null || player.containerMenu !== player.inventoryMenu
+        if (!ActionCoordinator.canAct(this) || !player.isAlive || player.isSpectator
+            || !AnticheatManager.canUseContext(player)
             || !player.containerMenu.carried.isEmpty || InventoryMoveModule.isInventoryActionSlowed()
             || onlyGround && !player.onGround()) {
             SilentSwapUtil.releasePreparedSlot(this)
@@ -198,7 +199,7 @@ object SurroundModule : Module("Surround", COMBAT, "Surrounds your feet with obs
         val aimed = actions.block(site.hit, range, rotations, MoveFixMode.SILENT, exactFace = true, wallCheck = wallCheck) { hit ->
             queued = false
             if (preparedTick != tick || mc.player !== player || mc.level !== level || !ActionCoordinator.canAct(this)
-                || player.isUsingItem || mc.gui.screen() != null || player.containerMenu !== player.inventoryMenu
+                || !AnticheatManager.canUseContext(player)
                 || !player.containerMenu.carried.isEmpty || InventoryMoveModule.isInventoryActionSlowed()
                 || onlyGround && !player.onGround() || SilentSwapUtil.serverSlot != slot
                 || !validSite(player, level, site, hit, hand, slot)) return@block

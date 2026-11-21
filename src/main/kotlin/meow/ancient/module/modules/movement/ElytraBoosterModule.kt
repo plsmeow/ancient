@@ -2,6 +2,7 @@ package meow.ancient.module.modules.movement
 
 import meow.ancient.client.extensions.MOVEMENT
 import meow.ancient.client.extensions.mc
+import meow.ancient.client.util.anticheat.AnticheatManager
 import meow.ancient.client.util.rotation.MoveFixMode
 import meow.ancient.client.util.rotation.Rotation
 import meow.ancient.client.util.rotation.RotationManager
@@ -142,7 +143,7 @@ object ElytraBoosterModule : Module(
     private fun canGrimBoost(player: LocalPlayer): Boolean = mc.player === player && mc.level != null &&
         player.connection.connection.isConnected && player.isAlive && !player.isSpectator && !player.isPassenger &&
         player.isFallFlying && !player.onGround() && !player.abilities.flying && !player.isInWater && !player.isInLava &&
-        !player.hasEffect(MobEffects.LEVITATION) && player.tickCount >= resumeTick && mc.gui.screen() == null &&
+        !player.hasEffect(MobEffects.LEVITATION) && player.tickCount >= resumeTick && AnticheatManager.canUseContext(player) &&
         !InventoryMoveModule.isInventoryActionSlowed() && !ElytraFlyModule.isEnabled() && !PacketMineModule.hasTarget() &&
         !(HitAuraModule.isEnabled() && HitAuraModule.currentTarget != null) &&
         !(SpearKillModule.isEnabled() && SpearKillModule.target != null)

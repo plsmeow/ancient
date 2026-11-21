@@ -3,10 +3,12 @@ package meow.ancient.module.modules.movement
 import com.mojang.blaze3d.platform.InputConstants
 import meow.ancient.client.extensions.MOVEMENT
 import meow.ancient.client.extensions.mc
+import meow.ancient.client.util.anticheat.AnticheatManager
 import meow.ancient.client.util.inventory.SilentSwapUtil
 import meow.ancient.event.events.KeyPressEvent
 import meow.ancient.event.events.PlayerUpdateEvent
 import meow.ancient.module.Module
+import meow.ancient.module.setting.KeybindSetting
 import net.minecraft.client.player.LocalPlayer
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
@@ -49,6 +51,7 @@ object AutoLungeModule : Module(
     fun onKey(event: KeyPressEvent) {
         if (event.cancel || event.action != InputConstants.PRESS || event.key == InputConstants.UNKNOWN.value) return
         if (mode != LungeMode.BIND || event.key != bindKey) return
+        if (mc.gui.screen() != null && KeybindSetting.isMouseButton(event.key)) return
         val player = mc.player ?: return
         if (!canAct(player)) return
         event.cancel = true
@@ -67,7 +70,7 @@ object AutoLungeModule : Module(
 
     private fun canAct(player: LocalPlayer): Boolean {
         if (mc.player !== player || !player.connection.connection.isConnected || player.isSpectator) return false
-        return mc.gui.screen() == null
+        return AnticheatManager.canUseContext(player)
     }
 
     private fun lunge(player: LocalPlayer): Boolean {
@@ -76,6 +79,7 @@ object AutoLungeModule : Module(
         val animation = player.inventory.getItem(slot).attackAnimation
         var executed = false
         SilentSwapUtil.withSlot(slot) {
+            if (!isEnabled() || !canAct(player)) return@withSlot
             player.connection.send(
                 ServerboundPlayerActionPacket(ServerboundPlayerActionPacket.Action.STAB, BlockPos.ZERO, Direction.DOWN)
             )

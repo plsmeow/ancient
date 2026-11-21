@@ -1,8 +1,3 @@
-/*
- * Copyright (c) 2015 - 2026 CCBlueX; earlier adaptation (c) Meteor Development.
- * LiquidBounce Normal adaptation: 2026-11-15.
- * SPDX-License-Identifier: GPL-3.0-only. See docs/scaffold-port.md.
- */
 package meow.ancient.module.modules.movement
 
 import meow.ancient.client.extensions.MOVEMENT
@@ -12,282 +7,341 @@ import meow.ancient.client.util.combat.PlacementReservations
 import meow.ancient.client.util.inventory.InventoryAutomation
 import meow.ancient.client.util.inventory.InventoryUtil
 import meow.ancient.client.util.inventory.SilentSwapUtil
-import meow.ancient.client.util.render.AuraTargetRenderer
+import meow.ancient.client.util.other.color.Color4b
 import meow.ancient.client.util.rotation.MoveFixMode
 import meow.ancient.client.util.rotation.Rotation
 import meow.ancient.client.util.rotation.RotationManager
+import meow.ancient.client.util.rotation.RotationUtil
 import meow.ancient.event.events.ClientDisconnectEvent
-import meow.ancient.event.events.MovementInputEvent
+import meow.ancient.event.events.PacketReceiveEvent
 import meow.ancient.event.events.PacketSentEvent
 import meow.ancient.event.events.PlayerMovementSentEvent
+import meow.ancient.event.events.PlayerPreMovementEvent
 import meow.ancient.event.events.PlayerUpdateEvent
 import meow.ancient.module.Module
+import meow.ancient.module.modules.combat.CrystalAuraModule
+import meow.ancient.module.modules.combat.CrystalOptimizerModule
 import meow.ancient.module.modules.player.PacketMineModule
+import meow.ancient.module.setting.MinecraftPickerCatalogs
 import net.minecraft.client.multiplayer.ClientLevel
 import net.minecraft.client.player.LocalPlayer
 import net.minecraft.core.BlockPos
-import net.minecraft.network.protocol.game.ServerboundMovePlayerPacket
+import net.minecraft.network.protocol.Packet
+import net.minecraft.network.protocol.game.ClientboundPlayerPositionPacket
+import net.minecraft.network.protocol.game.ServerboundAttackPacket
+import net.minecraft.network.protocol.game.ServerboundContainerClickPacket
+import net.minecraft.network.protocol.game.ServerboundPlayerInputPacket
 import net.minecraft.world.InteractionHand
+import net.minecraft.world.entity.boss.enderdragon.EndCrystal
 import net.minecraft.world.entity.player.Input
+import net.minecraft.world.item.BlockItem
+import net.minecraft.world.item.component.SwingAnimation
+import net.minecraft.world.level.block.AnvilBlock
+import net.minecraft.world.level.block.BasePressurePlateBlock
+import net.minecraft.world.level.block.BedBlock
+import net.minecraft.world.level.block.ButtonBlock
+import net.minecraft.world.level.block.CraftingTableBlock
+import net.minecraft.world.level.block.DoorBlock
+import net.minecraft.world.level.block.EntityBlock
+import net.minecraft.world.level.block.FenceGateBlock
+import net.minecraft.world.level.block.NoteBlock
+import net.minecraft.world.level.block.TrapDoorBlock
 import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.Vec3
 import sweetie.evaware.flora.api.Commando
-import kotlin.math.cos
-import kotlin.math.hypot
-import kotlin.math.sin
 
-object ScaffoldModule : Module("Scaffold", MOVEMENT, "LiquidBounce Normal block bridging") {
-    private val range by number("Range", 4.5, 1.0, 6.0, 0.1, 1)
-    private val delay by number("Delay", 0.0, 0.0, 10.0, 1.0, 0, unit = "ticks")
-    private val rotations by boolean("Rotations", true)
-    private val keepY by boolean("Keep Y", false)
-    private val prediction by boolean("Prediction", true)
-    private val autoSwitch by boolean("Auto Switch", true)
-    private val safeWalk by boolean("Safe Walk", true, "Waits at edges for confirmed placement")
+object ScaffoldModule : Module("Scaffold", MOVEMENT, "Mio automatic block bridging") {
+    private val blocks by picker("Blocks", emptySet(), MinecraftPickerCatalogs.blocks)
+    private val selection by mode("Selection", "Any", listOf("Any", "WhiteList", "BlackList"))
+    private val scaffoldMode by mode("Mode", "Single", listOf("Single", "Multi"))
+    private val tower by mode("Tower", "None", listOf("None", "Plain", "Fast", "GrimV3"))
+    private val swap by mode("Swap", "None", listOf("None", "Normal", "Silent"))
+    private val delay by number("Delay", 180.0, 0.0, 300.0, 1.0, 0, unit = "ms")
+    private val offset by number("Offset", 0.0, 0.0, 3.0, 0.1, 1, isVisible = { scaffoldMode == "Single" })
+    private val frequency by number("Frequency", 1.0, 1.0, 9.0, 1.0, 0, isVisible = { scaffoldMode == "Multi" })
+    private val size by number("Size", 1.0, 1.0, 4.0, 1.0, 0, isVisible = { scaffoldMode == "Multi" })
+    private val safeWalk by boolean("SafeWalk", true)
+    private val airPlace by boolean("AirPlace", false)
+    private val telly by boolean("Telly", false)
+    private val rotate by boolean("Rotate", true)
+    private val attack by boolean("Attack", true)
+    private val movementSync by boolean("Movement Sync", false)
+    private val strictDirection by mode("Strict Direction", "NCP", listOf("Off", "NCP", "Grim"))
+    private val render by boolean("Render", true)
+    private val lineWidth by number("LineWidth", 1.0, 0.5, 5.0, 0.1, 1, isVisible = { render })
+    private val fill by color("Fill", Color4b(146643455), isVisible = { render })
+    private val outline by color("Outline", Color4b(-4351489), isVisible = { render })
+    private val fade by boolean("Fade", true, isVisible = { render })
+    private val fadeTime by number("FadeTime", 1.0, 0.1, 1.0, 0.1, 1, unit = "s", isVisible = { render && fade })
 
-    private data class Placement(val site: ScaffoldPlacement.Site, val hand: InteractionHand, val slot: Int,
-                                 val line: ScaffoldMovementPlanner.Line?, val fallOffPosition: Vec3?)
-    private var prepared: Placement? = null
-    private val attempts = ScaffoldAttempts<BlockPos>()
+    private val targets = ArrayList<MioScaffoldPlacement.Target>(9)
+    private val visual = MioScaffoldRenderer({ isEnabled() && render }, { lineWidth }, { fill },
+        { outline }, { fade }, { fadeTime }, { scaffoldMode == "Multi" })
     private var playerContext: LocalPlayer? = null
     private var world: ClientLevel? = null
-    private var placementY = 0
-    private val movementPlanner = ScaffoldMovementPlanner()
-    private val movementPrediction = ScaffoldMovementPrediction()
-    private var bridgeY = 0
-    private var previousPosition = Vec3.ZERO
-    private var sentPosition = Vec3.ZERO
-    private var sentRotation = Rotation(0f, 0f)
-    private var hasMovement = false
-    private var waitingForSupport = false
-    private val visual = AuraTargetRenderer({ isEnabled() }, { 14.0 })
+    private var tellyY = 0.0
+    private var slot = -1
+    private var crystalId = -1
+    private var ready = false
+    private var planned = false
+    private var executed = false
+    private var lastPlacement = 0L
+    private var lastAttack = 0L
+    @Volatile private var lastClick = 0L
+    private var lastRotation = 0L
+    private var rotation: Rotation? = null
+    private var sending: Packet<*>? = null
+    private var accepted = false
 
-    fun hasPendingAction(): Boolean = isEnabled() && prepared != null && attempts.target == null
-    fun shouldBlockAutoJump(): Boolean = isEnabled() && safeWalk && waitingForSupport
-        && !mc.options.keyJump.isDown
+    fun hasPendingAction(): Boolean = isEnabled() && !executed && targets.isNotEmpty()
 
     private fun releaseRotation() {
+        rotation = null
         if (RotationManager.rotationOwner == name) RotationManager.resetImmediate()
     }
 
-    private fun clearPrepared() {
-        prepared = null
+    private fun clearPlan() {
+        targets.clear()
+        crystalId = -1
+        ready = false
         SilentSwapUtil.releasePreparedSlot(this)
-        releaseRotation()
     }
 
     private fun reset() {
-        clearPrepared(); attempts.reset(); playerContext = null; world = null
-        hasMovement = false; waitingForSupport = false
-        movementPlanner.reset(); movementPrediction.reset()
-        visual.reset(); PlacementReservations.release(this)
+        clearPlan()
+        releaseRotation()
+        MioScaffoldTower.reset()
+        visual.reset()
+        PlacementReservations.release(this)
         InventoryMoveModule.cancelInventoryActions(this)
+        playerContext = null
+        world = null
+        planned = false
+        executed = false
+        slot = -1
+        sending = null
+        accepted = false
+        val now = System.nanoTime()
+        lastPlacement = now
+        lastAttack = now
+        lastClick = 0L
+        lastRotation = now
     }
 
     override fun onEnable() = reset()
     override fun onDisable() = reset()
     @Commando fun onDisconnect(event: ClientDisconnectEvent) = reset()
 
-    private fun available(player: LocalPlayer): Boolean = InventoryAutomation.available()
-        && !InventoryAutomation.busy() && !InventoryMoveModule.isInventoryActionSlowed()
-        && !player.isPassenger && !player.isFallFlying && !player.abilities.flying
+    @Commando
+    fun onReceive(event: PacketReceiveEvent) {
+        if (event.packet is ClientboundPlayerPositionPacket) MioScaffoldTower.onCorrection()
+    }
 
     @Commando(priority = -128)
     fun onPacket(event: PacketSentEvent) {
-        if (!mc.isSameThread) return
-        val packet = event.packet as? ServerboundMovePlayerPacket ?: return
-        if (mc.player !== playerContext || mc.level !== world) return
-        sentPosition = Vec3(packet.getX(sentPosition.x), packet.getY(sentPosition.y), packet.getZ(sentPosition.z))
-        sentRotation = Rotation(packet.getYRot(sentRotation.yaw), packet.getXRot(sentRotation.pitch))
-        hasMovement = true
+        if (event.packet === sending) accepted = true
+        if (event.packet is ServerboundContainerClickPacket) lastClick = System.nanoTime()
     }
 
-    private fun heading(): Vec3 {
-        val forward = (if (mc.options.keyUp.isDown) 1 else 0) - (if (mc.options.keyDown.isDown) 1 else 0)
-        val sideways = (if (mc.options.keyLeft.isDown) 1 else 0) - (if (mc.options.keyRight.isDown) 1 else 0)
-        val yaw = Math.toRadians(RotationManager.clientYaw.toDouble())
-        val direction = Vec3(sideways * cos(yaw) - forward * sin(yaw), 0.0,
-            forward * cos(yaw) + sideways * sin(yaw))
-        return if (direction.lengthSqr() > 0.0001) direction.normalize() else Vec3.ZERO
-    }
-
-    private fun blockHand(pos: BlockPos): Pair<InteractionHand, Int>? {
-        val player = mc.player ?: return null
-        val level = mc.level ?: return null
-        if (ScaffoldPlacement.validItem(level, pos, player.mainHandItem))
-            return InteractionHand.MAIN_HAND to player.inventory.selectedSlot
-        if (ScaffoldPlacement.validItem(level, pos, player.offhandItem))
-            return InteractionHand.OFF_HAND to player.inventory.selectedSlot
-        if (!autoSwitch) return null
-        return (sequenceOf(SilentSwapUtil.serverSlot) + (0..8).asSequence()).distinct()
-            .filter { it in 0..8 && ScaffoldPlacement.validItem(level, pos, player.inventory.getItem(it)) }
-            .sortedWith(compareBy<Int> { ScaffoldPlacement.unfavorable(level, pos, player.inventory.getItem(it)) }
-                .thenBy { !(player.inventory.getItem(it).item as net.minecraft.world.item.BlockItem).block
-                    .defaultBlockState().isCollisionShapeFullBlock(level, pos) }
-                .thenByDescending { player.inventory.getItem(it).count })
-            .firstOrNull()?.let { InteractionHand.MAIN_HAND to it }
-    }
-
-    private fun syncContext(player: LocalPlayer, level: ClientLevel) {
-        if (playerContext !== player || world !== level || previousPosition.distanceToSqr(player.position()) > 64.0) {
-            reset(); playerContext = player; world = level
-            placementY = ScaffoldTargetGeometry.targetY(player.boundingBox.minY, null, false)
-            sentPosition = player.position(); sentRotation = Rotation(player.yRot, player.xRot)
-        }
-        previousPosition = player.position()
-        if (player.onGround() && ScaffoldPlacement.hasSupport(player, level, player.boundingBox))
-            placementY = ScaffoldTargetGeometry.targetY(player.boundingBox.minY, null, false)
-        // LiquidBounce SameY Off follows current feet even in the air. Normal stationary jumping
-        // also follows feet, allowing vanilla jump placement without a synthetic tower velocity.
-        val stationaryJump = mc.options.keyJump.isDown
-            && (heading().horizontalDistanceSqr() < 1.0e-8 || player.horizontalCollision)
-        bridgeY = ScaffoldTargetGeometry.targetY(player.boundingBox.minY, placementY.takeIf { keepY }, stationaryJump)
-        attempts.retainFailures { hypot(it.x + 0.5 - player.x, it.z + 0.5 - player.z) < 2.0 }
-    }
-
-    private fun updateConfirmation(player: LocalPlayer, level: ClientLevel) {
-        val pos = attempts.target ?: return
-        val result = attempts.update(player.tickCount, ScaffoldPlacement.confirmedBlock(level, pos),
-            level.blockStatePredictionHandler.serverVerifiedStates.containsKey(pos.asLong()))
-        if (result == ScaffoldAttempts.Result.CONFIRMED || result == ScaffoldAttempts.Result.REJECTED)
-            PlacementReservations.release(this)
-    }
-
-    private fun plan(player: LocalPlayer, level: ClientLevel, planningTick: Int): Placement? {
-        val direction = heading()
-        val line = movementPlanner.movementLine(player, level, direction)
-        val predicted = if (prediction) movementPrediction.predictedPosition(player, level, movementPlanner, line)
-            ?: player.position() else player.position()
-        val requested = BlockPos.containing(predicted.x, bridgeY.toDouble(), predicted.z)
-        // The key guard from LiquidBounce's findBestBlockPlacementTarget: once the requested
-        // support exists, investigating offsets would only place stray blocks beside it.
-        if (ScaffoldPlacement.confirmedBlock(level, requested)) return null
-        val rotation = RotationManager.getServerRotation()
-        val reach = minOf(range, player.blockInteractionRange())
-        for (pos in ScaffoldTargetGeometry.candidates(requested, predicted, line, keepY && bridgeY == placementY)) {
-            if (!attempts.canAttempt(pos, planningTick, delay.toInt()) || PacketMineModule.targetsPosition(pos)
-                || PlacementReservations.reserved(pos, this) || !level.getBlockState(pos).canBeReplaced()) continue
-            val (hand, slot) = blockHand(pos) ?: continue
-            val stack = if (hand == InteractionHand.OFF_HAND) player.offhandItem else player.inventory.getItem(slot)
-            val site = ScaffoldPlacement.findSite(player, level, pos, hand, stack, reach, predicted, rotation, line) ?: continue
-            val edge = if (prediction && line != null) movementPrediction.fallOffPosition(player, level, line) else null
-            return Placement(site, hand, slot, line, edge)
-        }
-        return null
-    }
-
-    private fun updatePlan(beforePhysics: Boolean = false) {
-        val player = mc.player ?: return reset()
-        val level = mc.level ?: return reset()
-        syncContext(player, level)
-        updateConfirmation(player, level)
-        if (attempts.target != null) {
-            clearPrepared()
-            visual.show(AABB(attempts.target!!), AuraTargetRenderer.Kind.PLACE)
-            return
-        }
-        if (!available(player) || player.y < bridgeY + 0.7 || player.y > bridgeY + 3.0) {
-            clearPrepared(); return
-        }
-        // Entity increments tickCount between PlayerUpdate (tick HEAD) and input/physics.
-        // Prepare for that upcoming tick; place() still checks the actual current tick.
-        val placement = plan(player, level, player.tickCount + if (beforePhysics) 1 else 0)
-            ?: run { clearPrepared(); return }
-        prepared = placement
-        if (!ActionCoordinator.canAct(this) || !SilentSwapUtil.prepareSlot(placement.slot, 2, this)) return
-        if (rotations) ActionCoordinator.withOwner(ActionCoordinator.resolveOwner(this)) {
-            RotationManager.setRotation(placement.site.rotation,
-                MoveFixMode.SILENT, keepTicks = 0, returnSpeed = 180f)
-        } else releaseRotation()
-        visual.show(AABB(placement.site.pos), AuraTargetRenderer.Kind.PLACE)
-    }
+    private fun available(): Boolean = InventoryAutomation.available() && !InventoryAutomation.busy()
+        && !InventoryMoveModule.isInventoryActionSlowed()
 
     @Commando(priority = 120)
     fun onUpdate(event: PlayerUpdateEvent) {
-        visual.beginTick(); waitingForSupport = false
-        updatePlan(beforePhysics = true)
+        val player = mc.player ?: return reset()
+        val level = mc.level ?: return reset()
+        if (playerContext !== player || world !== level) {
+            reset()
+            playerContext = player
+            world = level
+            tellyY = player.y
+        }
+        clearPlan()
+        planned = false
+        executed = false
+        visual.beginTick()
+        if (!rotate || System.nanoTime() - lastRotation >= (if (movementSync) 0L else 500_000_000L)) releaseRotation()
+        rotation?.let { applyRotation(it) }
     }
 
-    /** Recompute from the position after physics, before sendChanges applies the outgoing look. */
-    fun onAfterMovement() {
-        if (isEnabled()) updatePlan()
+    private fun findSlot(player: LocalPlayer, level: ClientLevel): Int {
+        val selected = player.inventory.selectedSlot
+        var bestScore = MioScaffoldPlacement.blockScore(player, level, player.mainHandItem, selection, blocks)
+        if (bestScore > 0) return selected
+        if (swap == "None") return -1
+        var best = -1
+        for (candidate in 0..8) {
+            val score = MioScaffoldPlacement.blockScore(player, level, player.inventory.getItem(candidate), selection, blocks)
+            if (score > bestScore) {
+                best = candidate
+                bestScore = score
+            }
+        }
+        return best
+    }
+
+    private fun applyRotation(value: Rotation) {
+        ActionCoordinator.withOwner(ActionCoordinator.resolveOwner(this)) {
+            val adjusted = if (movementSync) Rotation(value.yaw + 0.008600000429153449f * (mc.player!!.tickCount % 6), value.pitch) else value
+            RotationManager.setRotation(adjusted, MoveFixMode.SILENT, gcd = false, keepTicks = 0, returnSpeed = 180f)
+        }
+    }
+
+    private fun prepare() {
+        if (planned) return
+        planned = true
+        val player = mc.player ?: return
+        val level = mc.level ?: return
+        if (player !== playerContext || level !== world || !available()) {
+            MioScaffoldTower.reset()
+            return
+        }
+        if (!player.input.keyPresses.jump() || player.horizontalCollision) tellyY = player.y
+        if (movementSync && player.onGround() && System.nanoTime() - lastClick < 50_000_000L) {
+            MioScaffoldTower.reset()
+            return
+        }
+        slot = findSlot(player, level)
+        if (slot != -1) {
+            MioScaffoldPlacement.targets(player, level, slot, scaffoldMode == "Multi", offset, frequency.toInt(), size.toInt(),
+                airPlace, tellyY.takeIf { telly }, attack, movementSync, targets, strictDirection)
+            targets.removeIf { PacketMineModule.targetsPosition(it.pos) || PlacementReservations.reserved(it.pos, this) }
+        }
+        if (attack && System.nanoTime() - lastAttack >= CrystalAuraModule.breakDelay.toLong() * 50_000_000L) {
+            for (target in targets) {
+                val crystal = level.getEntities(null, AABB(target.pos)).firstOrNull {
+                    it is EndCrystal && it.isAlive && !it.isRemoved && it.tickCount >= 2
+                        && player.distanceToSqr(it) <= player.entityInteractionRange() * player.entityInteractionRange()
+                } as? EndCrystal ?: continue
+                crystalId = crystal.id
+                break
+            }
+        }
+        if (targets.isEmpty() || !ActionCoordinator.canAct(this)) {
+            MioScaffoldTower.reset()
+            return
+        }
+        MioScaffoldTower.update(player, tower, targets.isNotEmpty(), movementSync)
+        if (swap == "Normal") {
+            InventoryUtil.swapToSlot(slot)
+            ready = player.inventory.selectedSlot == slot && SilentSwapUtil.serverSlot == slot
+        } else {
+            ready = SilentSwapUtil.prepareSlot(slot, 1, this)
+        }
+        if (rotate && ready) {
+            val crystal = level.getEntity(crystalId)
+            val aim = if (crystal != null) RotationUtil.getRotationToVec(crystal.boundingBox.center, player.eyePosition)
+                else targets.firstOrNull()?.let { MioScaffoldPlacement.rotation(player, level, it, movementSync) }
+            if (aim != null) {
+                rotation = aim
+                lastRotation = System.nanoTime()
+                applyRotation(aim)
+            }
+        }
+    }
+
+    fun onBeforeInputUpdate() {
+        if (isEnabled() && rotate) prepare()
+    }
+
+    @Commando(priority = 120)
+    fun onPreMovement(event: PlayerPreMovementEvent) {
+        if (!rotate) prepare()
     }
 
     @Commando(priority = -128)
-    fun onMovementSent(event: PlayerMovementSentEvent) = place()
-
-    private fun place() {
-        val placement = prepared ?: return
+    fun onMovementSent(event: PlayerMovementSentEvent) {
+        if (executed || !ready || !available() || !ActionCoordinator.canAct(this)) return
         val player = mc.player ?: return
         val level = mc.level ?: return
-        val pos = placement.site.pos
-        if (!hasMovement || player !== playerContext || level !== world || !available(player)
-            || !attempts.canAttempt(pos, player.tickCount, delay.toInt()) || !ActionCoordinator.canAct(this)
-            || SilentSwapUtil.serverSlot != placement.slot || PacketMineModule.targetsPosition(pos)
-            || PlacementReservations.reserved(pos, this)) return
-        val hit = ScaffoldPlacement.aimedHit(player, level, sentPosition.add(0.0, player.eyeHeight.toDouble(), 0.0),
-            sentRotation, minOf(range, player.blockInteractionRange()), placement.site) ?: return
-        val stack = if (placement.hand == InteractionHand.OFF_HAND) player.offhandItem else player.inventory.getItem(placement.slot)
-        if (!ScaffoldPlacement.canPlace(player, level, pos, placement.hand, stack, hit)) return
-        val ping = player.connection.getPlayerInfo(player.uuid)?.latency ?: 150
-        val timeout = (ping / 50 + 10).coerceIn(10, 80)
-        // Reserve the attempt before calling native code: input and send callbacks cannot double-use it.
-        attempts.begin(pos, player.tickCount, timeout)
-        prepared = null
-        PlacementReservations.claim(pos, this, timeout)
+        if (player !== playerContext || level !== world || SilentSwapUtil.serverSlot != slot) return
+        executed = true
         ActionCoordinator.withOwner(ActionCoordinator.resolveOwner(this)) {
-            val yaw = player.yRot; val pitch = player.xRot
-            player.yRot = sentRotation.yaw; player.xRot = sentRotation.pitch
             try {
-                if (InventoryUtil.useItemOn(placement.hand, hit)) {
-                    if (!level.getBlockState(pos).canBeReplaced()) {
-                        movementPlanner.trackPlacedBlock(pos)
-                        if (prediction) movementPrediction.onPlace(placement.line, placement.fallOffPosition, player.position())
-                        visual.pulse()
+                val crystal = level.getEntity(crystalId) as? EndCrystal
+                if (crystal != null && crystal.isAlive && !crystal.isRemoved) {
+                    val packet = ServerboundAttackPacket(crystal.id)
+                    sending = packet
+                    accepted = false
+                    player.connection.send(packet)
+                    if (accepted) {
+                        player.resetAttackStrengthTicker()
+                        player.swing(InteractionHand.MAIN_HAND, SwingAnimation.DEFAULT, false)
+                        CrystalOptimizerModule.onCrystalAttacked(crystal)
+                        lastAttack = System.nanoTime()
                     }
-                } else { attempts.reject(player.tickCount); PlacementReservations.release(this) }
+                }
+                if (System.nanoTime() - lastPlacement < delay.toLong() * 1_000_000L) return@withOwner
+                val yaw = player.yRot
+                val pitch = player.xRot
+                val sneaking = player.isShiftKeyDown
+                val serverRotation = RotationManager.getServerRotation()
+                if (rotate) {
+                    player.yRot = serverRotation.yaw
+                    player.xRot = serverRotation.pitch
+                }
+                try {
+                    for (target in targets) {
+                        if (!MioScaffoldPlacement.canPlace(player, level, target.pos, slot, false, playersOnly = false)
+                            || PacketMineModule.targetsPosition(target.pos) || PlacementReservations.reserved(target.pos, this)) continue
+                        val hit = MioScaffoldPlacement.hit(player, level, target)
+                        if (!player.isShiftKeyDown && interactive(level, hit.blockPos)) {
+                            sendSneaking(player, true)
+                            player.isShiftKeyDown = true
+                        }
+                        if (InventoryUtil.useItemOn(InteractionHand.MAIN_HAND, hit)) {
+                            lastPlacement = System.nanoTime()
+                            PlacementReservations.claim(target.pos, this, 1)
+                            visual.show(target.pos)
+                        }
+                        if (player.inventory.getItem(slot).isEmpty) break
+                    }
+                } finally {
+                    player.yRot = yaw
+                    player.xRot = pitch
+                    if (!sneaking && player.isShiftKeyDown) {
+                        sendSneaking(player, false)
+                        player.isShiftKeyDown = false
+                    }
+                }
             } finally {
-                player.yRot = yaw; player.xRot = pitch
+                sending = null
                 SilentSwapUtil.releasePreparedSlot(this)
+                ready = false
             }
         }
     }
 
-    @Commando(priority = -100)
-    fun onInput(event: MovementInputEvent) {
-        place()
-        waitingForSupport = false
-        val player = mc.player ?: return
-        val level = mc.level ?: return
-        if (!safeWalk || !player.isAlive || player.isSpectator || !player.onGround() || player.isPassenger
-            || player.isFallFlying || player.abilities.flying || mc.gui.screen() != null) return
-        val input = event.input.keyPresses
-        val direction = heading().let {
-            if (it.lengthSqr() > 0.0001) it else Vec3(player.deltaMovement.x, 0.0, player.deltaMovement.z).let { motion ->
-                if (motion.lengthSqr() > 0.0001) motion.normalize() else Vec3.ZERO
-            }
-        }
-        if (direction.lengthSqr() < 0.0001) return
-        val step = maxOf(if (input.jump()) 0.65 else 0.35,
-            hypot(player.deltaMovement.x, player.deltaMovement.z) + 0.12).coerceAtMost(1.0)
-        if (ScaffoldPlacement.hasSupport(player, level, player.boundingBox.move(direction.scale(step)))) return
-        waitingForSupport = true
-        event.input.keyPresses = Input(input.forward(), input.backward(), input.left(), input.right(), input.jump(), true, false)
-        player.isSprinting = false
+    private fun interactive(level: ClientLevel, pos: BlockPos): Boolean {
+        val block = level.getBlockState(pos).block
+        return block is CraftingTableBlock || block is AnvilBlock || block is ButtonBlock
+            || block is BasePressurePlateBlock || block is EntityBlock || block is BedBlock
+            || block is FenceGateBlock || block is DoorBlock || block is NoteBlock || block is TrapDoorBlock
     }
 
-    /** Vanilla-style crouching edge restriction, checked against server blocks instead of prediction. */
+    private fun sendSneaking(player: LocalPlayer, shift: Boolean) {
+        val input = player.input.keyPresses
+        player.connection.send(ServerboundPlayerInputPacket(Input(input.forward(), input.backward(), input.left(),
+            input.right(), input.jump(), shift, input.sprint())))
+    }
+
+    fun shouldClipAtLedge(): Boolean = isEnabled() && safeWalk && mc.player?.isPassenger == false
+
+    fun edgeDepth(original: Float): Float {
+        if (!shouldClipAtLedge()) return original
+        val player = mc.player ?: return original
+        val level = mc.level ?: return original
+        val block = (player.mainHandItem.item as? BlockItem)?.block ?: return original
+        val shape = block.defaultBlockState().getCollisionShape(level, BlockPos.ZERO)
+        return if (shape.isEmpty) original else shape.bounds().ysize.toFloat()
+    }
+
     fun limitMovement(movement: Vec3): Vec3 {
-        if (!isEnabled() || !safeWalk) return movement
+        if (!shouldClipAtLedge() || !movementSync) return movement
         val player = mc.player ?: return movement
         val level = mc.level ?: return movement
-        if (movement.y > 0.0 && player.input.keyPresses.jump()) return movement
-        if (!player.onGround() || player.isSpectator || player.isPassenger || player.isFallFlying
-            || player.abilities.flying || mc.gui.screen() != null
-            || (!waitingForSupport && !player.input.keyPresses.shift())
-            || !ScaffoldPlacement.hasSupport(player, level, player.boundingBox)) return movement
-        return ScaffoldSafeWalk.movement(movement) { x, z ->
-            ScaffoldPlacement.hasSupport(player, level, player.boundingBox.move(x, 0.0, z))
-        }
+        if (!player.onGround()) return movement
+        val box = player.boundingBox.move(movement.x, 0.0, movement.z).expandTowards(0.0, -1.0, 0.0)
+        return if (level.noCollision(box)) Vec3(0.0, movement.y, 0.0) else movement
     }
 }

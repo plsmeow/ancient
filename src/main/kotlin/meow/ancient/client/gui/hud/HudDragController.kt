@@ -60,6 +60,10 @@ class HudDrag internal constructor(
     internal var placedFrame = -1L
     internal var order = -1
     internal var previousWidth = 0f
+    internal var verticalAnchor = 0f
+    internal var referenceHeight = 0f
+    internal var previousVerticalOffset = 0f
+    internal val verticalOffset: Float get() = (height - referenceHeight) * verticalAnchor
 
     val alignment: HudAlignment
         get() = if (alignmentSetting.value != HudAlignment.AUTO) alignmentSetting.value
@@ -175,10 +179,15 @@ class HudDragController(private val module: Module) {
         height: Float,
         defaultX: Float,
         defaultY: Float,
-        visible: Boolean
+        visible: Boolean,
+        verticalAnchor: Float = 0f,
+        referenceHeight: Float = height
     ): HudDrag {
         val drag = drags[element.ordinal]
         drag.previousWidth = drag.width
+        drag.previousVerticalOffset = drag.verticalOffset
+        drag.verticalAnchor = verticalAnchor
+        drag.referenceHeight = referenceHeight.coerceAtLeast(0f)
         drag.width = width.coerceAtLeast(0f)
         drag.height = height.coerceAtLeast(0f)
         drag.visible = visible && drag.width > 0f && drag.height > 0f
@@ -202,7 +211,8 @@ class HudDragController(private val module: Module) {
                 defaultX.coerceIn(0f, maxX)
             }
             drag.desiredY = if (drag.positionY.value >= 0.0) {
-                (drag.positionY.value * maxY).toFloat()
+                ((drag.positionY.value * (screenHeight - drag.referenceHeight).coerceAtLeast(0f)).toFloat() -
+                    drag.verticalOffset).coerceIn(0f, maxY)
             } else {
                 defaultY.coerceIn(0f, maxY)
             }
@@ -235,6 +245,7 @@ class HudDragController(private val module: Module) {
             } else {
                 drag.animatedX.value -= (drag.width - drag.previousWidth) * anchorFraction(drag.alignment)
                 drag.animatedX.update(drag.desiredX, deltaSeconds)
+                drag.animatedY.value -= drag.verticalOffset - drag.previousVerticalOffset
                 drag.animatedY.update(drag.desiredY, deltaSeconds)
             }
             resolveDocks(drag, animated = true)
@@ -410,8 +421,9 @@ class HudDragController(private val module: Module) {
         drag.dockY.store(finalSnapY)
         if (drag.alignmentSetting.value == HudAlignment.AUTO) drag.anchorSide.set(automaticAlignment(drag.desiredX, drag.width))
         storeAnchor(drag)
-        val maxY = maxY(drag)
-        if (maxY > 0f) drag.positionY.set((drag.desiredY / maxY).toDouble().coerceIn(0.0, 1.0))
+        val referenceRange = (screenHeight - drag.referenceHeight).coerceAtLeast(0f)
+        if (referenceRange > 0f) drag.positionY.set(((drag.desiredY + drag.verticalOffset) / referenceRange)
+            .toDouble().coerceIn(0.0, 1.0))
         ConfigManager.saveCurrentConfig()
     }
 

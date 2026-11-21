@@ -98,7 +98,7 @@ class AuraTargetRenderer(private val enabled: () -> Boolean, private val slideSp
             Kind.BASE -> palette.secondary
             Kind.CHARGE -> palette.tertiary
             Kind.BREAK -> palette.error
-            Kind.MINE -> palette.tertiary
+            Kind.MINE -> palette.primary
         }
         color = (color ?: desiredColor).interpolateTo(desiredColor, fade)
         val tint = color!!

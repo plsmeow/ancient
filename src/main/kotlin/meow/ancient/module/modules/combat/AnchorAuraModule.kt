@@ -53,7 +53,7 @@ object AnchorAuraModule : Module(
     val moveFix by moveFixSetting
 
     val rotations by boolean("Rotations", true)
-    val wallCheck by boolean("WallCheck", true, "Requires a clear view to place, charge and detonate anchors")
+    val wallCheck by boolean("WallCheck", true, "Checks placement faces through walls; requires a clear view to charge and detonate anchors")
     val silentSlots by boolean("Silent Slots", true)
     val ignoreTerrain by boolean("Ignore Terrain", false, "Ignores blocks with blast resistance below 600; disabled uses vanilla exposure")
     val lethalOverride by boolean("Lethal Override", true)
@@ -169,8 +169,8 @@ object AnchorAuraModule : Module(
         currentTarget = findTarget(player)
         tickTimer++
         if (awaitingConfirmation(player, level) || !ActionCoordinator.canAct(this)) return
-        if (player.isUsingItem || player.isSpectator
-            || player.containerMenu !== player.inventoryMenu || !player.containerMenu.carried.isEmpty
+        if (!AnticheatManager.canUseContext(player) || player.isSpectator
+            || !player.containerMenu.carried.isEmpty
             || InventoryMoveModule.isInventoryActionSlowed()) return
         val target = currentTarget ?: return
         if (tickTimer < delay.toInt()) return
@@ -193,7 +193,7 @@ object AnchorAuraModule : Module(
             return
         }
         val refreshed = if (selected.stage == SequenceStage.PLACE_SENT)
-            actions.placementHit(selected.pos, range, wallCheck, rotations)
+            actions.placementHit(selected.pos, range, wallCheck, rotations, throughWalls = true)
             else actions.visibleHit(selected.pos, range, wallCheck, selected.hit.location)
         if (refreshed == null) return
         val plan = selected.copy(hit = refreshed)
@@ -201,7 +201,7 @@ object AnchorAuraModule : Module(
         queuedPlan = plan
         visual.show(AABB(plan.pos), renderKind(plan.stage))
         val aimed = actions.block(plan.hit, range, rotations, getMoveFixMode(), exactFace = plan.stage == SequenceStage.PLACE_SENT,
-            wallCheck = wallCheck) { hit ->
+            wallCheck = wallCheck, throughWalls = plan.stage == SequenceStage.PLACE_SENT) { hit ->
             if (!validPlan(player, target, plan, hit)) return@block
             if (SurroundModule.requestProtection("AnchorAura", protectionExplosion(plan.pos, target))) {
                 queuedPlan = null
@@ -428,7 +428,7 @@ object AnchorAuraModule : Module(
             if (!safeSelfDamage(player, selfDamage)) continue
             if (best != null && damage == bestDamage && (selfDamage > bestSelfDamage
                     || selfDamage == bestSelfDamage && pos != preferredPos)) continue
-            val hit = if (stage == SequenceStage.PLACE_SENT) AuraActionQueue.placementHit(player, pos, range, wallCheck)
+            val hit = if (stage == SequenceStage.PLACE_SENT) AuraActionQueue.placementHit(player, pos, range, wallCheck, throughWalls = true)
                 else AuraActionQueue.visibleHit(player, pos, range, wallCheck = wallCheck)
             if (hit == null) continue
             val plan = Plan(pos, hit, stage)

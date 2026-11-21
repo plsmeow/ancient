@@ -1,7 +1,6 @@
 package meow.ancient.module.modules.combat
 
 import meow.ancient.client.extensions.COMBAT
-import meow.ancient.client.extensions.currentScreen
 import meow.ancient.client.extensions.mc
 import meow.ancient.client.util.action.ActionCoordinator
 import meow.ancient.client.util.anticheat.AnticheatManager
@@ -24,7 +23,6 @@ import net.minecraft.world.InteractionHand
 import net.minecraft.world.entity.Entity
 import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.entity.player.Player
-import net.minecraft.world.item.ItemUseAnimation
 import net.minecraft.world.level.ClipContext
 import net.minecraft.world.phys.HitResult
 import sweetie.evaware.flora.api.Commando
@@ -35,7 +33,6 @@ object TriggerBotModule : Module(
     description = "Attacks the nearest entity intersecting your view before movement without rotating"
 ) {
     val targets = targets("Targets", setOf("minecraft:player"))
-    val ignoreOn by multiMode("Ignore On", setOf("Gui"), listOf("Use", "Gui"))
     val friendProtection by boolean("Friend Protection", true)
     val attackRange by number("Attack Range", 3.0, 1.0, 6.0, 0.05, 2, unit = "m")
     val throughWalls by boolean("Through Walls", false)
@@ -89,14 +86,10 @@ object TriggerBotModule : Module(
     fun shouldPreventSprint(): Boolean =
         isEnabled() && !HitAuraModule.isEnabled() && sprintResetProcessor.isResettingSprint()
 
-    private fun shouldIgnoreContext(player: LocalPlayer): Boolean =
-        "Gui" in ignoreOn && currentScreen != null
-            || "Use" in ignoreOn && player.isUsingItem && player.useItem.useAnimation != ItemUseAnimation.NONE
-
     private fun canUseContext(player: LocalPlayer, level: ClientLevel): Boolean =
         isEnabled() && !HitAuraModule.isEnabled() && mc.player === player && mc.level === level
             && !player.isDeadOrDying && !player.isSpectator && player.connection.connection.isConnected
-            && player.connection.hasClientLoaded() && mc.gameMode != null && !shouldIgnoreContext(player)
+            && player.connection.hasClientLoaded() && mc.gameMode != null && AnticheatManager.canUseContext(player)
 
     private fun selectTarget(player: LocalPlayer, level: ClientLevel): LivingEntity? {
         val start = player.eyePosition

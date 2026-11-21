@@ -13,6 +13,8 @@ class HudNotifications {
     private class Toast {
         var title = ""
         var detail = ""
+        var text = ""
+        var compactWidth = 0f
         var enabled = false
         var preview = false
         var createdAt = 0L
@@ -21,19 +23,21 @@ class HudNotifications {
         val opacity = AnimFloat(speed = 18f)
         val position = AnimFloat(speed = 18f)
 
-        fun prepare(title: String, detail: String, enabled: Boolean, preview: Boolean, createdAt: Long, y: Float) {
+        fun prepare(title: String, detail: String, text: String, enabled: Boolean, preview: Boolean, createdAt: Long) {
             this.title = fitTitle(title)
             this.detail = detail
             this.enabled = enabled
             this.preview = preview
             this.createdAt = createdAt
+            this.text = hudEllipsize(text, MAX_COMPACT_WIDTH - COMPACT_TEXT_X - PADDING, COMPACT_SIZE)
+            compactWidth = Fonts.google_sans_medium.width(this.text, COMPACT_SIZE) + COMPACT_TEXT_X + PADDING
             width = maxOf(
                 Fonts.google_sans_medium.width(this.title, TITLE_SIZE),
                 Fonts.google_sans_regular.width(detail, DETAIL_SIZE)
             ) + TEXT_X + PADDING
             remaining = 1f
             opacity.setImmediate(0f)
-            position.setImmediate(y + ENTRY_SLIDE)
+            position.setImmediate(0f)
         }
 
         private fun fitTitle(text: String): String {
@@ -60,6 +64,9 @@ class HudNotifications {
     private var count = 0
     private var examplePrepared = false
     private var exampleVisible = false
+    private var compact = false
+    private var upward = false
+    val cardHeight: Float get() = if (compact) COMPACT_HEIGHT else CARD_HEIGHT
 
     var width = 0f
         private set
@@ -68,12 +75,16 @@ class HudNotifications {
     val isVisible: Boolean
         get() = count > 0 || exampleVisible
 
-    fun update(deltaSeconds: Float, preview: Boolean, limit: Int) {
+    fun update(deltaSeconds: Float, preview: Boolean, limit: Int, compact: Boolean, upward: Boolean, maxHeight: Float) {
+        this.compact = compact
+        this.upward = upward
         if (mc.player == null || mc.level == null) {
             clear()
             return
         }
-        val requestedLimit = limit.coerceIn(1, 20)
+        val stackStep = cardHeight + if (compact) COMPACT_GAP else STACK_STEP - CARD_HEIGHT
+        val fittingLimit = ((maxHeight - cardHeight) / stackStep).toInt() + 1
+        val requestedLimit = minOf(limit.coerceIn(1, 20), fittingLimit.coerceAtLeast(1))
         if (this.limit != requestedLimit) {
             this.limit = requestedLimit
             if (requestedLimit > entries.size) {
@@ -102,19 +113,19 @@ class HudNotifications {
             val message = HudNotificationCenter.poll(now) ?: break
             if (now - message.createdAt >= HUD_NOTIFICATION_LIFETIME_NANOS - EXIT_NANOS) continue
             if (count == this.limit) remove(0)
-            entries[count].prepare(message.name, message.detail,
-                message.enabled, false, message.createdAt, count * STACK_STEP)
+            entries[count].prepare(message.name, message.detail, message.text,
+                message.enabled, false, message.createdAt)
             entries[count].opacity.update(1f, dt)
             count++
         }
         exampleVisible = preview && count < this.limit
         if (exampleVisible) {
             if (!examplePrepared) {
-                example.prepare("Preview", "Enabled", true, true, now, count * STACK_STEP)
+                example.prepare("Preview", "Enabled", "Preview · Enabled", true, true, now)
                 examplePrepared = true
             }
             example.opacity.update(1f, dt)
-            example.position.update(count * STACK_STEP, dt)
+            example.position.update(0f, dt)
         } else {
             example.opacity.setImmediate(0f)
             examplePrepared = false
@@ -124,14 +135,15 @@ class HudNotifications {
         i = 0
         while (i < count) {
             val entry = entries[i]
-            entry.position.update(i * STACK_STEP, dt)
-            width = maxOf(width, entry.width + HORIZONTAL_SLIDE)
-            height = maxOf(height, entry.position.value + CARD_HEIGHT)
+            val slot = count - 1 - i + if (exampleVisible) 1 else 0
+            entry.position.update(slot * stackStep, dt)
+            width = maxOf(width, if (compact) entry.compactWidth else entry.width + HORIZONTAL_SLIDE)
+            height = maxOf(height, entry.position.value + cardHeight)
             i++
         }
         if (exampleVisible) {
-            width = maxOf(width, example.width + HORIZONTAL_SLIDE)
-            height = maxOf(height, example.position.value + CARD_HEIGHT)
+            width = maxOf(width, if (compact) example.compactWidth else example.width + HORIZONTAL_SLIDE)
+            height = maxOf(height, example.position.value + cardHeight)
         }
     }
 
@@ -154,6 +166,10 @@ class HudNotifications {
             entry.enabled -> palette.primary
             else -> palette.secondary
         }
+        if (compact) {
+            drawCompact(matrix, entry, x, y, scale, alignment, alpha)
+            return
+        }
         val rowOffset = when (alignment) {
             HudAlignment.CENTER -> (width - entry.width) * 0.5f
             HudAlignment.RIGHT -> width - entry.width
@@ -165,7 +181,7 @@ class HudNotifications {
             else -> 1f
         }
         val drawX = x + (rowOffset + (1f - alpha) * HORIZONTAL_SLIDE * slideDirection) * scale
-        val drawY = y + entry.position.value * scale
+        val drawY = y + rowY(entry, alpha) * scale
         val drawWidth = entry.width * scale
         RenderUtils.hudBackground(matrix, drawX, drawY, drawWidth, CARD_HEIGHT * scale,
             palette.surfaceContainerLow.alpha(if (HudModule.blur) 140 else 255), 4f * scale, opacity = alpha)
@@ -184,6 +200,38 @@ class HudNotifications {
             RenderUtils.rect(matrix, barX, barY, barWidth * entry.remaining, 0.75f * scale,
                 accent.fade(alpha), ClientRenderPipeline.HUD_RECT)
         }
+    }
+
+    private fun rowY(entry: Toast, alpha: Float): Float {
+        val offset = if (upward) height - cardHeight - entry.position.value else entry.position.value
+        return offset + (1f - alpha) * ENTRY_SLIDE * if (upward) 1f else -1f
+    }
+
+    private fun drawCompact(matrix: Matrix4f, entry: Toast, x: Float, y: Float, scale: Float,
+                            alignment: HudAlignment, alpha: Float) {
+        val palette = M3Theme.current
+        val accent = when {
+            entry.preview -> palette.tertiary
+            entry.enabled -> palette.primary
+            else -> palette.secondary
+        }
+        val rowOffset = when (alignment) {
+            HudAlignment.CENTER -> (width - entry.compactWidth) * 0.5f
+            HudAlignment.RIGHT -> width - entry.compactWidth
+            else -> 0f
+        }
+        val drawX = x + rowOffset * scale
+        val drawY = y + rowY(entry, alpha) * scale
+        val drawWidth = entry.compactWidth * scale
+        RenderUtils.hudBackground(matrix, drawX, drawY, drawWidth, COMPACT_HEIGHT * scale,
+            palette.surfaceContainerLow.alpha(if (HudModule.blur) 140 else 255), 4f * scale, opacity = alpha)
+        RenderUtils.roundedRect(matrix, drawX + PADDING * scale, drawY + 6f * scale,
+            2.5f * scale, 2.5f * scale, accent.fade(alpha), 1.25f * scale, ClientRenderPipeline.HUD_RECT)
+        RenderUtils.rect(matrix, drawX + 12f * scale, drawY + 3.5f * scale, 0.6f * scale,
+            7.5f * scale, palette.outlineVariant.fade(alpha), ClientRenderPipeline.HUD_RECT)
+        Fonts.google_sans_medium.drawString(matrix, entry.text, drawX + COMPACT_TEXT_X * scale,
+            drawY + 3.8f * scale, COMPACT_SIZE * scale, palette.onSurface.fade(alpha),
+            pipeline = ClientRenderPipeline.HUD_TEXT)
     }
 
     private fun remove(index: Int) {
@@ -214,6 +262,11 @@ class HudNotifications {
         const val TEXT_X = 11f
         const val CARD_HEIGHT = 25f
         const val STACK_STEP = 28f
+        const val COMPACT_HEIGHT = 14.5f
+        const val COMPACT_GAP = 3f
+        const val COMPACT_SIZE = 6.8f
+        const val COMPACT_TEXT_X = 17f
+        const val MAX_COMPACT_WIDTH = 240f
         const val MAX_CARD_WIDTH = 152f
         const val HORIZONTAL_SLIDE = 8f
         const val ENTRY_SLIDE = 3f

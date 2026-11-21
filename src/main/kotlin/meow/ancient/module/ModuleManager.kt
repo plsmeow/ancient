@@ -2,6 +2,7 @@ package meow.ancient.module
 
 import meow.ancient.client.extensions.Category
 import meow.ancient.client.interfaces.ILoadable
+import meow.ancient.module.modules.combat.CrossbowExploitModule
 import meow.ancient.module.modules.combat.BowBombModule
 import meow.ancient.module.modules.combat.AntiBotModule
 import meow.ancient.module.modules.combat.AutoTotemModule
@@ -93,6 +94,7 @@ object ModuleManager : ILoadable {
             AutoMaceModule,
             MaceKillModule,
             BowBombModule,
+            CrossbowExploitModule,
             CriticalsModule,
             BreachSwapModule,
             VelocityModule,

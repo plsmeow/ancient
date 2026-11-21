@@ -4,12 +4,14 @@ import com.mojang.blaze3d.platform.InputConstants
 import meow.ancient.client.extensions.PLAYER
 import meow.ancient.client.extensions.currentScreen
 import meow.ancient.client.extensions.mc
+import meow.ancient.client.util.anticheat.AnticheatManager
 import meow.ancient.client.util.inventory.InventoryActionSource
 import meow.ancient.client.util.inventory.InventoryUtil
 import meow.ancient.event.events.ClientDisconnectEvent
 import meow.ancient.event.events.KeyPressEvent
 import meow.ancient.event.events.PlayerUpdateEvent
 import meow.ancient.module.Module
+import meow.ancient.module.setting.KeybindSetting
 import meow.ancient.module.modules.movement.InventoryMoveModule
 import meow.ancient.module.modules.render.FreeCameraModule
 import net.minecraft.world.item.Items
@@ -60,8 +62,9 @@ object ClickPearlModule : Module(
     fun onKey(event: KeyPressEvent) {
         if (event.cancel || event.action != InputConstants.PRESS || event.key == InputConstants.UNKNOWN.value) return
         if (event.key != throwKey) return
+        if (currentScreen != null && KeybindSetting.isMouseButton(event.key)) return
         val player = mc.player ?: return
-        if (currentScreen != null || !player.isAlive || player.isSpectator || !player.connection.connection.isConnected
+        if (!AnticheatManager.canUseContext(player) || !player.isAlive || player.isSpectator || !player.connection.connection.isConnected
             || player.containerMenu !== player.inventoryMenu || !player.inventoryMenu.carried.isEmpty) return
         if (player.cooldowns.isOnCooldown(Items.ENDER_PEARL.defaultInstance)) return
         if (InventoryUtil.findItem(Items.ENDER_PEARL) == -1 && !player.offhandItem.`is`(Items.ENDER_PEARL)) return
@@ -102,6 +105,7 @@ object ClickPearlModule : Module(
         val player = mc.player ?: return
         val world = mc.level ?: return
         if (player.cooldowns.isOnCooldown(Items.ENDER_PEARL.defaultInstance)) return
+        if (!AnticheatManager.canUseContext(player)) return
         val slot = if (player.mainHandItem.`is`(Items.ENDER_PEARL) || player.offhandItem.`is`(Items.ENDER_PEARL))
             player.inventory.selectedSlot else InventoryUtil.findItem(Items.ENDER_PEARL)
         if (slot < 0) return
@@ -110,7 +114,7 @@ object ClickPearlModule : Module(
         // Queue the whole swap/use/restore transaction, as FTHelper does for WindCharge.
         InventoryMoveModule.runInventoryAction(InventoryActionSource.fromInventorySlot(slot), Runnable {
             if (!isEnabled() || actionGeneration != generation || mc.player !== player || mc.level !== world
-                || player.connection !== connection || !connection.connection.isConnected || currentScreen != null
+                || player.connection !== connection || !connection.connection.isConnected || !AnticheatManager.canUseContext(player)
                 || !player.isAlive || player.isSpectator || player.containerMenu !== player.inventoryMenu
                 || !player.inventoryMenu.carried.isEmpty) return@Runnable
             val savedYaw = player.yRot

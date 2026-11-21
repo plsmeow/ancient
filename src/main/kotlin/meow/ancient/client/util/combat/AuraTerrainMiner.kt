@@ -1,6 +1,7 @@
 package meow.ancient.client.util.combat
 
 import meow.ancient.client.extensions.mc
+import meow.ancient.client.util.anticheat.AnticheatManager
 import meow.ancient.client.util.action.ActionCoordinator
 import meow.ancient.client.util.inventory.InventoryUtil
 import meow.ancient.client.util.inventory.SilentSwapUtil
@@ -117,7 +118,7 @@ class AuraTerrainMiner(private var owner: Any, private val actions: AuraActionQu
 
     fun keepVanillaMining(): Boolean = target?.let {
         it.current() && !it.packet && it.started && !isVanillaCall() && !mc.options.keyAttack.isDown
-            && !mc.options.keyUse.isDown && !it.player.isUsingItem
+            && AnticheatManager.canUseContext(it.player)
             && ActionCoordinator.canAct(owner)
     } == true
 

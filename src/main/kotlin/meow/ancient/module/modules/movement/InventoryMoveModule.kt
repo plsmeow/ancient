@@ -246,7 +246,7 @@ object InventoryMoveModule : Module(
 
     fun shouldPreventSprint(): Boolean = isInventoryActionSlowed()
 
-    fun canMoveInScreen(screen: Screen): Boolean = isEnabled() && mc.isWindowActive && !isTypingScreen(screen)
+    fun canMoveInScreen(screen: Screen): Boolean = isEnabled() && mc.isWindowActive && AnticheatManager.canUseInGui && !isTypingScreen(screen)
 
     private fun slownessActive(): Boolean = isEnabled() && AnticheatManager.isSwapBypassActive
 

@@ -2,6 +2,7 @@ package meow.ancient.module.modules.combat
 
 import meow.ancient.client.extensions.COMBAT
 import meow.ancient.client.extensions.mc
+import meow.ancient.client.util.anticheat.AnticheatManager
 import meow.ancient.client.util.rotation.RotationManager
 import meow.ancient.event.events.ClientDisconnectEvent
 import meow.ancient.event.events.PacketReceiveEvent
@@ -183,7 +184,7 @@ object VelocityModule : Module(
             }
         }
 
-        if (needClick && !shouldSkip && !player.isUsingItem) {
+        if (needClick && !shouldSkip && AnticheatManager.canUseContext(player)) {
             val eyePos = player.getEyePosition(1.0f)
             val targetPos = eyePos.add(0.0, -4.5, 0.0)
             val trace = player.level().clip(

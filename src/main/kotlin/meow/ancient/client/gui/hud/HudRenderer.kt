@@ -40,7 +40,7 @@ class HudRenderer(private val serverStats: HudServerStats) {
     private val tps = HudCard("TPS", HudForm.CHIP)
     private val ping = HudCard("PING", HudForm.CHIP)
     private val scoreboard = HudCard("Scoreboard", HudForm.SCOREBOARD, "Preview Line", "")
-    private val totems = HudCard("TOTEMS", HudForm.CHIP)
+    private val totems = HudCard("T", HudForm.CHIP)
     private val cards = arrayOf(watermark, keybinds, potions, target, staff, arrayList, coords, speed, tps, ping, scoreboard, totems)
     private val elements = arrayOf(HudElement.WATERMARK, HudElement.KEYBINDS, HudElement.POTIONS,
         HudElement.TARGET, HudElement.STAFF, HudElement.ARRAY_LIST, HudElement.COORDS,
@@ -321,7 +321,23 @@ class HudRenderer(private val serverStats: HudServerStats) {
         var i = 0
         while (i < cards.size) cards[i++].animate(delta, chat,
             (screenWidth - 14f) / scale, (screenHeight - 14f) / scale)
-        notifications.update(delta, chat && module.isElementEnabled(HudElement.NOTIFICATIONS), module.notificationLimit.toInt())
+        val compactNotifications = module.notificationStyle == "Compact"
+        val notificationAnchor = controller[HudElement.NOTIFICATIONS]
+        val anchorY = if (notificationAnchor.dragging) {
+            (notificationAnchor.desiredY + notificationAnchor.verticalOffset) / screenHeight.coerceAtLeast(1f)
+        } else if (notificationAnchor.positionY.value >= 0.0) {
+            notificationAnchor.positionY.value.toFloat()
+        } else if (compactNotifications) (screenHeight * 0.5f + 20f) / screenHeight.coerceAtLeast(1f)
+            else (screenHeight - 57f) / screenHeight.coerceAtLeast(1f)
+        val notificationsUpward = when (module.notificationDirection) {
+            "Up" -> true
+            "Down" -> false
+            else -> anchorY >= 0.5f
+        }
+        val notificationSpace = screenHeight * (if (notificationsUpward) anchorY else 1f - anchorY) - 7f
+        notifications.update(delta, chat && module.isElementEnabled(HudElement.NOTIFICATIONS),
+            module.notificationLimit.toInt(), compactNotifications, notificationsUpward,
+            notificationSpace.coerceIn(minOf(25f * scale, screenHeight), screenHeight) / scale)
         defaults(screenWidth, screenHeight, scale)
         val matrix = MatrixControl.matrix4fStack
         i = 0
@@ -334,9 +350,14 @@ class HudRenderer(private val serverStats: HudServerStats) {
         }
         val notificationWidth = notifications.width * scale
         val notificationHeight = notifications.height * scale
+        val notificationRowHeight = notifications.cardHeight * scale
+        val notificationDefaultY = if (compactNotifications) screenHeight * 0.5f + 20f
+            else screenHeight - 57f - notificationRowHeight
         val notificationDrag = controller.place(HudElement.NOTIFICATIONS, notificationWidth, notificationHeight,
-            screenWidth - 7f - notificationWidth, screenHeight - 57f - notificationHeight,
-            module.isElementEnabled(HudElement.NOTIFICATIONS) && notifications.isVisible)
+            if (compactNotifications) (screenWidth - notificationWidth) * 0.5f else screenWidth - 7f - notificationWidth,
+            notificationDefaultY - if (notificationsUpward) notificationHeight - notificationRowHeight else 0f,
+            module.isElementEnabled(HudElement.NOTIFICATIONS) && notifications.isVisible,
+            if (notificationsUpward) 1f else 0f, notificationRowHeight)
         controller.layoutFrame(delta)
         if (chat) {
             val guideColor = M3Theme.current.primary.alpha(130)

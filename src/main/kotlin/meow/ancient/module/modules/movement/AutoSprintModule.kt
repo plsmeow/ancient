@@ -1,9 +1,9 @@
 package meow.ancient.module.modules.movement
 
 import meow.ancient.client.extensions.MOVEMENT
-import meow.ancient.client.extensions.currentScreen
 import meow.ancient.client.extensions.inGame
 import meow.ancient.client.extensions.mc
+import meow.ancient.client.util.anticheat.AnticheatManager
 import meow.ancient.client.util.movement.MoveUtil
 import meow.ancient.event.events.PlayerUpdateEvent
 import meow.ancient.module.Module
@@ -20,9 +20,7 @@ object AutoSprintModule : Module(
         if (!isEnabled() || !inGame) return false
         if (HitAuraModule.shouldPreventSprint() || TriggerBotModule.shouldPreventSprint()) return false
         if (InventoryMoveModule.shouldPreventSprint()) return false
-        val screen = currentScreen
-        if (screen != null && !InventoryMoveModule.canMoveInScreen(screen)) return false
-        return true
+        return AnticheatManager.canUseContext()
     }
 
     override fun onDisable() {

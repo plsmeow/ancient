@@ -2,6 +2,7 @@ package meow.ancient.module.modules.combat
 
 import meow.ancient.client.extensions.COMBAT
 import meow.ancient.client.extensions.mc
+import meow.ancient.client.util.anticheat.AnticheatManager
 import meow.ancient.client.util.combat.AuraActionQueue
 import meow.ancient.client.util.combat.SurroundGeometry
 import meow.ancient.client.util.friend.FriendRepository
@@ -40,7 +41,7 @@ object AutoMineModule : Module("AutoMine", COMBAT, "Selects enemy feet and surro
         }.sortedWith(compareByDescending<Player> { TargetRepository.isTarget(it) }.thenBy { player.distanceToSqr(it) }).firstOrNull()
         if (enemy == null) { reset(); return }
         if (targetId != enemy.id) { PacketMineModule.releaseAutomaticTargets(this); targetId = enemy.id }
-        if (mc.gui.screen() != null || player.isUsingItem || !player.containerMenu.carried.isEmpty) return
+        if (!AnticheatManager.canUseContext(player) || !player.containerMenu.carried.isEmpty) return
         val box = enemy.boundingBox
         val footBlocks = if (feet) BlockPos.betweenClosed(AABB(box.minX + 0.001, box.minY + 0.001, box.minZ + 0.001,
             box.maxX - 0.001, box.minY + 0.01, box.maxZ - 0.001)).map { it.immutable() } else emptyList()

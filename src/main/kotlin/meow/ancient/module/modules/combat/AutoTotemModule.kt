@@ -2,6 +2,7 @@ package meow.ancient.module.modules.combat
 
 import meow.ancient.client.extensions.COMBAT
 import meow.ancient.client.extensions.mc
+import meow.ancient.client.util.anticheat.AnticheatManager
 import meow.ancient.client.util.inventory.InventoryUtil
 import meow.ancient.client.util.other.TimerUtil
 import meow.ancient.event.events.ClientDisconnectEvent
@@ -104,7 +105,7 @@ object AutoTotemModule : Module(
     }
 
     private fun updateSwap(player: Player) {
-        if (player.containerMenu !== player.inventoryMenu) return
+        if (!AnticheatManager.canUseContext(player) || player.containerMenu !== player.inventoryMenu) return
 
         val offhand = player.offhandItem
         val hasTotem = offhand.`is`(Items.TOTEM_OF_UNDYING)

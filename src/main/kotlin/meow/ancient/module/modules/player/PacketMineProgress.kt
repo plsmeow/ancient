@@ -11,6 +11,8 @@ internal class PacketMineProgress {
         private set
     var rebreakPrimed = false
         private set
+    var completedCycle = false
+        private set
     private var miningTicks = 0
     private var readyTick: Long? = null
     private var stopTick = 0L
@@ -39,10 +41,18 @@ internal class PacketMineProgress {
         return ready != null && tick > ready
     }
 
-    fun stop(tick: Long) {
+    @JvmOverloads
+    fun stop(tick: Long, forceRebreak: Boolean = false) {
         check(phase == Phase.MINING || phase == Phase.REBREAK)
-        phase = Phase.CONFIRM
+        completedCycle = true
         stopTick = tick
+        if (forceRebreak) {
+            phase = Phase.REBREAK
+            damage = 1f
+            rebreakPrimed = true
+        } else {
+            phase = Phase.CONFIRM
+        }
     }
 
     @JvmOverloads
@@ -52,6 +62,7 @@ internal class PacketMineProgress {
         phase = Phase.REBREAK
         damage = 1f
         rebreakPrimed = true
+        completedCycle = true
         return true
     }
 
@@ -80,6 +91,7 @@ internal class PacketMineProgress {
         phase = Phase.START
         damage = 0f
         rebreakPrimed = false
+        completedCycle = false
         miningTicks = 0
         readyTick = null
         stopTick = 0L

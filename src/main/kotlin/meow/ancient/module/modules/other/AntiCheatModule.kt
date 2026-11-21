@@ -8,6 +8,13 @@ object AntiCheatModule : Module(
     category = OTHER,
     description = "Global anticheat bypass settings"
 ) {
+    val multiAction by multiMode(
+        name = "MultiAction",
+        value = setOf("Use", "Gui"),
+        modes = listOf("Use", "Gui"),
+        description = "Allow modules while using an item or a GUI is open"
+    )
+
     val sprintReset by mode(
         name = "Sprint Reset",
         value = "Packet",

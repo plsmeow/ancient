@@ -1,7 +1,6 @@
 package meow.ancient.module.modules.combat
 
 import meow.ancient.client.extensions.COMBAT
-import meow.ancient.client.extensions.currentScreen
 import meow.ancient.client.extensions.mc
 import meow.ancient.client.gui.material.ClickGuiScreen
 import meow.ancient.client.gui.material.components.AdvancedSettingsWindow
@@ -21,7 +20,6 @@ import meow.ancient.module.modules.combat.hitaura.rotation.AdvancedRotationSetti
 import meow.ancient.module.modules.combat.hitaura.rotation.impl.AdvancedRotation
 import meow.ancient.module.setting.ActionSetting
 import net.minecraft.world.entity.LivingEntity
-import net.minecraft.world.item.ItemUseAnimation
 import net.minecraft.world.phys.Vec3
 import sweetie.evaware.flora.api.Commando
 
@@ -121,11 +119,6 @@ object HitAuraModule : Module(
     val targets = targets(
         name = "Targets",
         value = setOf("minecraft:player")
-    )
-    val ignoreOn by multiMode(
-        name = "Ignore On",
-        value = setOf("Gui"),
-        modes = listOf("Use", "Gui")
     )
     val friendProtection by boolean(
         name = "Friend Protection",
@@ -359,16 +352,9 @@ object HitAuraModule : Module(
         return sprintResetProcessor.isResettingSprint()
     }
 
-    fun shouldIgnoreContext(): Boolean {
-        if ("Gui" in ignoreOn && currentScreen != null) return true
-        val player = mc.player ?: return true
-        return "Use" in ignoreOn && player.isUsingItem && player.useItem.useAnimation != ItemUseAnimation.NONE
-    }
-
     private fun canUseContext(player: LocalPlayer): Boolean = !player.isDeadOrDying && !player.isSpectator
         && player.connection.connection.isConnected && player.connection.hasClientLoaded() && mc.gameMode != null
-        && player.containerMenu === player.inventoryMenu
-        && player.inventoryMenu.carried.isEmpty && !shouldIgnoreContext()
+        && player.containerMenu.carried.isEmpty && AnticheatManager.canUseContext(player)
 
     @Commando
     fun onPacketSent(event: PacketSentEvent) {

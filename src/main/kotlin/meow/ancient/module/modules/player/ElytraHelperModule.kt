@@ -3,6 +3,7 @@ package meow.ancient.module.modules.player
 import com.mojang.blaze3d.platform.InputConstants
 import meow.ancient.client.extensions.PLAYER
 import meow.ancient.client.extensions.mc
+import meow.ancient.client.util.anticheat.AnticheatManager
 import meow.ancient.client.util.inventory.InventoryActionSource
 import meow.ancient.client.util.inventory.InventoryUtil
 import meow.ancient.client.util.movement.MoveUtil
@@ -11,8 +12,8 @@ import meow.ancient.event.events.ClientDisconnectEvent
 import meow.ancient.event.events.KeyPressEvent
 import meow.ancient.event.events.PlayerUpdateEvent
 import meow.ancient.module.Module
+import meow.ancient.module.setting.KeybindSetting
 import meow.ancient.module.modules.movement.InventoryMoveModule
-import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen
 import net.minecraft.client.player.LocalPlayer
 import net.minecraft.core.component.DataComponents
 import net.minecraft.network.protocol.game.ServerboundPlayerCommandPacket
@@ -56,6 +57,7 @@ object ElytraHelperModule : Module(
     @Commando
     fun onKey(event: KeyPressEvent) {
         if (event.cancel || event.action != InputConstants.PRESS || event.key == InputConstants.UNKNOWN.value) return
+        if (mc.gui.screen() != null && KeybindSetting.isMouseButton(event.key)) return
         val player = mc.player ?: return
         if (!canAct(player)) return
 
@@ -72,7 +74,7 @@ object ElytraHelperModule : Module(
     fun onUpdate(event: PlayerUpdateEvent) {
         if (!autoTakeoff || InventoryMoveModule.isInventoryActionSlowed()) return
         val player = mc.player ?: return
-        if (!player.connection.connection.isConnected) return
+        if (!player.connection.connection.isConnected || !AnticheatManager.canUseContext(player)) return
         val chest = player.getItemBySlot(EquipmentSlot.CHEST)
         if (!chest.`is`(Items.ELYTRA) || !LivingEntity.canGlideUsing(chest, EquipmentSlot.CHEST)
             || player.isInLava || player.isInWater || player.isPassenger || player.isFallFlying
@@ -93,20 +95,20 @@ object ElytraHelperModule : Module(
 
     private fun queueAction(source: InventoryActionSource, action: (LocalPlayer) -> Unit) {
         val player = mc.player ?: return
+        if (!canAct(player, source == InventoryActionSource.INVENTORY)) return
         val connection = player.connection
         val generation = actionGeneration
         InventoryMoveModule.runInventoryAction(source, Runnable {
             if (!isEnabled() || generation != actionGeneration || mc.player !== player
-                || player.connection !== connection || !canAct(player)) return@Runnable
+                || player.connection !== connection || !canAct(player, source == InventoryActionSource.INVENTORY)) return@Runnable
             action(player)
         }, this)
     }
 
-    private fun canAct(player: LocalPlayer): Boolean {
+    private fun canAct(player: LocalPlayer, inventory: Boolean = false): Boolean {
         if (mc.player !== player || !player.connection.connection.isConnected || mc.gameMode == null || player.isSpectator
-            || player.containerMenu !== player.inventoryMenu || !player.inventoryMenu.carried.isEmpty) return false
-        val screen = mc.gui.screen() ?: return true
-        return screen is AbstractContainerScreen<*> && InventoryMoveModule.canMoveInScreen(screen)
+            || !AnticheatManager.canUseContext(player)) return false
+        return !inventory || player.containerMenu === player.inventoryMenu && player.inventoryMenu.carried.isEmpty
     }
 
     fun swapChestEquipment(player: LocalPlayer) {
@@ -180,9 +182,9 @@ object ElytraHelperModule : Module(
                 useRocket(currentPlayer, InteractionHand.MAIN_HAND, bridge)
             } finally {
                 try {
-                    if (canAct(currentPlayer)) InventoryUtil.clickSlot(inventorySlot, bridge)
+                    if (canAct(currentPlayer, inventory = true)) InventoryUtil.clickSlot(inventorySlot, bridge)
                 } finally {
-                    if (canAct(currentPlayer)) InventoryUtil.closeInventory()
+                    if (canAct(currentPlayer, inventory = true)) InventoryUtil.closeInventory()
                 }
             }
         }
@@ -236,15 +238,16 @@ object ElytraHelperModule : Module(
                 if (canAct(currentPlayer)) InventoryUtil.useItem(InteractionHand.OFF_HAND)
             } finally {
                 try {
-                    if (canAct(currentPlayer)) InventoryUtil.clickSlot(menuSlot, 40)
+                    if (canAct(currentPlayer, inventory = true)) InventoryUtil.clickSlot(menuSlot, 40)
                 } finally {
-                    if (canAct(currentPlayer)) InventoryUtil.closeInventory()
+                    if (canAct(currentPlayer, inventory = true)) InventoryUtil.closeInventory()
                 }
             }
         }
     }
 
     private fun canExchange(player: LocalPlayer, firstMenuSlot: Int, secondMenuSlot: Int): Boolean {
+        if (!canAct(player, inventory = true)) return false
         val first = player.inventoryMenu.getSlot(firstMenuSlot)
         val second = player.inventoryMenu.getSlot(secondMenuSlot)
         return first.mayPickup(player) && second.mayPickup(player)

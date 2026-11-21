@@ -4,6 +4,7 @@ import meow.ancient.client.extensions.COMBAT
 import meow.ancient.client.extensions.inGame
 import meow.ancient.client.extensions.mc
 import meow.ancient.client.util.action.ActionCoordinator
+import meow.ancient.client.util.anticheat.AnticheatManager
 import meow.ancient.client.util.combat.ExplosionDamageUtil
 import meow.ancient.client.util.friend.FriendRepository
 import meow.ancient.client.util.inventory.InventoryUtil
@@ -134,8 +135,8 @@ object CrystalAuraTestModule : Module(
     )
     private val skipWhen = multiMode(
         "Не ставить при",
-        setOf("Использование еды", "Смена тотема"),
-        listOf("Использование еды", "Ближний бой", "Смена тотема", "Нет тотемов", "Неполная броня"),
+        setOf("Смена тотема"),
+        listOf("Ближний бой", "Смена тотема", "Нет тотемов", "Неполная броня"),
         isVisible = { configMode == "Защита от взрыва" }
     )
     private val visualizePosition by boolean("Визуализация позиции", true)
@@ -319,7 +320,7 @@ object CrystalAuraTestModule : Module(
 
     private fun isReady(player: LocalPlayer): Boolean = player.connection.connection.isConnected &&
         player.isAlive && !player.isSpectator && !player.isPassenger && mc.gameMode != null &&
-        mc.gui.screen() == null
+        AnticheatManager.canUseContext(player)
 
     private fun actionCooldown(): Int = tickDelay.toInt() + cycleDelay.toInt()
 
@@ -886,7 +887,6 @@ object CrystalAuraTestModule : Module(
     }
 
     private fun blockedByProtection(player: LocalPlayer): Boolean {
-        if (skipWhen.isSelected("Использование еды") && player.isUsingItem) return true
         if (skipWhen.isSelected("Ближний бой") && HitAuraModule.isEnabled() && HitAuraModule.currentTarget != null) return true
         if (skipWhen.isSelected("Смена тотема") && tick - offhandChangedTick <= 3) return true
         if (skipWhen.isSelected("Нет тотемов") && !hasItem(player, Items.TOTEM_OF_UNDYING)) return true

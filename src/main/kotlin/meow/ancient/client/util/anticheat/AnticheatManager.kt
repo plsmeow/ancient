@@ -1,11 +1,22 @@
 package meow.ancient.client.util.anticheat
 
+import meow.ancient.client.extensions.mc
 import meow.ancient.module.modules.other.AntiCheatModule
 import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.entity.player.Player
 import net.minecraft.world.scores.DisplaySlot
 
 object AnticheatManager {
+    val canUseWhileUsing: Boolean
+        get() = "Use" in AntiCheatModule.multiAction
+
+    val canUseInGui: Boolean
+        get() = "Gui" in AntiCheatModule.multiAction
+
+    fun canUseContext(player: Player? = mc.player): Boolean = player != null
+        && (canUseInGui || mc.gui.screen() == null)
+        && (canUseWhileUsing || !player.isUsingItem && !mc.options.keyUse.isDown)
+
     val sprintReset: String
         get() = AntiCheatModule.sprintReset
 

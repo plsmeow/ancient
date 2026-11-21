@@ -2,6 +2,7 @@ package meow.ancient.client.util.action
 
 import meow.ancient.client.extensions.mc
 import meow.ancient.client.util.inventory.SilentSwapUtil
+import meow.ancient.client.util.anticheat.AnticheatManager
 import meow.ancient.module.Module
 import meow.ancient.module.modules.combat.HitAuraModule
 import meow.ancient.module.modules.combat.CrystalAuraModule
@@ -66,6 +67,7 @@ object ActionCoordinator {
 
     fun manualUseActive(): Boolean {
         val player = mc.player ?: return false
+        if (AnticheatManager.canUseWhileUsing) return false
         // SpearKill deliberately steers an already held spear; that use belongs to its combat action.
         if (SpearKillModule.isEnabled() && player.isUsingItem && player.useItem.`is`(ItemTags.SPEARS)) return false
         return player.isUsingItem || mc.options.keyUse.isDown
@@ -88,14 +90,16 @@ object ActionCoordinator {
         AnchorAuraModule.hasPendingAction() -> resolveOwner(AnchorAuraModule)
         meow.ancient.module.modules.combat.AutoWebModule.hasPendingAction() -> resolveOwner(meow.ancient.module.modules.combat.AutoWebModule)
         CrystalAuraModule.hasTerrainAction() -> crystalTerrainOwner()
-        HitAuraModule.isEnabled() && HitAuraModule.currentTarget != null && !HitAuraModule.shouldIgnoreContext() -> resolveOwner(HitAuraModule)
+        HitAuraModule.isEnabled() && HitAuraModule.currentTarget != null && AnticheatManager.canUseContext() -> resolveOwner(HitAuraModule)
         TriggerBotModule.isEnabled() && TriggerBotModule.target != null -> resolveOwner(TriggerBotModule)
         else -> null
     }
 
     fun canAct(owner: Any? = null): Boolean {
         if (!mc.isSameThread || mc.player == null || mc.level == null) return false
-        return state.canAct(resolveOwner(owner), preferred())
+        val resolved = resolveOwner(owner)
+        if (resolved.group != ActionGroup.MANUAL && !AnticheatManager.canUseContext()) return false
+        return state.canAct(resolved, preferred())
     }
 
     fun blockReason(owner: Any): String? = state.blockReason(resolveOwner(owner), preferred())

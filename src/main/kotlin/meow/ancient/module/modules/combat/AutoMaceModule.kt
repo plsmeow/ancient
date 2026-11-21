@@ -81,8 +81,8 @@ object AutoMaceModule : Module(
             return AttackPreparation.WAITING
         }
         val selectedSlot = SilentSwapUtil.serverSlot
-        if ((selectedSlot != maceSlot || needsChestSwap)
-            && (player.containerMenu !== player.inventoryMenu || !player.inventoryMenu.carried.isEmpty)) {
+        if ((selectedSlot != maceSlot || needsChestSwap) && !player.containerMenu.carried.isEmpty
+            || needsChestSwap && player.containerMenu !== player.inventoryMenu) {
             cancelPreparation()
             return AttackPreparation.WAITING
         }

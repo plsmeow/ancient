@@ -10,6 +10,7 @@ internal class HudNotificationMessage(
     val name: String,
     val detail: String,
     val enabled: Boolean,
+    val text: String,
     val createdAt: Long
 )
 
@@ -17,10 +18,10 @@ object HudNotificationCenter {
     private const val MAX_PENDING = 20
     private val pending = ArrayDeque<HudNotificationMessage>(MAX_PENDING)
 
-    private fun enqueue(name: String, detail: String, enabled: Boolean) {
+    private fun enqueue(name: String, detail: String, enabled: Boolean, text: String = "$name · $detail") {
         if (mc.player == null || mc.level == null) return
         if (pending.size == MAX_PENDING) pending.removeFirst()
-        pending.addLast(HudNotificationMessage(name, detail, enabled, System.nanoTime()))
+        pending.addLast(HudNotificationMessage(name, detail, enabled, text, System.nanoTime()))
     }
 
     @JvmStatic
@@ -39,7 +40,7 @@ object HudNotificationCenter {
     @JvmStatic
     @Synchronized
     fun push(name: String, detail: String, enabled: Boolean) {
-        enqueue(name, detail, enabled)
+        enqueue(name, detail, enabled, detail)
     }
 
     @Synchronized

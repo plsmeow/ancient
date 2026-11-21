@@ -2,6 +2,7 @@ package meow.ancient.module.modules.movement
 
 import meow.ancient.client.extensions.MOVEMENT
 import meow.ancient.client.extensions.mc
+import meow.ancient.client.util.anticheat.AnticheatManager
 import meow.ancient.client.util.rotation.MoveFixMode
 import meow.ancient.client.util.rotation.Rotation
 import meow.ancient.client.util.rotation.RotationManager
@@ -86,7 +87,7 @@ object ElytraRecastModule : Module(
     private fun canRecast(player: LocalPlayer): Boolean = player.connection.connection.isConnected &&
         player.isAlive && !player.isSpectator && !player.abilities.flying && !player.isPassenger &&
         !player.onClimbable() && !player.isInWater && !player.isInLava &&
-        !player.hasEffect(MobEffects.LEVITATION) && mc.gui.screen() == null &&
+        !player.hasEffect(MobEffects.LEVITATION) && AnticheatManager.canUseContext(player) &&
         !InventoryMoveModule.isInventoryActionSlowed() &&
         LivingEntity.canGlideUsing(player.getItemBySlot(EquipmentSlot.CHEST), EquipmentSlot.CHEST)
 

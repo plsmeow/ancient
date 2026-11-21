@@ -3,6 +3,7 @@ package meow.ancient.module.modules.movement
 import meow.ancient.client.extensions.MOVEMENT
 import meow.ancient.client.extensions.mc
 import meow.ancient.client.util.action.ActionCoordinator
+import meow.ancient.client.util.anticheat.AnticheatManager
 import meow.ancient.client.util.inventory.InventoryUtil
 import meow.ancient.client.util.inventory.SilentSwapUtil
 import meow.ancient.client.util.other.ChatUtil
@@ -135,8 +136,7 @@ object PhaseModule : Module("Phase", MOVEMENT, "Phase through blocks using Pearl
         }
         tick++
         if (!player.connection.connection.isConnected || !player.isAlive || player.isSpectator || player.isPassenger
-            || FreeCameraModule.isEnabled() || mc.gui.screen() != null || player.isUsingItem
-            || player.containerMenu !== player.inventoryMenu || !player.containerMenu.carried.isEmpty
+            || FreeCameraModule.isEnabled() || !AnticheatManager.canUseContext(player)
             || InventoryMoveModule.isInventoryActionSlowed()) return
 
         val wc = activeWindCharge
@@ -316,7 +316,7 @@ object PhaseModule : Module("Phase", MOVEMENT, "Phase through blocks using Pearl
     fun onPreMovement(event: PlayerPreMovementEvent) {
         val current = prepared ?: return
         if (mc.player !== current.player || mc.level !== current.level || tick != current.tick
-            || !ActionCoordinator.canAct(this) || current.player.isUsingItem
+            || !ActionCoordinator.canAct(this) || !AnticheatManager.canUseContext(current.player)
             || SilentSwapUtil.serverSlot != current.slot || current.player.position().distanceToSqr(sentFeet) > 0.36) {
             prepared = null
             return

@@ -157,43 +157,43 @@ class AuraActionQueue(private var owner: Any, private val flushAfterMovement: Bo
     }
 
     fun block(hit: BlockHitResult, range: Double, rotations: Boolean, moveFix: MoveFixMode,
-              exactFace: Boolean = false, wallCheck: Boolean = true, action: (BlockHitResult) -> Unit): Boolean {
-        if (!prepareBlock(hit, range, rotations, moveFix, exactFace, wallCheck)) return false
-        pendingReady = { blockHit(hit, range, exactFace, wallCheck) != null }
-        pending = { blockHit(hit, range, exactFace, wallCheck)?.let(action) }
+              exactFace: Boolean = false, wallCheck: Boolean = true, throughWalls: Boolean = false,
+              action: (BlockHitResult) -> Unit): Boolean {
+        if (!prepareBlock(hit, range, rotations, moveFix, exactFace, wallCheck, throughWalls)) return false
+        pendingReady = { blockHit(hit, range, exactFace, wallCheck, throughWalls) != null }
+        pending = { blockHit(hit, range, exactFace, wallCheck, throughWalls)?.let(action) }
         return true
     }
 
     fun prepareBlock(hit: BlockHitResult, range: Double, rotations: Boolean, moveFix: MoveFixMode,
-                     exactFace: Boolean = false, wallCheck: Boolean = true): Boolean {
+                     exactFace: Boolean = false, wallCheck: Boolean = true, throughWalls: Boolean = false): Boolean {
         val current = player ?: return false
         val reach = minOf(range, current.blockInteractionRange())
         val accepts: (Rotation) -> Boolean = { rotation ->
-            val actual = trace(serverEyes, rotation, reach, hit.blockPos.takeUnless { wallCheck })
-            actual != null && actual.blockPos == hit.blockPos && (!wallCheck || !exactFace || actual.direction == hit.direction)
+            val actual = trace(serverEyes, rotation, reach, hit.blockPos.takeIf { !wallCheck || throughWalls })
+            actual != null && actual.blockPos == hit.blockPos && (!exactFace || actual.direction == hit.direction)
                 && current.eyePosition.distanceToSqr(actual.location) <= reach * reach
         }
         if (!rotations) return true
         var rotation: Rotation? = null
-        val selected = visibleHit(current, hit.blockPos, range, hit.direction.takeIf { exactFace }, wallCheck,
-            eyes = serverEyes, preferred = hit.location, secondaryEyes = current.eyePosition) { candidate ->
+        visibleHit(current, hit.blockPos, range, hit.direction.takeIf { exactFace }, wallCheck,
+            eyes = serverEyes, preferred = hit.location, secondaryEyes = current.eyePosition, throughWalls = throughWalls) { candidate ->
             rotation = aimingRotation(blockAimPoint(candidate), accepts)
             rotation != null
         } ?: return false
-        if (!wallCheck) rotation = aimingRotation(blockAimPoint(selected), accepts)
         applyAim(rotation ?: return false, moveFix)
         return true
     }
 
     /** Refresh supports from the same eye position that will be used to send the interaction. */
     fun placementHit(pos: BlockPos, range: Double, wallCheck: Boolean = true, rotations: Boolean = false,
-                     overrides: Map<BlockPos, BlockState> = emptyMap()): BlockHitResult? {
+                     overrides: Map<BlockPos, BlockState> = emptyMap(), throughWalls: Boolean = false): BlockHitResult? {
         val current = player ?: return null
         val reach = minOf(range, current.blockInteractionRange())
         return Companion.placementHit(current, pos, range, wallCheck, overrides, eyes = serverEyes,
-            secondaryEyes = current.eyePosition) { hit ->
-            !rotations || !wallCheck || aimingRotation(blockAimPoint(hit)) { rotation ->
-                val actual = trace(serverEyes, rotation, reach, overrides = overrides)
+            secondaryEyes = current.eyePosition, throughWalls = throughWalls) { hit ->
+            !rotations || aimingRotation(blockAimPoint(hit)) { rotation ->
+                val actual = trace(serverEyes, rotation, reach, hit.blockPos.takeIf { !wallCheck || throughWalls }, overrides)
                 actual != null && actual.blockPos == hit.blockPos && actual.direction == hit.direction
                     && current.eyePosition.distanceToSqr(actual.location) <= reach * reach
             } != null
@@ -201,13 +201,14 @@ class AuraActionQueue(private var owner: Any, private val flushAfterMovement: Bo
     }
 
     fun visibleHit(pos: BlockPos, range: Double, wallCheck: Boolean = true, preferred: Vec3? = null,
-                   rotations: Boolean = false, overrides: Map<BlockPos, BlockState> = emptyMap()): BlockHitResult? {
+                   rotations: Boolean = false, overrides: Map<BlockPos, BlockState> = emptyMap(),
+                   throughWalls: Boolean = false): BlockHitResult? {
         val current = player ?: return null
         val reach = minOf(range, current.blockInteractionRange())
         return Companion.visibleHit(current, pos, range, wallCheck = wallCheck, overrides = overrides, eyes = serverEyes,
-            preferred = preferred, secondaryEyes = current.eyePosition) { hit ->
-            !rotations || !wallCheck || aimingRotation(blockAimPoint(hit)) { rotation ->
-                val actual = trace(serverEyes, rotation, reach, overrides = overrides)
+            preferred = preferred, secondaryEyes = current.eyePosition, throughWalls = throughWalls) { hit ->
+            !rotations || aimingRotation(blockAimPoint(hit)) { rotation ->
+                val actual = trace(serverEyes, rotation, reach, pos.takeIf { !wallCheck || throughWalls }, overrides)
                 actual != null && actual.blockPos == pos && current.eyePosition.distanceToSqr(actual.location) <= reach * reach
             } != null
         }
@@ -222,19 +223,19 @@ class AuraActionQueue(private var owner: Any, private val flushAfterMovement: Bo
         }
     }
 
-    fun blockHit(hit: BlockHitResult, range: Double, exactFace: Boolean = false, wallCheck: Boolean = true): BlockHitResult? {
+    fun blockHit(hit: BlockHitResult, range: Double, exactFace: Boolean = false, wallCheck: Boolean = true,
+                 throughWalls: Boolean = false): BlockHitResult? {
         val current = player ?: return null
         if (!hasMovement || current !== mc.player || level !== mc.level) return null
         val reach = minOf(range, current.blockInteractionRange())
-        if (!wallCheck) {
+        val actual = if (wallCheck) trace(serverEyes, sentRotation, reach, hit.blockPos.takeIf { throughWalls }) else {
             val world = level ?: return null
-            if (world.getBlockState(hit.blockPos).getShape(world, hit.blockPos).isEmpty) return null
-            return hit.takeIf { serverEyes.distanceToSqr(it.location) <= reach * reach
-                && current.eyePosition.distanceToSqr(it.location) <= reach * reach }
-        }
-        val actual = trace(serverEyes, sentRotation, reach) ?: return null
+            world.getBlockState(hit.blockPos).getShape(world, hit.blockPos)
+                .clip(serverEyes, blockAimPoint(hit), hit.blockPos)
+        } ?: return null
         // Use one position for the ray and its visible face, even while walking locally.
         return actual.takeIf { it.blockPos == hit.blockPos && (!exactFace || it.direction == hit.direction)
+            && serverEyes.distanceToSqr(it.location) <= reach * reach
             && current.eyePosition.distanceToSqr(it.location) <= reach * reach }
     }
 
@@ -334,11 +335,12 @@ class AuraActionQueue(private var owner: Any, private val flushAfterMovement: Bo
                       overrides: Map<BlockPos, BlockState> = emptyMap()): BlockHitResult? {
         val world = level ?: return null
         val end = eyes.add(rotation.toDirectionVec().scale(reach))
+        if (targetOnly != null) return (overrides[targetOnly] ?: world.getBlockState(targetOnly))
+            .getShape(world, targetOnly).clip(eyes, end, targetOnly)
         if (overrides.isNotEmpty()) return MeteorDamageHelper.raycast(eyes, end,
             ExplosionDamageUtil.ExposureRaycastContext(eyes, end), ExplosionDamageUtil.RaycastFactory { ray, pos ->
                 (overrides[pos] ?: world.getBlockState(pos)).getShape(world, pos).clip(ray.start, ray.end, pos)
             })
-        if (targetOnly != null) return world.getBlockState(targetOnly).getShape(world, targetOnly).clip(eyes, end, targetOnly)
         return world.clip(ClipContext(eyes, end, ClipContext.Block.OUTLINE, ClipContext.Fluid.NONE, player!!))
             .takeIf { it.type == HitResult.Type.BLOCK }
     }
@@ -374,6 +376,7 @@ class AuraActionQueue(private var owner: Any, private val flushAfterMovement: Bo
         fun visibleHit(player: LocalPlayer, pos: BlockPos, range: Double, face: Direction? = null,
                        wallCheck: Boolean = true, overrides: Map<BlockPos, BlockState> = emptyMap(),
                        eyes: Vec3 = player.eyePosition, preferred: Vec3? = null, secondaryEyes: Vec3? = null,
+                       throughWalls: Boolean = false,
                        accepts: (BlockHitResult) -> Boolean = { true }): BlockHitResult? {
             val level = mc.level ?: return null
             val reach = minOf(range, player.blockInteractionRange())
@@ -386,10 +389,10 @@ class AuraActionQueue(private var owner: Any, private val flushAfterMovement: Bo
                 shape(block).toAabbs().map { it.move(block) }
             }
             val targetBoxes = boxes(pos)
-            if (!wallCheck) return BlockFaceResolver.direct(eyes, pos, targetBoxes, reach, face, secondaryEyes)
             return BlockFaceResolver.find(eyes, pos, targetBoxes, reach, face, preferred, secondaryEyes,
                 trace = { start, end ->
-                    if (overrides.isEmpty()) {
+                    if (!wallCheck || throughWalls) shape(pos).clip(start, end, pos)
+                    else if (overrides.isEmpty()) {
                         level.clip(ClipContext(start, end, ClipContext.Block.OUTLINE, ClipContext.Fluid.NONE, player))
                             .takeIf { it.type == HitResult.Type.BLOCK }
                     } else MeteorDamageHelper.raycast(start, end, ExplosionDamageUtil.ExposureRaycastContext(start, end),
@@ -409,7 +412,8 @@ class AuraActionQueue(private var owner: Any, private val flushAfterMovement: Bo
 
         fun placementHit(player: LocalPlayer, pos: BlockPos, range: Double, wallCheck: Boolean = true,
                          overrides: Map<BlockPos, BlockState> = emptyMap(), eyes: Vec3 = player.eyePosition,
-                         secondaryEyes: Vec3? = null, accepts: (BlockHitResult) -> Boolean = { true }): BlockHitResult? {
+                         secondaryEyes: Vec3? = null, throughWalls: Boolean = false,
+                         accepts: (BlockHitResult) -> Boolean = { true }): BlockHitResult? {
             val level = mc.level ?: return null
             val hits = ArrayList<BlockHitResult>()
             for (side in Direction.entries) {
@@ -423,7 +427,7 @@ class AuraActionQueue(private var owner: Any, private val flushAfterMovement: Bo
                         || state.`is`(Blocks.NOTE_BLOCK) || state.`is`(Blocks.RESPAWN_ANCHOR) || state.`is`(Blocks.CAKE)
                         || state.block is CandleCakeBlock || state.block is SweetBerryBushBlock)) continue
                 val hit = visibleHit(player, neighbor, range, side, wallCheck, overrides, eyes = eyes,
-                    secondaryEyes = secondaryEyes, accepts = accepts) ?: continue
+                    secondaryEyes = secondaryEyes, throughWalls = throughWalls, accepts = accepts) ?: continue
                 if (hit.blockPos.relative(hit.direction) == pos) hits.add(hit)
             }
             return hits.minByOrNull { eyes.distanceToSqr(it.location) }

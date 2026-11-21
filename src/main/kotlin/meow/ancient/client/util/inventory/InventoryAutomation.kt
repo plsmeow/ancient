@@ -58,8 +58,8 @@ object InventoryAutomation {
 
     fun available(): Boolean {
         val player = mc.player ?: return false
-        return player.isAlive && !player.isSpectator && !player.isUsingItem && !mc.options.keyUse.isDown
-            && mc.gui.screen() == null && player.containerMenu === player.inventoryMenu
+        return player.isAlive && !player.isSpectator && AnticheatManager.canUseContext(player)
+            && player.containerMenu === player.inventoryMenu
             && player.containerMenu.carried.isEmpty && player.connection.connection.isConnected
     }
 

@@ -47,28 +47,6 @@ internal object BlockFaceResolver {
         fun nearest(point: Point) = Point(point.u.coerceIn(min.u, max.u), point.v.coerceIn(min.v, max.v))
     }
 
-    @JvmOverloads
-    fun direct(eyes: Vec3, pos: BlockPos, boxes: List<AABB>, reach: Double, side: Direction?, secondaryEyes: Vec3? = null): BlockHitResult? {
-        if (!reach.isFinite() || reach <= 0.0 || boxes.isEmpty()) return null
-        if (side == null && boxes.any { it.contains(eyes) }) return BlockHitResult(eyes, Direction.UP, pos, true)
-            .takeIf { secondaryEyes == null || secondaryEyes.distanceToSqr(eyes) <= reach * reach }
-        return faces(boxes, side).mapNotNull { face ->
-            if (side == null && !face.visible(eyes)) return@mapNotNull null
-            val points = buildList {
-                add(face.center)
-                add(face.nearest(face.project(eyes)))
-                secondaryEyes?.let {
-                    add(face.nearest(face.project(it)))
-                    add(face.nearest(face.project(eyes).mix(face.project(it), 0.5)))
-                }
-            }
-            val point = points.asSequence().map { face.point(it, inside = false) }.firstOrNull {
-                eyes.distanceToSqr(it) <= reach * reach && (secondaryEyes == null || secondaryEyes.distanceToSqr(it) <= reach * reach)
-            }
-            point?.let { BlockHitResult(it, face.side, pos, false) }
-        }.minByOrNull { eyes.distanceToSqr(it.location) }
-    }
-
     fun find(eyes: Vec3, pos: BlockPos, boxes: List<AABB>, reach: Double, side: Direction? = null,
              preferred: Vec3? = null, secondaryEyes: Vec3? = null,
              trace: (Vec3, Vec3) -> BlockHitResult?, shapes: (BlockPos) -> List<AABB>,

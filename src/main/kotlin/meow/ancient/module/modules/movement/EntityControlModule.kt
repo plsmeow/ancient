@@ -2,8 +2,8 @@ package meow.ancient.module.modules.movement
 
 import com.mojang.blaze3d.platform.InputConstants
 import meow.ancient.client.extensions.MOVEMENT
-import meow.ancient.client.extensions.currentScreen
 import meow.ancient.client.extensions.mc
+import meow.ancient.client.util.anticheat.AnticheatManager
 import meow.ancient.event.events.ClientDisconnectEvent
 import meow.ancient.event.events.PlayerUpdateEvent
 import meow.ancient.module.Module
@@ -79,8 +79,7 @@ object EntityControlModule : Module(
         trackVehicle(entity)
         entity.interpolation.cancel()
 
-        val screen = currentScreen
-        val acceptsInput = mc.isWindowActive && (screen == null || InventoryMoveModule.canMoveInScreen(screen))
+        val acceptsInput = mc.isWindowActive && AnticheatManager.canUseContext(player)
             && !InventoryMoveModule.isInventoryActionSlowed()
         // Use camera-relative keys, since silent aura move-fix has already rotated player.input.
         val forward = if (acceptsInput) {

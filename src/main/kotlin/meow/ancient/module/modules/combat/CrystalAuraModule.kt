@@ -73,7 +73,7 @@ object CrystalAuraModule : Module(
     val moveFix by moveFixSetting
 
     val rotations by boolean("Rotations", true)
-    val wallCheck by boolean("WallCheck", true, "Requires a clear view to place and break crystals")
+    val wallCheck by boolean("WallCheck", true, "Checks placement faces through walls; requires a clear view to break crystals")
     val silentSlots by boolean("Silent Slots", true)
     val ignoreTerrain by boolean("Ignore Terrain", false, "Ignores blocks with blast resistance below 600; disabled uses vanilla exposure")
     val basePlace by boolean("Base Place", true, "Places obsidian as base for crystals if none available")
@@ -266,8 +266,8 @@ object CrystalAuraModule : Module(
             (level.getEntity(id) as? Player)?.let { motionPrediction.update(it, tick) }
         }
         val updateOwner = if (hasBoostedTerrainAction()) ActionCoordinator.boostedCrystalTerrainOwner() else this
-        if (!ActionCoordinator.canAct(updateOwner) || player.isUsingItem || player.isSpectator
-            || player.containerMenu !== player.inventoryMenu || !player.containerMenu.carried.isEmpty
+        if (!ActionCoordinator.canAct(updateOwner) || !AnticheatManager.canUseContext(player) || player.isSpectator
+            || !player.containerMenu.carried.isEmpty
             || InventoryMoveModule.isInventoryActionSlowed()) {
             miner.cancel()
             terrainPlan?.recovery?.pause(tick)
@@ -275,7 +275,7 @@ object CrystalAuraModule : Module(
             val conflict = ActionCoordinator.blockReason(updateOwner)
             diagnosticState.status(if (conflict != null) Reason.PRIORITY else Reason.CONTEXT,
                 conflict ?: when {
-                    player.isUsingItem -> "Использование предмета"
+                    !AnticheatManager.canUseContext(player) -> "MultiAction"
                     player.isSpectator -> "Режим наблюдателя"
                     InventoryMoveModule.isInventoryActionSlowed() -> "Ожидание действия инвентаря"
                     else -> "Инвентарь занят"
@@ -609,7 +609,7 @@ object CrystalAuraModule : Module(
         }
         clearPrepared()
         visual.show(AABB(plan.pos), AuraTargetRenderer.Kind.BASE)
-        val hit = actions.placementHit(plan.pos, placeRange, wallCheck, rotations) ?: run {
+        val hit = actions.placementHit(plan.pos, placeRange, wallCheck, rotations, throughWalls = true) ?: run {
             diagnosticState.status(Reason.PLACE_FACE, "Повтор плейса в выбранную ячейку", plan.pos)
             return true
         }
@@ -753,8 +753,8 @@ object CrystalAuraModule : Module(
             if (damage <= bestDamage && pos != preferredPos) continue
             if (!damageAllowed(explosionPos(pos), player, target, if (base) pos else null, lead)) continue
             selfPass++
-            val hit = if (base) AuraActionQueue.placementHit(player, pos, placeRange, wallCheck)
-                else AuraActionQueue.visibleHit(player, pos, placeRange, wallCheck = wallCheck)
+            val hit = if (base) AuraActionQueue.placementHit(player, pos, placeRange, wallCheck, throughWalls = true)
+                else AuraActionQueue.visibleHit(player, pos, placeRange, wallCheck = wallCheck, throughWalls = true)
             if (hit == null) continue
             val site = Site(pos, hit, damage)
             // Reuse a validated site immediately; a full scan is only needed when it stops working.
@@ -840,13 +840,13 @@ object CrystalAuraModule : Module(
             val crystal = mc.level?.getEntity(action.entityId) as? EndCrystal ?: return
             actions.prepareCrystal(crystal, breakRange, rotations, getMoveFixMode(), wallCheck)
         } else {
-            val hit = if (action.kind == PendingKind.BASE) actions.placementHit(action.pos, placeRange, wallCheck, rotations)
-                else actions.visibleHit(action.pos, placeRange, wallCheck, action.hit?.location)
+            val hit = if (action.kind == PendingKind.BASE) actions.placementHit(action.pos, placeRange, wallCheck, rotations, throughWalls = true)
+                else actions.visibleHit(action.pos, placeRange, wallCheck, action.hit?.location, throughWalls = true)
             if (hit == null) { diagnosticState.status(Reason.PLACE_FACE, pos = action.pos); clearPrepared(); return }
             // A moving player can expose another support or another part of the same face.
             prepared = action.copy(hit = hit)
             actions.prepareBlock(hit, placeRange, rotations, getMoveFixMode(),
-                exactFace = action.kind == PendingKind.BASE, wallCheck = wallCheck)
+                exactFace = action.kind == PendingKind.BASE, wallCheck = wallCheck, throughWalls = true)
         }
         if (!aimed) { diagnosticState.status(Reason.ROTATION, pos = action.pos); return }
         readyTick = tick
@@ -921,8 +921,7 @@ object CrystalAuraModule : Module(
             diagnosticState.status(Reason.PRIORITY, ActionCoordinator.blockReason(this).orEmpty(), action.pos)
             return
         }
-        if (player.isUsingItem || player.isSpectator
-            || player.containerMenu !== player.inventoryMenu
+        if (!AnticheatManager.canUseContext(player) || player.isSpectator
             || !player.containerMenu.carried.isEmpty || InventoryMoveModule.isInventoryActionSlowed()) {
             diagnosticState.status(Reason.CONTEXT, "Действие приостановлено", action.pos)
             return
@@ -935,7 +934,8 @@ object CrystalAuraModule : Module(
             if (!actions.crystalReady(crystal, breakRange, wallCheck)) { diagnosticState.status(Reason.ROTATION, pos = action.pos); return }
         } else {
             if (!action.terrainBase && placeTimer < placeDelay.toInt()) { diagnosticState.status(Reason.DELAY, pos = action.pos); return }
-            if (actions.blockHit(action.hit ?: return, placeRange, exactFace = action.kind == PendingKind.BASE, wallCheck = wallCheck) == null) {
+            if (actions.blockHit(action.hit ?: return, placeRange, exactFace = action.kind == PendingKind.BASE, wallCheck = wallCheck,
+                    throughWalls = true) == null) {
                 diagnosticState.status(Reason.ROTATION, "Серверный взгляд ещё не попал в грань", action.pos)
                 return
             }
@@ -983,7 +983,7 @@ object CrystalAuraModule : Module(
                         return@withOwner
                     }
                     val hit = actions.blockHit(action.hit ?: return@withOwner, placeRange,
-                        exactFace = action.kind == PendingKind.BASE, wallCheck = wallCheck) ?: run {
+                        exactFace = action.kind == PendingKind.BASE, wallCheck = wallCheck, throughWalls = true) ?: run {
                             diagnosticState.status(Reason.ROTATION, "Серверный взгляд ещё не попал в грань", action.pos)
                             return@withOwner
                         }
@@ -1072,11 +1072,11 @@ object CrystalAuraModule : Module(
         if (level.getEntities(null, crystalBox(pos)).any { it.isAlive }
             || level.getEntities(null, AABB(pos)).any { !it.isRemoved && it.blocksBuilding }) return Reason.CRYSTAL_BLOCKED
         val cleared = plan.clearedStates
-        if (actions.placementHit(pos, placeRange, wallCheck, rotations, cleared) == null) return Reason.PLACE_FACE
+        if (actions.placementHit(pos, placeRange, wallCheck, rotations, cleared, throughWalls = true) == null) return Reason.PLACE_FACE
         val built = plan.builtStates
         val futureCrystal = crystalEntityBox(pos)
         if (forecast(target, lead).box.intersects(crystalBox(pos))
-            || actions.visibleHit(pos, placeRange, wallCheck, rotations = rotations, overrides = built) == null
+            || actions.visibleHit(pos, placeRange, wallCheck, rotations = rotations, overrides = built, throughWalls = true) == null
             || actions.visibleBoxPoint(futureCrystal, breakRange, wallCheck, rotations, built) == null) return Reason.CRYSTAL_BLOCKED
         return null
     }

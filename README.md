@@ -23,6 +23,7 @@ NextGen версия Ancient Client.
 - [Fabric API](https://modrinth.com/mod/fabric-api) - API для работы с Fabric
 - [Fabric Language Kotlin](https://modrinth.com/mod/fabric-language-kotlin) - поддержка Kotlin
 
+
 ## Сборка
 
 ### Требования для сборки
