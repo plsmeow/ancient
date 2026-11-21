@@ -13,6 +13,7 @@ import meow.ancient.module.modules.combat.HitAuraModule
 import meow.ancient.module.modules.combat.MaceKillModule
 import meow.ancient.module.modules.combat.TriggerBotModule
 import meow.ancient.module.modules.combat.VelocityModule
+import meow.ancient.module.modules.combat.FreezeModule
 import meow.ancient.module.modules.combat.SpearKillModule
 import meow.ancient.module.modules.combat.HitBoxesModule
 import meow.ancient.module.modules.combat.CrystalAuraModule
@@ -32,6 +33,7 @@ import meow.ancient.module.modules.movement.ElytraFlyModule
 import meow.ancient.module.modules.movement.ElytraRecastModule
 import meow.ancient.module.modules.movement.ElytraJumpModule
 import meow.ancient.module.modules.movement.FlightModule
+import meow.ancient.module.modules.movement.EntityControlModule
 import meow.ancient.module.modules.movement.HighJumpModule
 import meow.ancient.module.modules.movement.GrimGlideModule
 import meow.ancient.module.modules.movement.ElytraMotionModule
@@ -94,6 +96,7 @@ object ModuleManager : ILoadable {
             CriticalsModule,
             BreachSwapModule,
             VelocityModule,
+            FreezeModule,
             SpearKillModule,
             HitBoxesModule,
             CrystalAuraModule,
@@ -114,6 +117,7 @@ object ModuleManager : ILoadable {
             ElytraJumpModule,
             ElytraMotionModule,
             FlightModule,
+            EntityControlModule,
             GrimGlideModule,
             HighJumpModule,
             DragonFlyModule,

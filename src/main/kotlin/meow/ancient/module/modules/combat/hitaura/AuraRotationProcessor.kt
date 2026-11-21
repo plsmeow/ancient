@@ -82,35 +82,22 @@ class AuraRotationProcessor(advancedSettings: AdvancedRotationSettings) {
             if (previousMode == RotationMode.ADVANCED || rotationMode == RotationMode.ADVANCED) {
                 getStrategy(RotationMode.ADVANCED).reset()
             }
+            if (previousMode == RotationMode.GRIM_1204 || rotationMode == RotationMode.GRIM_1204) {
+                getStrategy(RotationMode.GRIM_1204).reset()
+            }
             previousMode = rotationMode
         }
 
         val strategy = getStrategy(rotationMode)
+        if (strategy is Grim1204Rotation) {
+            strategy.reset()
+            // Release continuous aura rotation immediately when switching into packet-only Grim.
+            if (RotationManager.rotationOwner == HitAuraModule.name) RotationManager.resetImmediate()
+        }
         val currentRot = RotationManager.getServerRotation()
         fun resolvePoint(preferred: Vec3): Vec3? =
             if (HitAuraModule.wallCheck && TpAuraModule.getRenderPosition(target) == null)
                 RayTraceUtil.findVisiblePoint(target, visibilityRange, preferred) else preferred
-        if (rotationMode == RotationMode.GRIM_1204) {
-            val aimPoint = resolvePoint(overrideAimPoint ?: calculateAimPoint(target, aimPointMode)) ?: return currentRot
-            val idealRotation = RotationUtil.getRotationToVec(aimPoint).normalizeTo(currentRot)
-            val dYaw = Mth.wrapDegrees(idealRotation.yaw - currentRot.yaw)
-            val dPitch = idealRotation.pitch - currentRot.pitch
-            strategy.calculate(
-                current = currentRot,
-                ideal = idealRotation,
-                deltaYaw = dYaw,
-                deltaPitch = dPitch,
-                totalAngle = hypot(dYaw, dPitch),
-                target = target,
-                speed = rotationSpeed,
-                tickCounter = tickCounter
-            )
-            val grim = strategy as Grim1204Rotation
-            // Publish through normal movement, so the next attack never needs a movement/attack burst.
-            RotationManager.setRotation(Rotation(grim.rotationYaw, grim.rotationPitch), moveFixMode, gcdEnabled)
-            return RotationManager.getServerRotation()
-        }
-
         if (rotationMode == RotationMode.NEURO) {
             val neuro = strategy as NeuroRotation
             val point = resolvePoint(overrideAimPoint ?: target.boundingBox.center) ?: return currentRot
@@ -150,7 +137,7 @@ class AuraRotationProcessor(advancedSettings: AdvancedRotationSettings) {
         val dPitch = idealRotation.pitch - currentRot.pitch
         val totalAngle = hypot(dYaw, dPitch)
 
-        if (advanced == null && totalAngle <= 0.01f) {
+        if (advanced == null && strategy !is Grim1204Rotation && totalAngle <= 0.01f) {
             RotationManager.setRotation(
                 rotation = currentRot,
                 moveFix = moveFixMode,
@@ -170,6 +157,9 @@ class AuraRotationProcessor(advancedSettings: AdvancedRotationSettings) {
             speed = rotationSpeed,
             tickCounter = tickCounter
         )
+
+        // Grim's prepared aim is quantized and sent by AttackExecutor immediately before the hit.
+        if (strategy is Grim1204Rotation) return currentRot
 
         RotationManager.setRotation(
             rotation = steppedRotation,
@@ -193,8 +183,4 @@ class AuraRotationProcessor(advancedSettings: AdvancedRotationSettings) {
         return yawError <= maxAngleError && pitchError <= (maxAngleError * 1.35f)
     }
 
-    private fun calculateAimPoint(target: LivingEntity, aimPointMode: AimPointMode): Vec3 {
-        val eyePos = mc.player?.eyePosition ?: Vec3.ZERO
-        return AuraAimGeometry.point(eyePos, target.box, aimPointMode)
-    }
 }

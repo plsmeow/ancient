@@ -4,6 +4,7 @@ import meow.ancient.client.util.rotation.RotationManager;
 import meow.ancient.module.modules.player.FakePlayerEntity;
 import meow.ancient.module.modules.render.FreeCameraModule;
 import meow.ancient.module.modules.movement.NoWebModule;
+import meow.ancient.module.modules.movement.EntityControlModule;
 import meow.ancient.client.util.friend.FriendRepository;
 import meow.ancient.module.modules.combat.HitBoxesModule;
 import net.minecraft.world.damagesource.DamageSource;
@@ -21,6 +22,11 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 @Mixin(Entity.class)
 public class MixinEntity {
+    @Inject(method = "isLocalInstanceAuthoritative", at = @At("HEAD"), cancellable = true)
+    private void ancient$controlRiddenEntity(CallbackInfoReturnable<Boolean> cir) {
+        if (EntityControlModule.INSTANCE.controls((Entity) (Object) this)) cir.setReturnValue(true);
+    }
+
     @Inject(method = "hurtOrSimulate", at = @At("HEAD"))
     private void onHurtOrSimulate(DamageSource source, float damage, CallbackInfoReturnable<Boolean> cir) {
         if ((Object) this instanceof FakePlayerEntity fakePlayer) {

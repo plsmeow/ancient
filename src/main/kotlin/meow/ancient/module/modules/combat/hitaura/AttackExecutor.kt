@@ -7,6 +7,8 @@ import meow.ancient.client.util.inventory.SilentSwapUtil
 import meow.ancient.client.util.rotation.RayTraceUtil
 import meow.ancient.client.util.rotation.RotationUtil
 import meow.ancient.client.util.rotation.Rotation
+import meow.ancient.client.util.rotation.GCDUtil
+import meow.ancient.network.SilentPacketQueue
 import meow.ancient.module.modules.combat.AutoMaceModule
 import meow.ancient.module.modules.combat.BreachSwapModule
 import meow.ancient.module.modules.combat.HitAuraModule
@@ -20,6 +22,7 @@ import meow.ancient.module.modules.combat.HitAuraModule.SprintResetMode
 import net.minecraft.network.protocol.Packet
 import net.minecraft.network.protocol.game.ServerboundAttackPacket
 import net.minecraft.network.protocol.game.ServerboundMovePlayerPacket
+import net.minecraft.client.player.LocalPlayer
 import net.minecraft.world.InteractionHand
 import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.item.Items
@@ -61,10 +64,29 @@ class AttackExecutor(
         waitReason = WaitReason.IDLE
     }
 
-    private fun lookingAt(target: LivingEntity, range: Double, walls: Boolean): Boolean {
+    private fun lookingAt(target: LivingEntity, range: Double, walls: Boolean, rotation: Rotation? = null): Boolean {
         val player = mc.player ?: return false
         val eyes = sentPosition?.add(0.0, player.eyeHeight.toDouble(), 0.0) ?: player.eyePosition
-        return RayTraceUtil.isLookingAtEntity(target, sentRotation ?: Rotation(player.yRot, player.xRot), range, walls, eyes)
+        return RayTraceUtil.isLookingAtEntity(target, rotation ?: sentRotation ?: Rotation(player.yRot, player.xRot), range, walls, eyes)
+    }
+
+    private fun grimAttackRotation(target: LivingEntity): Rotation? {
+        val grim = rotationProcessor.getStrategy(HitAuraModule.rotationMode) as? Grim1204Rotation ?: return null
+        val rotation = grim.getAttackRotation(target) ?: return null
+        val player = mc.player ?: return null
+        val previous = sentRotation ?: Rotation(player.yRot, player.xRot)
+        return if (HitAuraModule.gcdFix) GCDUtil.applyGCD(rotation, previous) else rotation.normalizeTo(previous)
+    }
+
+    private fun sendAccepted(player: LocalPlayer, packet: Packet<*>): Boolean {
+        accepted = false
+        sending = packet
+        return try {
+            player.connection.send(packet)
+            accepted
+        } finally {
+            sending = null
+        }
     }
 
     private fun serverRange(target: LivingEntity, range: Double): Boolean {
@@ -80,8 +102,11 @@ class AttackExecutor(
         val strategy = rotationProcessor.getStrategy(mode)
         if (strategy is NeuroRotation && !strategy.isAttackReady()
             || strategy is AdvancedRotation && !strategy.isAttackReady()) return wait(WaitReason.ROTATION)
-        if ((rayTrace || mode == HitAuraModule.RotationMode.GRIM_1204)
-            && !lookingAt(target, range, throughWalls && !HitAuraModule.wallCheck)) return wait(WaitReason.ROTATION)
+        val grimRotation = if (strategy is Grim1204Rotation)
+            grimAttackRotation(target) ?: return wait(WaitReason.ROTATION) else null
+        // Packet-only Grim can prepare a hit without pointing the ordinary movement packets at it.
+        if ((rayTrace || strategy is Grim1204Rotation)
+            && !lookingAt(target, range, throughWalls && !HitAuraModule.wallCheck, grimRotation)) return wait(WaitReason.ROTATION)
         return true
     }
 
@@ -192,6 +217,7 @@ class AttackExecutor(
         var previousAxeSlot = -1
         var previousBreachSlot = -1
         var executed = false
+        var restoreRotation: Rotation? = null
         try {
             val preparation = macePreparation ?: if (breakingShield) AutoMaceModule.AttackPreparation.NONE else AutoMaceModule.beforeAttack()
             if (preparation == AutoMaceModule.AttackPreparation.WAITING) return wait(WaitReason.SLOT)
@@ -213,45 +239,59 @@ class AttackExecutor(
                 if (!criticalProcessor.isReadyForAttack(onlyCrits, smartCrits, SprintResetMode.OFF, smashReady(target)))
                     return wait(WaitReason.CRIT)
             }
-            try {
-                if (!serverRange(target, attackRange)) return wait(WaitReason.RANGE)
-                if ((rayTrace || grim != null) && !lookingAt(target, attackRange, walls)) return wait(WaitReason.ROTATION)
-                gameMode.ensureHasSentCarriedItem()
-                val packet = ServerboundAttackPacket(target.id)
-                accepted = false
-                sending = packet
-                player.connection.send(packet)
-                executed = accepted
-                if (!executed) return wait(WaitReason.PRIORITY)
-                // Local effects and cooldown are applied only after all packet cancellation checks pass.
-                player.attack(target)
-                player.resetAttackStrengthTicker()
-                player.swing(InteractionHand.MAIN_HAND, player.inventory.getItem(slot).attackAnimation, false)
-            } finally {
-                sending = null
+            if (!serverRange(target, attackRange)) return wait(WaitReason.RANGE)
+            if (grim != null) {
+                val rotation = grimAttackRotation(target) ?: return wait(WaitReason.ROTATION)
+                if (!lookingAt(target, attackRange, walls, rotation)) return wait(WaitReason.ROTATION)
+                val previous = sentRotation?.copy() ?: Rotation(player.yRot, player.xRot)
+                if (rotation != previous) {
+                    restoreRotation = previous
+                    if (!sendAccepted(player, ServerboundMovePlayerPacket.Rot(
+                            rotation.yaw, rotation.pitch, player.onGround(), player.horizontalCollision)))
+                        return wait(WaitReason.PRIORITY)
+                }
             }
+            // The actual accepted angle, rather than the prepared aim, authorizes the attack.
+            if ((rayTrace || grim != null) && !lookingAt(target, attackRange, walls)) return wait(WaitReason.ROTATION)
+            gameMode.ensureHasSentCarriedItem()
+            executed = sendAccepted(player, ServerboundAttackPacket(target.id))
+            if (!executed) return wait(WaitReason.PRIORITY)
+            // Local effects and cooldown are applied only after all packet cancellation checks pass.
+            player.attack(target)
+            player.resetAttackStrengthTicker()
+            player.swing(InteractionHand.MAIN_HAND, player.inventory.getItem(slot).attackAnimation, false)
             neuro?.notifyAttack()
             advanced?.notifyAttack()
             waitReason = WaitReason.ATTACK
             return true
         } finally {
             try {
-                if (moved) TpAuraModule.afterAttack()
-                if (executed) {
-                    clickerProcessor.onAttackExecuted(clickMode, cps, randomizeCps, cpsSpread)
-                    BreachSwapModule.onAttackExecuted()
+                val restore = restoreRotation
+                if (restore != null && sentRotation != restore && mc.player === player && mc.level === level
+                    && player.connection.connection.isConnected) {
+                    // Restore even if a listener cancels the attack after accepting the spoofed angle.
+                    SilentPacketQueue.send(player.connection.connection, ServerboundMovePlayerPacket.Rot(
+                        restore.yaw, restore.pitch, player.onGround(), player.horizontalCollision))
                 }
             } finally {
                 try {
-                    if (previousBreachSlot >= 0) BreachSwapModule.swapBack(previousBreachSlot)
-                    if (previousAxeSlot >= 0) ShieldBreakProcessor.swapBack(previousAxeSlot)
+                    if (moved) TpAuraModule.afterAttack()
+                    if (executed) {
+                        clickerProcessor.onAttackExecuted(clickMode, cps, randomizeCps, cpsSpread)
+                        BreachSwapModule.onAttackExecuted()
+                    }
                 } finally {
                     try {
-                        macePreparation = null
-                        AutoMaceModule.afterAttack(executed)
+                        if (previousBreachSlot >= 0) BreachSwapModule.swapBack(previousBreachSlot)
+                        if (previousAxeSlot >= 0) ShieldBreakProcessor.swapBack(previousAxeSlot)
                     } finally {
-                        sprintResetProcessor.postAttack(executed && !breakingShield)
-                        if (executed) SilentSwapUtil.releasePreparedSlot(HitAuraModule)
+                        try {
+                            macePreparation = null
+                            AutoMaceModule.afterAttack(executed)
+                        } finally {
+                            sprintResetProcessor.postAttack(executed && !breakingShield)
+                            if (executed) SilentSwapUtil.releasePreparedSlot(HitAuraModule)
+                        }
                     }
                 }
             }

@@ -265,7 +265,7 @@ object HitAuraModule : Module(
         precision = 0,
         unit = "°",
         description = "",
-        isVisible = { rotationMode != RotationMode.SNAP }
+        isVisible = { rotationMode != RotationMode.SNAP && rotationMode != RotationMode.GRIM_1204 }
     )
     val gcdFix by boolean(
         name = "GCD Fix",
@@ -276,7 +276,8 @@ object HitAuraModule : Module(
         name = "Move Fix",
         defaultValue = MoveFixMode.SILENT,
         nameMapper = { it.displayName },
-        description = ""
+        description = "",
+        isVisible = { rotationMode != RotationMode.GRIM_1204 }
     )
 
     // Click Mode 1.8 / 1.9 & CPS & Randomization
@@ -518,7 +519,7 @@ object HitAuraModule : Module(
 
             val enforceRayTrace = rayTrace && !player.isFallFlying && rotMode != RotationMode.NO_ROT
                 && rotMode != RotationMode.GRIM_1204
-            // The same accepted pose/ray must allow the attack before we sacrifice chase speed.
+            // Check the accepted pose; packet-only Grim checks its prepared ray before spoofing it.
             val geometryReady = attackExecutor.geometryReady(target, maxReach, enforceRayTrace, throughWalls)
             val prepareSprint = !attackExecutor.isBreakingShield(target) && weaponPrepared && geometryReady
                 && criticalProcessor.shouldPrepareSprintReset(
@@ -529,7 +530,7 @@ object HitAuraModule : Module(
             else sprintResetProcessor.cancelPreparation()
 
             // ThunderHack runs Aura in tick HEAD: the short fall under a ceiling is still present here.
-            // Only the last accepted rotation/position authorizes the attack; this tick's aim is sent later.
+            // Continuous modes use the last accepted angle; Grim sends and verifies its angle around the hit.
             if (level.getEntity(target.id) !== target || !targetSelector.isValidTarget(target, maxReach,
                     fov.toFloat(), targets, throughWalls && !wallCheck, friendProtection)) {
                 sprintResetProcessor.cancelPreparation()
